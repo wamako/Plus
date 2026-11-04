@@ -130,21 +130,32 @@ final class ModernContextMenuHook extends SpotifyHook {
         values[7] = null;
         Object action = values[8];
         List<Field> actionFields = fields(action.getClass());
-        if (actionFields.size() != 4 || actionFields.get(1).getType() != int.class) throw new IllegalStateException("Unexpected menu action layout");
+        // The action style changed from an int to an enum in 9.1.94.
+        if (actionFields.size() != 4) throw new IllegalStateException("Unexpected menu action layout");
         Object[] actionValues = values(action, actionFields);
         Object originalCallback = actionValues[3];
         // R8 narrows this field to the concrete Kotlin Lambda base in 9.1.82.
         // A clone of Spotify's own lambda satisfies that cast; only this instance is intercepted.
-        Object callback = cloneCallback(originalCallback);
-        callbacks.put(callback, onClick);
-        if (hookedCallbacks.add(callback.getClass())) XposedBridge.hookAllMethods(callback.getClass(), "invoke", new XC_MethodHook() {
-            @Override protected void beforeHookedMethod(MethodHookParam param) {
-                Runnable runnable = callbacks.get(param.thisObject);
-                if (runnable == null) return;
-                param.setResult(unit);
-                try { runnable.run(); } catch (Throwable t) { XposedBridge.log(t); }
-            }
-        });
+        Class<?> callbackType = actionFields.get(3).getType();
+        Object callback;
+        if (callbackType.isInterface()) {
+            // 9.1.94 keeps a Function1 interface instead of a concrete Lambda base.
+            callback = com.lenerd46.spotifyplus.compat.SpotifyCallback.create(
+                    lpparm.classLoader, callbackType, unit, () -> {
+                        try { onClick.run(); } catch (Throwable t) { XposedBridge.log(t); }
+                    });
+        } else {
+            callback = cloneCallback(originalCallback);
+            callbacks.put(callback, onClick);
+            if (hookedCallbacks.add(callback.getClass())) XposedBridge.hookAllMethods(callback.getClass(), "invoke", new XC_MethodHook() {
+                @Override protected void beforeHookedMethod(MethodHookParam param) {
+                    Runnable runnable = callbacks.get(param.thisObject);
+                    if (runnable == null) return;
+                    param.setResult(unit);
+                    try { runnable.run(); } catch (Throwable t) { XposedBridge.log(t); }
+                }
+            });
+        }
         actionValues[3] = callback;
         values[8] = onlyConstructor(action.getClass(), 4).newInstance(actionValues);
         return itemConstructor.newInstance(values);

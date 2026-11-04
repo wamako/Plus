@@ -29,7 +29,8 @@ public final class LyricsSyncPlaybackSettings extends SpotifyHook {
                 if (method.getReturnType().getName().equals("io.reactivex.rxjava3.core.Single")
                         && java.util.Arrays.equals(method.getParameterTypes(), new Class<?>[]{String.class})) read = method;
                 if (method.getReturnType().getName().equals("io.reactivex.rxjava3.core.Completable")
-                        && method.getParameterCount() == 2 && method.getParameterTypes()[1] == String.class) write = method;
+                        && method.getParameterCount() == 2
+                        && (method.getParameterTypes()[0] == String.class || method.getParameterTypes()[1] == String.class)) write = method;
             }
 
             if (read != null) XposedBridge.hookMethod(read, new XC_MethodHook() {
@@ -58,11 +59,12 @@ public final class LyricsSyncPlaybackSettings extends SpotifyHook {
     }
 
     private static void set(Object target, boolean enabled) throws Exception {
-        Class<?> valueType = write.getParameterTypes()[0];
+        boolean keyFirst = write.getParameterTypes()[0] == String.class;
+        Class<?> valueType = write.getParameterTypes()[keyFirst ? 1 : 0];
         Object value = XposedHelpers.newInstance(valueType);
         XposedHelpers.setIntField(value, "valueCase_", 2);
         XposedHelpers.setObjectField(value, "value_", enabled);
-        Object operation = write.invoke(target, value, KEY);
+        Object operation = keyFirst ? write.invoke(target, KEY, value) : write.invoke(target, value, KEY);
         SpotifyCompletableAwaiter.await(operation, 5L, TimeUnit.SECONDS);
     }
 

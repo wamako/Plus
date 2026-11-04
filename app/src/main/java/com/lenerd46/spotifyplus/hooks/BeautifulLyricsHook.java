@@ -361,7 +361,7 @@ public class BeautifulLyricsHook extends SpotifyHook {
             if (okHttp.size() != 1) throw new IllegalStateException("Ambiguous HTTP request builder: " + okHttp);
             var requests = bridge.findMethod(FindMethod.create().searchInClass(okHttp)
                     .matcher(MethodMatcher.create().returnType(void.class)
-                            .modifiers(Modifier.PUBLIC | Modifier.FINAL).paramTypes(String.class, String.class)));
+                            .paramTypes(String.class, String.class)));
             if (requests.isEmpty()) throw new IllegalStateException("No OkHttp header writers found");
             for (var request : requests) XposedBridge.hookMethod(request.getMethodInstance(lpparm.classLoader), new XC_MethodHook() {
                 @Override

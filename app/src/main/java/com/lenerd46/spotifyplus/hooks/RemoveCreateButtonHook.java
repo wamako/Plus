@@ -67,6 +67,7 @@ public class RemoveCreateButtonHook extends SpotifyHook {
     private int idToUse = 8001;
     private int settingsTitleId;
     private SharedPreferences prefs;
+    private Object kotlinUnit;
     private final Context context;
     private final static ConcurrentHashMap<Pair<Integer, String>, List<SettingItem.SettingSection>> scriptSettings = new ConcurrentHashMap<>();
     private final static ConcurrentHashMap<Pair<Integer, String>, Runnable> scriptSideButtons = new ConcurrentHashMap<>();
@@ -153,13 +154,14 @@ public class RemoveCreateButtonHook extends SpotifyHook {
                 }
             });
 
+            // 9.1.94 uses a byte discriminator and a boolean coroutine label.
+            // Match the array-consuming coroutine rather than R8's field layout;
+            // the live Settings destination below limits which arrays we modify.
             var modifyDataListClass = bridge.findClass(FindClass.create().matcher(ClassMatcher.create()
-                    .modifiers(Modifier.PUBLIC | Modifier.FINAL).interfaceCount(1).methodCount(3)
-                    .fields(FieldsMatcher.create()
-                            .count(4)
-                            .add(FieldMatcher.create().modifiers(Modifier.PUBLIC | Modifier.FINAL).type(int.class))
-                            .add(FieldMatcher.create().modifiers(Modifier.PUBLIC).type(int.class))
-                            .add(FieldMatcher.create().modifiers(Modifier.PUBLIC).type(Object[].class)))));
+                    .interfaceCount(1).methodCount(3)
+                    .fields(FieldsMatcher.create().count(4).add(FieldMatcher.create().type(Object[].class)))
+                    .addMethod(MethodMatcher.create().name("invokeSuspend")
+                            .returnType(Object.class).paramTypes(Object.class))));
 
             // var things =
             // bridge.findClass(FindClass.create().matcher(ClassMatcher.create().modifiers(Modifier.PUBLIC
@@ -181,39 +183,83 @@ public class RemoveCreateButtonHook extends SpotifyHook {
             // x.getDeclaredClassName()));
 
             var methodsThing = bridge.findMethod(FindMethod.create().searchInClass(modifyDataListClass)
-                    .matcher(MethodMatcher.create().returnType(Object.class).modifiers(Modifier.PUBLIC | Modifier.FINAL)
-                            .paramCount(1).paramTypes(Object.class)));
+                    .matcher(MethodMatcher.create().name("invokeSuspend").returnType(Object.class)
+                            .paramTypes(Object.class)));
             List<Method> invokeSuspendMethods = new ArrayList<>();
             for (var methodData : methodsThing) {
                 Method method = methodData.getMethodInstance(lpparm.classLoader);
                 if (!invokeSuspendMethods.contains(method)) invokeSuspendMethods.add(method);
             }
-            XposedBridge.log("[SpotifyPlus] Side-drawer array mutation candidates: " + invokeSuspendMethods.stream().map(method -> method.getDeclaringClass().getName() + "#" + method.getName()).collect(java.util.stream.Collectors.joining(", ")));
+            Set<Method> listBuilders = new HashSet<>();
+            int nativeSettingsTitle = context.getResources().getIdentifier(
+                    "sidedrawer_link_settings", "string", context.getPackageName());
+            if (nativeSettingsTitle != 0) {
+                // Follow the Settings factory to its content type, then to the row
+                // constructor. 9.1.94 returns a List of those rows from a coroutine.
+                Set<Class<?>> contentTypes = new HashSet<>();
+                for (var factory : bridge.findMethod(FindMethod.create().matcher(
+                        MethodMatcher.create().usingNumbers(nativeSettingsTitle)))) {
+                    for (var call : factory.getInvokes()) {
+                        var types = call.getParamTypeNames();
+                        if (call.isConstructor() && types.size() == 7
+                                && types.get(1).equals(Integer.class.getName())
+                                && types.get(2).equals(String.class.getName())
+                                && types.get(6).equals("int")) {
+                            contentTypes.add(call.getConstructorInstance(lpparm.classLoader).getDeclaringClass());
+                        }
+                    }
+                }
+                for (Class<?> content : contentTypes) {
+                    for (var row : bridge.findMethod(FindMethod.create().matcher(MethodMatcher.create()
+                            .name("<init>").paramTypes("int", content.getName(), null)))) {
+                        Class<?> rowType = row.getConstructorInstance(lpparm.classLoader).getDeclaringClass();
+                        for (var builder : bridge.findMethod(FindMethod.create().matcher(MethodMatcher.create()
+                                .name("invokeSuspend").paramTypes(Object.class).returnType(Object.class)
+                                .addInvoke(MethodMatcher.create().name("<init>").declaredClass(rowType))))) {
+                            listBuilders.add(builder.getMethodInstance(lpparm.classLoader));
+                        }
+                    }
+                }
+            }
+            for (Method builder : listBuilders) if (!invokeSuspendMethods.contains(builder)) invokeSuspendMethods.add(builder);
+            XposedBridge.log("[SpotifyPlus] Side-drawer mutation candidates: " + invokeSuspendMethods.stream().map(method -> method.getDeclaringClass().getName() + "#" + method.getName()).collect(java.util.stream.Collectors.joining(", ")));
 
             // Identify the destination in the live array before cloning. The wrapper,
             // navigation props and instrumentation have changed independently of it.
             if (invokeSuspendMethods.isEmpty()) {
-                XposedBridge.log("[SpotifyPlus] No side-drawer array callback matched");
+                XposedBridge.log("[SpotifyPlus] No side-drawer callback matched");
                 return;
             }
 
-            for (Method invokeSuspend : invokeSuspendMethods) XposedBridge.hookMethod(invokeSuspend, new XC_MethodHook() {
+            XC_MethodHook drawerMutation = new XC_MethodHook() {
                 @Override
                 protected void beforeHookedMethod(MethodHookParam param) throws Throwable {
+                    if (listBuilders.contains(param.method)) return;
                     // Field a =
                     // bridge.findField(FindField.create().searchInClass(modifyDataListClass).matcher(FieldMatcher.create().modifiers(Modifier.PUBLIC
                     // |
                     // Modifier.FINAL).type(int.class))).get(0).getFieldInstance(lpparm.classLoader);
-                    Field d = bridge
-                            .findField(FindField.create()
-                                    .searchInClass(Collections.singletonList(bridge.getClassData(param.thisObject.getClass())))
-                                    .matcher(FieldMatcher.create().modifiers(Modifier.PUBLIC).type(Object[].class)))
-                            .get(0).getFieldInstance(lpparm.classLoader);
+                    List<Field> arrayFields = Arrays.stream(param.thisObject.getClass().getDeclaredFields())
+                            .filter(field -> !Modifier.isStatic(field.getModifiers()) && field.getType() == Object[].class)
+                            .collect(java.util.stream.Collectors.toList());
+                    if (arrayFields.size() != 1) return;
+                    Field d = arrayFields.get(0);
+                    d.setAccessible(true);
 
                     // int number = a.getInt(param.thisObject);
                     // if(number != 20) return;
 
                     Object[] originalItemsWithNull = (Object[]) d.get(param.thisObject);
+                    injectRows(param, originalItemsWithNull, d);
+                }
+
+                @Override
+                protected void afterHookedMethod(MethodHookParam param) throws Throwable {
+                    if (!listBuilders.contains(param.method) || !(param.getResult() instanceof List<?> rows)) return;
+                    injectRows(param, rows.toArray(), null);
+                }
+
+                private void injectRows(MethodHookParam param, Object[] originalItemsWithNull, Field d) throws Throwable {
                     if (originalItemsWithNull == null)
                         return;
                     Object[] originalItems = Arrays.stream(originalItemsWithNull).filter(Objects::nonNull)
@@ -1047,10 +1093,12 @@ public class RemoveCreateButtonHook extends SpotifyHook {
                         index++;
                     }
 
-                    XposedHelpers.setObjectField(param.thisObject, d.getName(), newArray);
+                    if (d == null) param.setResult(new ArrayList<>(Arrays.asList((Object[]) newArray)));
+                    else d.set(param.thisObject, newArray);
                     XposedBridge.log("[SpotifyPlus] Injected Spotify Plus Settings after side-drawer item " + settingsItemIndex + " using " + runtimeButtonClass.getName() + " -> " + runtimeSideDrawerItem.getClass().getName() + " -> " + runtimeProperties.getClass().getName());
                 }
-            });
+            };
+            for (Method callback : invokeSuspendMethods) XposedBridge.hookMethod(callback, drawerMutation);
         } catch (Exception e) {
             XposedBridge.log(e);
             XposedBridge.log("[SpotifyPlus] Could not find class: " + e.getMessage());
@@ -1194,10 +1242,20 @@ public class RemoveCreateButtonHook extends SpotifyHook {
     }
 
     private Object createClickCallback(Class<?> fieldType, Class<?> constructorType, Object originalClick, int resId, Runnable onClick) throws Exception {
-        if (fieldType.isInterface() && constructorType.isInterface()) return Proxy.newProxyInstance(lpparm.classLoader, new Class[]{constructorType}, (proxy, method, args) -> {
-            if (method.getName().equals("invoke")) runSideDrawerClick(resId, onClick);
-            return defaultValue(method.getReturnType());
-        });
+        if (fieldType.isInterface() && constructorType.isInterface()) {
+            if (kotlinUnit == null) {
+                Class<?> unitType = bridge.findClass(FindClass.create().matcher(ClassMatcher.create()
+                        .usingStrings("kotlin.Unit").fieldCount(1)
+                        .addMethod(MethodMatcher.create().name("toString")))).single().getInstance(lpparm.classLoader);
+                Field singleton = Arrays.stream(unitType.getDeclaredFields())
+                        .filter(f -> Modifier.isStatic(f.getModifiers()) && f.getType() == unitType)
+                        .findFirst().orElseThrow();
+                singleton.setAccessible(true);
+                kotlinUnit = singleton.get(null);
+            }
+            return com.lenerd46.spotifyplus.compat.SpotifyCallback.create(
+                    lpparm.classLoader, constructorType, kotlinUnit, () -> runSideDrawerClick(resId, onClick));
+        }
         List<Field> clickFields = getInstanceFields(originalClick.getClass());
         Object clonedClick = instantiateCallbackLike(originalClick, readFieldValues(originalClick, clickFields));
         XposedBridge.hookAllMethods(clonedClick.getClass(), "invoke", new XC_MethodHook() {

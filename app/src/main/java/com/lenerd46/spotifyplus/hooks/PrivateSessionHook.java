@@ -37,6 +37,14 @@ public class PrivateSessionHook extends SpotifyHook {
     @Override
     protected void hook() {
         try {
+            // Spotify 9.1.94 replaced the Rx settings-key registry with coroutine RPCs.
+            var coroutineSetters = bridge.findMethod(FindMethod.create().matcher(MethodMatcher.create()
+                    .usingStrings("spotify.settings.esperanto.proto.Settings", "SetPrivateSession")
+                    .paramCount(2).returnType(Object.class)));
+            if (!coroutineSetters.isEmpty()) {
+                new CoroutinePrivateSessionHook(prefs).init(lpparm, bridge);
+                return;
+            }
             var settingKeyClasses = bridge.findClass(FindClass.create().matcher(ClassMatcher.create().interfaceCount(0).fieldCount(4, 64).addField(FieldMatcher.create().modifiers(Modifier.STATIC)).addMethod(MethodMatcher.create().name("<clinit>").usingStrings("offline_mode", "play_explicit_content", "private_session", "download_over_3g"))));
             if (settingKeyClasses.size() != 1) throw new IllegalStateException("[PrivateSessionHook/DexKit] Expected one static settings-key registry but found " + settingKeyClasses);
             Class<?> settingKeysClass = settingKeyClasses.get(0).getInstance(lpparm.classLoader);

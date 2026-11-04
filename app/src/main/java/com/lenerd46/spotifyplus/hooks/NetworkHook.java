@@ -4,12 +4,12 @@ import android.content.Context;
 import android.content.SharedPreferences;
 import de.robv.android.xposed.XC_MethodHook;
 import de.robv.android.xposed.XposedBridge;
-import de.robv.android.xposed.XposedHelpers;
 import org.luckypray.dexkit.query.FindMethod;
+import org.luckypray.dexkit.query.FindClass;
+import org.luckypray.dexkit.query.matchers.ClassMatcher;
 import org.luckypray.dexkit.query.matchers.MethodMatcher;
 
 import java.lang.reflect.Method;
-import java.util.Collections;
 
 public class NetworkHook extends SpotifyHook {
     private final Context context;
@@ -25,12 +25,12 @@ public class NetworkHook extends SpotifyHook {
         if (prefs.getBoolean("block_ads", false)) {
             try {
 
-                Method httpBuildMethod = bridge
-                        .findMethod(FindMethod.create()
-                                .searchInClass(Collections.singletonList(bridge.getClassData(
-                                        XposedHelpers.findClass("okhttp3.Request$Builder", lpparm.classLoader))))
-                                .matcher(MethodMatcher.create().paramTypes(String.class).usingStrings("ws")))
-                        .get(0).getMethodInstance(lpparm.classLoader);
+                var builders = bridge.findClass(FindClass.create().matcher(ClassMatcher.create()
+                        .usingStrings("method.isEmpty() == true", " must not have a request body.",
+                                " must have a request body.")));
+                Method httpBuildMethod = bridge.findMethod(FindMethod.create().searchInClass(builders)
+                        .matcher(MethodMatcher.create().paramTypes(String.class).usingStrings("ws:", "wss:")))
+                        .single().getMethodInstance(lpparm.classLoader);
 
                 XposedBridge.hookMethod(httpBuildMethod, new XC_MethodHook() {
                     @Override

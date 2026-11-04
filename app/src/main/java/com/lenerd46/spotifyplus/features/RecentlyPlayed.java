@@ -48,7 +48,11 @@ public final class RecentlyPlayed {
     private static void render(Activity a,ListView list,TextView detail){
         List<PlaybackHistory.Entry> entries=history.entries();List<String> labels=new ArrayList<>();for(var e:entries)labels.add(e.track.title+"\n"+e.track.artist);
         detail.setText(entries.isEmpty()?"Play a song, then another. The previous song will appear here.":"Previously played songs on this device, newest first.");
-        list.setAdapter(new ArrayAdapter<>(a,android.R.layout.simple_list_item_1,labels));
+        list.setAdapter(new ArrayAdapter<String>(a,android.R.layout.simple_list_item_1,labels){
+            @Override public android.view.View getView(int position,android.view.View convert,android.view.ViewGroup parent){
+                TextView row=(TextView)super.getView(position,convert,parent);row.setTextColor(android.graphics.Color.WHITE);row.setSingleLine(false);row.setMaxLines(2);return row;
+            }
+        });
         list.setOnItemClickListener((parent,view,position,id)->FeatureSheets.openSpotify(entries.get(position).track.uri));
     }
 }

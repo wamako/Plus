@@ -7,12 +7,11 @@ import com.lenerd.spotifyplus.module.scripting.SpotifyNativeBridge;
 import com.lenerd46.spotifyplus.hooks.RemoveCreateButtonHook;
 import org.json.JSONObject;
 import java.util.concurrent.*;
-import java.util.concurrent.atomic.AtomicInteger;
 
 /** API-2 registrations use the runtime-discovered drawer adapter proven on 9.1.94. */
 public final class SideDrawerHook extends SpotifyHook {
-    private static final AtomicInteger ids=new AtomicInteger(-50000);
-    private static final ConcurrentHashMap<String,Integer> registrations=new ConcurrentHashMap<>();
+    private static final class Entry{final String id,script,title;Entry(String id,String script,String title){this.id=id;this.script=script;this.title=title;}}
+    private static final ConcurrentHashMap<String,Entry> entries=new ConcurrentHashMap<>();
     private static android.window.OnBackInvokedDispatcher dispatcher;
     private static android.window.OnBackInvokedCallback back;
     protected void hookSetup(){SpotifyNativeBridge.registerHandler("side",this);}
@@ -20,14 +19,27 @@ public final class SideDrawerHook extends SpotifyHook {
     public Object handle(String command,Object[] args){
         if(command.equals("register")){
             String id=(String)args[0],script=(String)args[1],title=(String)args[2],key=script+"/"+id;
-            int nativeId=registrations.computeIfAbsent(key,k->ids.getAndDecrement());
-            String label=script.toLowerCase(java.util.Locale.ROOT).contains("settings")?"Extension settings":title;
-            RemoveCreateButtonHook.registerSideButton(label,nativeId,()->open(script,id));
+            entries.put(key,new Entry(id,script,title));
+            // Permanent launcher slots avoid relying on a cached Spotify drawer re-render.
         }else if(command.equals("unregisterScript")){
             String prefix=args[0]+"/";
-            registrations.entrySet().removeIf(e->{if(!e.getKey().startsWith(prefix))return false;RemoveCreateButtonHook.unregisterSideButton(e.getValue());return true;});
-        }else if(command.equals("surfaceClosed"))clearBack();
+            entries.keySet().removeIf(key->key.startsWith(prefix));
+        }else if(command.equals("surfaceClosed")&&args.length>0&&"sideDrawer".equals(args[0]))new android.os.Handler(android.os.Looper.getMainLooper()).post(SideDrawerHook::clearBack);
         return null;
+    }
+    public static void openRegistered(String script){
+        Entry entry=entries.values().stream().filter(e->e.script.equals(script)).findFirst().orElse(null);
+        if(entry==null){com.lenerd46.spotifyplus.features.FeatureSheets.toast(com.lenerd46.spotifyplus.api2.Api2Runtime.isEnabled()?"Extensions are starting. Please wait a moment and try again.":"Extensions could not start. Restart Spotify and try again.");return;}
+        open(entry.script,entry.id);
+    }
+    public static void showExtensions(){
+        Activity a=currentActivity;if(a==null)return;
+        a.runOnUiThread(()->com.lenerd46.spotifyplus.features.FeatureSheets.show("Extensions",root->{
+            java.util.List<Entry> active=entries.values().stream().filter(e->!e.script.equals("com.lenerd.marketplace")&&!e.script.equals("com.lenerd.settings")).sorted(java.util.Comparator.comparing(e->e.title)).toList();
+            root.addView(com.lenerd46.spotifyplus.features.FeatureSheets.text(a,active.isEmpty()?"Install extensions from Marketplace. Extensions with their own pages appear here.":"Installed extension pages",15));
+            for(Entry e:active)root.addView(com.lenerd46.spotifyplus.features.FeatureSheets.button(a,e.title,()->{com.lenerd46.spotifyplus.features.FeatureSheets.close();open(e.script,e.id);}));
+            root.addView(com.lenerd46.spotifyplus.features.FeatureSheets.button(a,"Marketplace",()->{com.lenerd46.spotifyplus.features.FeatureSheets.close();openRegistered("com.lenerd.marketplace");}));
+        }));
     }
     private static void clearBack(){if(Build.VERSION.SDK_INT>=33&&dispatcher!=null&&back!=null)dispatcher.unregisterOnBackInvokedCallback(back);dispatcher=null;back=null;}
     private static void open(String script,String id){

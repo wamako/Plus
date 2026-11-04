@@ -81,6 +81,8 @@ def main():
     replace(manager,
         '            ScriptViewHost.preloadNativeLibraries(activity.getApplicationContext());\n            SpotifyNativeBridge bridge = new SpotifyNativeBridge(activity.getClassLoader(), marketplaceScripts, optimizedDirectory, activity);\n            initializeNativeBridge(bridge, new String[]{"node", hostFile.getAbsolutePath(), hostConfig.toString()});',
         '            try {\n                ScriptViewHost.preloadNativeLibraries(activity.getApplicationContext());\n                SpotifyNativeBridge bridge = new SpotifyNativeBridge(activity.getClassLoader(), marketplaceScripts, optimizedDirectory, activity);\n                if (!initializeNativeBridge(bridge, new String[]{"node", hostFile.getAbsolutePath(), hostConfig.toString()})) throw new IllegalStateException("Native extension bridge could not initialize");\n            } catch (Throwable error) { com.lenerd46.spotifyplus.api2.Api2Runtime.startFailed(error); }')
+    replace(manager, '            Log.e("SpotifyPlus", "Failed to load host JS script", e);',
+        '            Log.e("SpotifyPlus", "Failed to load host JS script", e);\n            com.lenerd46.spotifyplus.api2.Api2Runtime.startFailed(e);')
     services=generated/'com/lenerd/spotifyplus/module/scripting/SpotifyServices.java'
     replace(services,'if (value != null && type("p.v8f").isInstance(value) && (Boolean) call(value, "c")) {\n            throw new IllegalStateException(String.valueOf(call(call(value, "a"), "g")));\n        }','if (value != null && String.valueOf(value).startsWith("Failure")) throw new IllegalStateException(String.valueOf(value));')
     start=services.read_text().index('    private synchronized Object queue() throws Exception {')

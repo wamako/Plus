@@ -11,6 +11,7 @@ import com.lenerd46.spotifyplus.References;
 public final class FeatureSheets {
     private static java.lang.ref.WeakReference<Dialog> current = new java.lang.ref.WeakReference<>(null);
     private FeatureSheets() {}
+    public static void close(){Dialog dialog=current.get();if(dialog!=null)dialog.dismiss();}
     public static int dp(Context c,int value){return Math.round(value*c.getResources().getDisplayMetrics().density);}
     public static TextView text(Context c,String label,int size){TextView t=new TextView(c);t.setText(label);t.setTextSize(size);t.setTextColor(Color.WHITE);return t;}
     public static Button button(Context c,String label,Runnable action){Button b=new Button(c);b.setText(label);b.setAllCaps(false);b.setTextColor(Color.WHITE);b.setOnClickListener(v->action.run());return b;}

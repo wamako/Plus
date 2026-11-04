@@ -39,7 +39,7 @@ public final class Api2Runtime {
             enabled=true;
             XposedHelpers.findAndHookMethod(Activity.class,"onResume",new XC_MethodHook(){protected void afterHookedMethod(MethodHookParam p){
                 Activity activity=(Activity)p.thisObject;com.lenerd.spotifyplus.module.SpotifyHook.currentActivity=activity;
-                if(starting.compareAndSet(false,true))new Thread(()->start(activity),"SpotifyPlus-API2-Start").start();
+                if(enabled && starting.compareAndSet(false,true))new Thread(()->start(activity),"SpotifyPlus-API2-Start").start();
             }});
         }catch(Throwable e){enabled=false;Log.e("SpotifyPlus:API2","Could not initialize extension host",e);}
     }
@@ -47,7 +47,7 @@ public final class Api2Runtime {
         try{
             seedLyrics(activity);
             Utils.token=References.accessToken;Utils.clientToken=References.clientToken;
-            new ScriptManager(activity).start();started=true;main.post(Api2Runtime::refresh);
+            new ScriptManager(activity).start();if(enabled){started=true;main.post(Api2Runtime::refresh);}
         }catch(Throwable e){starting.set(false);startFailed(e);}
     }
     private static void seedLyrics(Context context)throws IOException{

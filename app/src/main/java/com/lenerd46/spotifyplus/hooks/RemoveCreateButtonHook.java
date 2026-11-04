@@ -84,6 +84,11 @@ public class RemoveCreateButtonHook extends SpotifyHook {
             }
 
             new SwipePlayNextHook(prefs).init(lpparm, bridge);
+            if (android.os.Build.VERSION.SDK_INT >= 30) {
+                registerSideButton("Marketplace", -405, () -> com.lenerd.spotifyplus.module.hooks.SideDrawerHook.openRegistered("com.lenerd.marketplace"));
+                registerSideButton("Extension settings", -406, () -> com.lenerd.spotifyplus.module.hooks.SideDrawerHook.openRegistered("com.lenerd.settings"));
+                registerSideButton("Extensions", -407, com.lenerd.spotifyplus.module.hooks.SideDrawerHook::showExtensions);
+            }
             registerSideButton("Bookmarks", -401, com.lenerd46.spotifyplus.features.BookmarksFeature::show);
             registerSideButton("Liquid Glass", -402, com.lenerd46.spotifyplus.features.GlassStyle::show);
 

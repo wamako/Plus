@@ -128,7 +128,7 @@ final class ModernContextMenuHook extends SpotifyHook {
             result.add(0, item(template, BOOKMARK, "Add to Bookmarks", R.drawable.reorder,
                     () -> com.lenerd46.spotifyplus.features.BookmarksFeature.add(savedUri, title, artist, savedArtwork)));
         }
-        if (!ids.contains(LYRICS)) result.add(0, item(template, LYRICS, References.getString(R.string.lyrics_button), R.drawable.music_note, () -> {
+        if (!com.lenerd46.spotifyplus.api2.Api2Runtime.isEnabled() && !ids.contains(LYRICS)) result.add(0, item(template, LYRICS, References.getString(R.string.lyrics_button), R.drawable.music_note, () -> {
             Activity activity = References.currentActivity;
             if (activity != null) activity.runOnUiThread(() -> BeautifulLyricsHook.showOverlay(activity, false));
         }));
@@ -147,6 +147,14 @@ final class ModernContextMenuHook extends SpotifyHook {
                         if (next != null) queue.insertAtTopOfNextUp(next);
                         else com.lenerd46.spotifyplus.features.FeatureSheets.toast("Spotify’s queue is not ready. Start playback and try again.");
                     }));
+        }
+        if (com.lenerd46.spotifyplus.api2.Api2Runtime.isEnabled() && bookmarkUri != null) {
+            String selectedUri = bookmarkUri;
+            for (var extension : com.lenerd.spotifyplus.module.hooks.ContextMenuHook.visible(selectedUri)) {
+                String marker = "api2:" + extension.scriptId + ":" + extension.id;
+                if (!ids.contains(marker)) result.add(0, item(template, marker, extension.title, R.drawable.music_note,
+                        () -> com.lenerd.spotifyplus.module.hooks.ContextMenuHook.press(extension, selectedUri)));
+            }
         }
         param.args[1] = result;
     }

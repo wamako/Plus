@@ -206,3 +206,7 @@ README.html
 # Python build-verification scripts
 __pycache__/
 *.pyc
+/.api2-cache/
+/app/api2-source/
+/app/api2-generated/
+/app/api2-assets/

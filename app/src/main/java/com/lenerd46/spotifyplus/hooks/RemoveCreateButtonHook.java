@@ -1394,6 +1394,10 @@ public class RemoveCreateButtonHook extends SpotifyHook {
         }
     }
 
+    public static void unregisterSideButton(int id) {
+        scriptSideButtons.keySet().removeIf(key -> key.first == id);
+    }
+
     public static void registerSideButton(String title, int id, Runnable onClick) {
         try {
             var key = scriptSideButtons.keySet().stream().filter(entry -> entry.first.equals(id)).findFirst()

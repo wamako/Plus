@@ -1,6 +1,6 @@
 # Spotify 9.1.94.1929 compatibility preview
 
-Module version: `0.7.4-compat.9.1.94.4` (version code 21).
+Module version: `0.10.0-api2.9.1.94.5` (version code 22), arm64 API-2 preview.
 
 The first preview APK is withdrawn. The supplied framework log shows Android rejecting its `classes17.dex` before either Xposed entry point loads: the file is 5,767,168 bytes while its header requires 6,984,980. Inspection of the distributed APK confirms that truncated entry; it is a partial duplicate of `classes15.dex`. APK signing verification did not detect this DEX-level problem. Revision 2 is a clean CI rebuild, with DEX integrity and entry-point checks required before artifact upload. This addresses the observed loading blocker; device feature testing is still required.
 
@@ -66,3 +66,15 @@ The user selected native additions to preserve the working legacy runtime, rathe
 Reference projects reviewed and attributed: [LeNerd46/bookmarks](https://github.com/LeNerd46/bookmarks), source revision `d2bd903e9082cba77252e276003585539ffa3d2d`, and [LeNerd46/liquid-glass-spotify-plus](https://github.com/LeNerd46/liquid-glass-spotify-plus), source revision `fb6908dadd2b6a059c4a83517b4643e20596bb8b`. Their API-2 scripts are not executed by this legacy build; these Java features implement the selected compatible alternative. Their original code and debug token logging are not bundled.
 
 Regression coverage: bookmarks persistence, URI deduplication/filtering, normalization, reorder/remove/undo, failed writes, captured track shapes and cyclic graphs, ambiguous menu URIs, and glass target selection. APK packaging validation still checks every DEX and both Xposed entry points. Runtime queue operations, native surface availability and menus require on-device verification.
+
+## Revision 5: playback history and the API-2 extension host
+
+The queue request was clarified as **previously played history**, rather than another Play Next change. Add persistent Recently played history from real player-state transitions. Ignore paused/browsed tracks and repeated snapshots; preserve the pending song across process restarts and cap local history at 100 entries. When local history is empty, import Spotify's own previous-track snapshot if available. Open Recently played from the drawer or the history button beside Queue in the custom Now Playing controls.
+
+Following the user's explicit selection to upgrade to API 2, retain the proven legacy Xposed entry points, settings adapter, Bookmarks and optional native glass styling while adding the real upstream Node extension host, native renderer, worklet engine and SDK. This arm64 build uses Node 18.20.4 from the published upstream APK, verified by SHA-256, and compiles the JNI bridge from the pinned upstream modern-api source. The build prepares the actual Marketplace and Extension settings scripts, with extension installation, update and removal support. It seeds the requested Beautiful Lyrics add-on once into the normal installed-extension directory; subsequent uninstall/update decisions are retained. The old legacy lyrics activity interception is disabled when API 2 is enabled so it cannot close the extension's lyrics page.
+
+Compatibility adapters use the existing 9.1.94 drawer/menu discovery, named lyrics/Now Playing activities, runtime optional-value classes, Spotify's Android media session for player controls and the captured native queue repository. API-2 targets are advertised only for the implemented Now Playing and lyrics adapters. Other extensions may require additional Spotify service/target adapters; a functioning host does not establish compatibility with every marketplace extension.
+
+Sources: upstream runtime `LeNerd46/SpotifyPlus@615455bf0a7a81cd2d01382a1f1e9e0a699fb082`; Node binary donor `v0.10-preview-1`, APK SHA-256 `d94cabfe0f6fdeb07a81da60030bf8e63eab4c3a5339bc99fcda81028788cf48`; [Beautiful Lyrics](https://github.com/LeNerd46/beautiful-lyrics-spotify-plus) at `6e60d0a038149c2df72664275d35beb2916cafd1`, including its MIT license. Generated dependencies and binary assets are excluded from Git and recreated by `tools/prepare_api2.py` using these pins. The distribution manifest's `dist/index.js` path is normalized to its actual bundled `index.js` location. Marketplace metadata loading awaits cache reads, fixing an upstream Promise-to-JSON parsing error caught by its tests.
+
+Validation must include the upstream runtime, UI, native-installer and marketplace suites, local history regression tests, CMake/Android build, packaged DEX and native/extension asset checks. This is a larger experimental migration and must be verified on the reported Android 17 / LSPatch phone before merging.

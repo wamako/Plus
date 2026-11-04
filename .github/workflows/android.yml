@@ -28,7 +28,15 @@ jobs:
       - name: Set up Android SDK
         uses: android-actions/setup-android@v3
         with:
-          packages: 'platform-tools platforms;android-35 build-tools;35.0.0'
+          packages: 'platform-tools platforms;android-35 build-tools;35.0.0 ndk;26.3.11579264 cmake;3.22.1'
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
+      - name: Prepare and test pinned API-2 runtime and extensions
+        run: python3 tools/prepare_api2.py
 
       - name: Test and build installable debug APK
         run: |
@@ -36,7 +44,9 @@ jobs:
           bash ./gradlew clean testDebugUnitTest assembleDebug
 
       - name: Validate module DEX files
-        run: python3 tools/verify_module_apk.py app/build/outputs/apk/debug/app-debug.apk
+        run: |
+          python3 tools/verify_module_apk.py app/build/outputs/apk/debug/app-debug.apk
+          python3 tools/verify_api2_assets.py app/build/outputs/apk/debug/app-debug.apk
 
       - name: Upload debug APK
         uses: actions/upload-artifact@v4

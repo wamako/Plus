@@ -12,10 +12,12 @@ android {
         applicationId "com.lenerd46.spotifyplus"
         minSdk 27
         targetSdk 35
-        versionCode 21
-        versionName "0.7.4-compat.9.1.94.4"
+        versionCode 22
+        versionName "0.10.0-api2.9.1.94.5"
 
         testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
+        ndk { abiFilters 'arm64-v8a' }
+        externalNativeBuild { cmake { arguments '-DANDROID_STL=c++_shared'; targets 'native-lib', 'spotifyplus_bridge' } }
     }
 
     signingConfigs {
@@ -39,6 +41,12 @@ android {
         }
     }
 
+    buildFeatures { buildConfig true }
+    ndkVersion '26.3.11579264'
+    externalNativeBuild { cmake { path file('api2-source/app/src/main/cpp/CMakeLists.txt'); version '3.22.1' } }
+    sourceSets { main { java.srcDir 'api2-generated/java'; assets.srcDir 'api2-assets'; jniLibs.srcDir 'api2-source/app/libnode/bin' } }
+    packaging { jniLibs { pickFirsts += ['**/libc++_shared.so'] } }
+
     compileOptions {
         sourceCompatibility JavaVersion.VERSION_21
         targetCompatibility JavaVersion.VERSION_21
@@ -46,6 +54,9 @@ android {
 }
 
 dependencies {
+    implementation 'com.facebook.yoga:yoga:3.2.1'
+    implementation 'com.facebook.soloader:soloader:0.12.1'
+    implementation 'com.facebook.fbjni:fbjni-java-only:0.7.0'
     implementation 'androidx.appcompat:appcompat:1.6.1'
     implementation 'com.google.android.material:material:1.12.0'
     testImplementation 'junit:junit:4.13.2'
@@ -67,3 +78,14 @@ dependencies {
 //    implementation 'io.github.junkfood02.youtubedl-android:library:0.18.1'
 //    implementation 'io.github.junkfood02.youtubedl-android:ffmpeg:0.18.1'
 }
+
+// The API-2 Node addon is a freshly compiled native library, not a downloaded addon.
+tasks.register('syncApi2Addon') {
+    dependsOn 'externalNativeBuildDebug'
+    doLast {
+        def matches = fileTree("$buildDir/intermediates/cmake").matching { include '**/obj/arm64-v8a/libspotifyplus_bridge.so' }.files
+        if (matches.size() != 1) throw new GradleException("Expected one compiled API-2 addon, found " + matches)
+        copy { from matches.first(); into 'api2-assets/nodejs/addons/arm64-v8a'; rename { 'spotifyplus_bridge.node' } }
+    }
+}
+tasks.matching { it.name == 'mergeDebugAssets' || it.name == 'mergeReleaseAssets' }.configureEach { dependsOn 'syncApi2Addon' }

@@ -252,6 +252,7 @@ public class BeautifulLyricsHook extends SpotifyHook {
         XposedHelpers.findAndHookMethod(LYRICS_ACTIVITY, lpparm.classLoader, "onCreate", Bundle.class, new XC_MethodHook() {
             @Override
             protected void afterHookedMethod(MethodHookParam param) {
+                if (com.lenerd46.spotifyplus.api2.Api2Runtime.isEnabled()) return;
                 Activity lyricsActivity = (Activity) param.thisObject;
                 Activity host = lastHostActivity.get();
                 lyricsActivity.overridePendingTransition(0, 0);

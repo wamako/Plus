@@ -10,6 +10,8 @@ public final class NextUpQueue {
     private static volatile java.lang.ref.WeakReference<Object> liveRepository = new java.lang.ref.WeakReference<>(null);
     private final ClassLoader classLoader;
 
+    public static Object currentRepository() { return liveRepository.get(); }
+
     public static void rememberRepository(Object repository) {
         liveRepository = new java.lang.ref.WeakReference<>(repository);
     }

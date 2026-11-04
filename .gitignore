@@ -203,3 +203,6 @@ README.html
 /.codex-remote-attachments
 /app/.cxx
 /tools/compat/__pycache__/
+# Python build-verification scripts
+__pycache__/
+*.pyc

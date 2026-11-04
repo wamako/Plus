@@ -1,6 +1,8 @@
 # Spotify 9.1.94.1929 compatibility preview
 
-Module version: `0.7.4-compat.9.1.94` (version code 18).
+Module version: `0.7.4-compat.9.1.94.2` (version code 19).
+
+The first preview APK is withdrawn. The supplied framework log shows Android rejecting its `classes17.dex` before either Xposed entry point loads: the file is 5,767,168 bytes while its header requires 6,984,980. Inspection of the distributed APK confirms that truncated entry; it is a partial duplicate of `classes15.dex`. APK signing verification did not detect this DEX-level problem. Revision 2 is a clean CI rebuild, with DEX integrity and entry-point checks required before artifact upload. This addresses the observed loading blocker; device feature testing is still required.
 
 Target package: `com.spotify.music`, version `9.1.94.1929`, build `147600575`.
 
@@ -24,6 +26,7 @@ Build and unit tests:
 
 ```sh
 bash gradlew testDebugUnitTest assembleDebug
+python3 tools/verify_module_apk.py app/build/outputs/apk/debug/app-debug.apk
 ```
 
 Check the core hook signatures against your own copy of the target APK:

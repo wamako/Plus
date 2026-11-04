@@ -46,7 +46,7 @@ public class XposedLoader implements IXposedHookLoadPackage, IXposedHookZygoteIn
 
     private DexKitBridge bridge;
     private String modulePath = null;
-    private static final String MODULE_VERSION = "0.7.4-compat.9.1.94.3";
+    private static final String MODULE_VERSION = "0.7.4-compat.9.1.94.4";
 
     @Override
     public void handleLoadPackage(LoadPackageParam lpparam) throws Throwable {
@@ -167,6 +167,7 @@ public class XposedLoader implements IXposedHookLoadPackage, IXposedHookZygoteIn
                 new SleepTimerHook(context).init(lpparam, bridge);
                 new PrivateSessionHook(context).init(lpparam, bridge);
                 new ThemeHook((Application) param.thisObject).init(lpparam, bridge);
+                new GlassStyleHook(context).init(lpparam, bridge);
                 // new ThemeTest().init(lpparam, bridge);
                 // new LikedSongHook().init(lpparam, bridge);
                 // new KaraokeHook().init(lpparam, bridge);

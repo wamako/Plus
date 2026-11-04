@@ -25,6 +25,7 @@ final class ModernContextMenuHook extends SpotifyHook {
     private static final String LYRICS = "spotifyplus_open_lyrics";
     private static final String LAST_FM = "spotifyplus_open_last_fm";
     private static final String NEXT = "queue_play_next_track";
+    private static final String BOOKMARK = "spotifyplus_bookmark";
     private final Map<Object, Runnable> callbacks = Collections.synchronizedMap(new WeakHashMap<>());
     private final Set<Class<?>> hookedCallbacks = new HashSet<>();
     private Class<?> itemType;
@@ -83,7 +84,8 @@ final class ModernContextMenuHook extends SpotifyHook {
         }
         if (template == null) return;
         if (queueItem != null) template = queueItem;
-        Object track = findSingleTrack(queueItem, 4, new IdentityHashMap<>());
+        Class<?> contextTrack = XposedHelpers.findClass("com.spotify.player.model.ContextTrack", lpparm.classLoader);
+        Object track = com.lenerd46.spotifyplus.compat.CapturedValues.find(queueItem, contextTrack, 6);
         String uri = track == null ? null : (String) XposedHelpers.callMethod(track, "uri");
         Object header = param.args[0];
         List<Field> headerText = header == null ? Collections.emptyList()
@@ -91,8 +93,34 @@ final class ModernContextMenuHook extends SpotifyHook {
         String title = headerText.size() == 2 ? (String) headerText.get(0).get(header) : "";
         String subtitle = headerText.size() == 2 ? (String) headerText.get(1).get(header) : "";
         String artist = subtitle == null ? "" : subtitle.split(" • ")[0];
+        String bookmarkUri = uri;
+        if (bookmarkUri == null) bookmarkUri = com.lenerd46.spotifyplus.features.MenuEntityFinder.uniqueUri(header);
+        if (bookmarkUri == null) bookmarkUri = com.lenerd46.spotifyplus.features.MenuEntityFinder.uniqueUri(template);
+        if (bookmarkUri == null) {
+            Set<String> menuUris = new HashSet<>();
+            for (Object row : original) {
+                String target = com.lenerd46.spotifyplus.features.MenuEntityFinder.uniqueUri(row);
+                if (target != null) menuUris.add(target);
+            }
+            if (menuUris.size() == 1) bookmarkUri = menuUris.iterator().next();
+        }
         if (uri != null && headerText.size() == 2) NewContextMenuHook.updateLastFmHeader(header, headerText.get(0), headerText.get(1), uri);
         ArrayList<Object> result = new ArrayList<>(original);
+        if (bookmarkUri != null && !ids.contains(BOOKMARK)) {
+            final String savedUri = bookmarkUri;
+            String artwork = "";
+            if (track != null) {
+                Object metadata = XposedHelpers.callMethod(track, "metadata");
+                if (metadata instanceof Map<?,?> map) {
+                    Object image = map.get("image_url");
+                    if (image == null) image = map.get("image_large_url");
+                    if (image != null) artwork = String.valueOf(image);
+                }
+            }
+            final String savedArtwork = artwork;
+            result.add(0, item(template, BOOKMARK, "Add to Bookmarks", R.drawable.reorder,
+                    () -> com.lenerd46.spotifyplus.features.BookmarksFeature.add(savedUri, title, artist, savedArtwork)));
+        }
         if (!ids.contains(LYRICS)) result.add(0, item(template, LYRICS, References.getString(R.string.lyrics_button), R.drawable.music_note, () -> {
             Activity activity = References.currentActivity;
             if (activity != null) activity.runOnUiThread(() -> BeautifulLyricsHook.showOverlay(activity, false));
@@ -106,9 +134,12 @@ final class ModernContextMenuHook extends SpotifyHook {
             Object action = itemFields.get(8).get(queueItem);
             Object callback = fields(action.getClass()).get(3).get(action);
             NextUpQueue queue = new NextUpQueue(lpparm.classLoader);
-            NextUpQueue.NextUpAction next = queue.resolve(new Object[]{callback}, track, 4);
-            if (next != null) result.add(Math.max(0, result.indexOf(queueItem)), item(queueItem, NEXT, References.getString(R.string.play_next_button), R.drawable.reorder,
-                    () -> queue.insertAtTopOfNextUp(next)));
+            result.add(Math.max(0, result.indexOf(queueItem)), item(queueItem, NEXT, References.getString(R.string.play_next_button), R.drawable.reorder,
+                    () -> {
+                        NextUpQueue.NextUpAction next = queue.resolve(new Object[]{callback}, track, 7);
+                        if (next != null) queue.insertAtTopOfNextUp(next);
+                        else com.lenerd46.spotifyplus.features.FeatureSheets.toast("Spotify’s queue is not ready. Start playback and try again.");
+                    }));
         }
         param.args[1] = result;
     }
@@ -199,22 +230,4 @@ final class ModernContextMenuHook extends SpotifyHook {
         return values;
     }
 
-    private static Object findSingleTrack(Object value, int depth, IdentityHashMap<Object, Boolean> seen) throws IllegalAccessException {
-        if (value == null || depth < 0 || seen.put(value, true) != null) return null;
-        if (value instanceof List<?> list) {
-            if (list.size() != 1 || list.get(0) == null) return null;
-            try {
-                Object track = list.get(0);
-                return String.valueOf(XposedHelpers.callMethod(track, "uri")).startsWith("spotify:track:") ? track : null;
-            } catch (Throwable ignored) { return null; }
-        }
-        String name = value.getClass().getName();
-        if (name.startsWith("java.") || name.startsWith("android.") || name.startsWith("kotlin.")) return null;
-        for (Field field : fields(value.getClass())) {
-            if (field.getType().isPrimitive()) continue;
-            Object track = findSingleTrack(field.get(value), depth - 1, seen);
-            if (track != null) return track;
-        }
-        return null;
-    }
 }

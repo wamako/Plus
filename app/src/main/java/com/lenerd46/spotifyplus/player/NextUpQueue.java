@@ -7,7 +7,12 @@ import java.util.*;
 import java.util.stream.Collectors;
 
 public final class NextUpQueue {
+    private static volatile java.lang.ref.WeakReference<Object> liveRepository = new java.lang.ref.WeakReference<>(null);
     private final ClassLoader classLoader;
+
+    public static void rememberRepository(Object repository) {
+        liveRepository = new java.lang.ref.WeakReference<>(repository);
+    }
 
     public NextUpQueue(ClassLoader classLoader) {
         this.classLoader = classLoader;
@@ -26,6 +31,10 @@ public final class NextUpQueue {
             for (Object root : roots) {
                 queueRepository = findQueueRepository(root, setQueueCommandClass, depth, new IdentityHashMap<>());
                 if (queueRepository != null) break;
+            }
+            if (queueRepository == null) {
+                Object live = liveRepository.get();
+                if (live != null && findSingleArgumentMethod(live.getClass(), setQueueCommandClass) != null) queueRepository = live;
             }
             if (queueRepository == null) throw new IllegalStateException("Could not find a queue repository beneath any context-menu item dependency");
             Method queueDispatchMethod = findSingleArgumentMethod(queueRepository.getClass(), setQueueCommandClass);
@@ -46,7 +55,10 @@ public final class NextUpQueue {
     public void insertAtTopOfNextUp(NextUpAction action) {
         try {
             XposedHelpers.callMethod(createUpdateSingle(action), "subscribe",
-                    newRxConsumer(ignored -> { }), newRxConsumer(this::logNextUpError));
+                    newRxConsumer(result -> {
+                        if (String.valueOf(result).startsWith("Failure")) logNextUpError(result);
+                        else com.lenerd46.spotifyplus.features.FeatureSheets.toast("Added to Next up");
+                    }), newRxConsumer(this::logNextUpError));
         } catch (Throwable t) {
             logNextUpError(t);
         }
@@ -178,6 +190,7 @@ public final class NextUpQueue {
     }
 
     private void logNextUpError(Object error) {
+        com.lenerd46.spotifyplus.features.FeatureSheets.toast("Could not update Next up. Start playback and try again.");
         XposedBridge.log("[SpotifyPlus] Failed adding track to Next Up: " + error);
         if (error instanceof Throwable) {
             XposedBridge.log((Throwable) error);

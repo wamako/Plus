@@ -84,6 +84,8 @@ public class RemoveCreateButtonHook extends SpotifyHook {
             }
 
             new SwipePlayNextHook(prefs).init(lpparm, bridge);
+            registerSideButton("Bookmarks", -401, com.lenerd46.spotifyplus.features.BookmarksFeature::show);
+            registerSideButton("Liquid Glass", -402, com.lenerd46.spotifyplus.features.GlassStyle::show);
 
             // var clazz =
             // bridge.findClass(FindClass.create().matcher(ClassMatcher.create().usingStrings("tracks_section",

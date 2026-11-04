@@ -1,6 +1,6 @@
 # Spotify 9.1.94.1929 compatibility preview
 
-Module version: `0.7.4-compat.9.1.94.3` (version code 20).
+Module version: `0.7.4-compat.9.1.94.4` (version code 21).
 
 The first preview APK is withdrawn. The supplied framework log shows Android rejecting its `classes17.dex` before either Xposed entry point loads: the file is 5,767,168 bytes while its header requires 6,984,980. Inspection of the distributed APK confirms that truncated entry; it is a partial duplicate of `classes15.dex`. APK signing verification did not detect this DEX-level problem. Revision 2 is a clean CI rebuild, with DEX integrity and entry-point checks required before artifact upload. This addresses the observed loading blocker; device feature testing is still required.
 
@@ -53,3 +53,16 @@ If a feature fails, export an LSPosed/LSPatch log after reproducing it and inclu
 ## Preview revision 3: settings click result
 
 Version `0.7.4-compat.9.1.94.3` (code 20) fixes the settings-entry crash captured in the revision 2 device logs. In Spotify 9.1.94, the side-drawer handler casts the two-argument click callback result to a nullable instrumentation event. Returning Kotlin Unit opens the overlay, then crashes that cast. The module callback now returns null (no native event), matching the existing concrete callback path, while context-menu callbacks retain their Unit result. A regression test exercises the caller's typed cast and verifies that the module action runs once. Device confirmation is still required.
+
+## Revision 4: Next Up, native Bookmarks, and glass styling
+
+Preserve the confirmed revision 3 settings callback fix. Track menu discovery now handles directly captured ContextTrack objects as well as the older singleton-list representation. Resolve queue services when Play Next is pressed, with a weak reference to Spotify's live queue repository if the callback dependency graph is deeper than expected. Successful and rejected updates now give feedback. Existing manually queued tracks retain their order: Play Next inserts at the beginning of Next up, after the explicit queue, matching the existing feature description. Swipe to Play Next remains opt-in under General settings.
+
+The user selected native additions to preserve the working legacy runtime, rather than migrating to API 2. New drawer entries:
+
+- **Bookmarks**: save a song, album, or artist from its supported context menu; alternatively paste its Spotify link. Filter saved items, view counts, open them in Spotify, reorder, delete, and undo deletion. Data is saved in Spotify's private preferences and survives module replacement. A failed save preserves the previous list. Ambiguous or multi-item menus do not guess which item to bookmark. Artwork is read from menu track metadata when available.
+- **Liquid Glass**: optional static translucent gradients and edge highlights on exposed native headers/toolbars, mini-player/navigation, menu/drawer surfaces, and cards/settings rows. Choose categories and intensity; switch off to restore original backgrounds and padding. Compose-only surfaces retain Spotify's rendering. This is native styling, not the API-2 add-on's full-screen replacements or a pixel-identical port. No backdrop blur is applied to text/content.
+
+Reference projects reviewed and attributed: [LeNerd46/bookmarks](https://github.com/LeNerd46/bookmarks), source revision `d2bd903e9082cba77252e276003585539ffa3d2d`, and [LeNerd46/liquid-glass-spotify-plus](https://github.com/LeNerd46/liquid-glass-spotify-plus), source revision `fb6908dadd2b6a059c4a83517b4643e20596bb8b`. Their API-2 scripts are not executed by this legacy build; these Java features implement the selected compatible alternative. Their original code and debug token logging are not bundled.
+
+Regression coverage: bookmarks persistence, URI deduplication/filtering, normalization, reorder/remove/undo, failed writes, captured track shapes and cyclic graphs, ambiguous menu URIs, and glass target selection. APK packaging validation still checks every DEX and both Xposed entry points. Runtime queue operations, native surface availability and menus require on-device verification.

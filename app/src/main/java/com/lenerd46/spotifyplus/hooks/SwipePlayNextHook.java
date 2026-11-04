@@ -44,6 +44,13 @@ final class SwipePlayNextHook extends SpotifyHook {
             Field gestureField = gestureClass == interactionClass ? null : uniqueField(eventInteraction.getType(), gestureClass);
             Field interactionMetadata = uniqueField(interactionClass, Map.class);
             Class<?> repository = uniqueClass(ClassMatcher.create().usingStrings("GetQueue", "AddToQueue", "SetQueue"));
+            // Menu construction can precede service availability, and R8 can move
+            // the repository beyond the captured callback's dependency depth.
+            XposedBridge.hookAllConstructors(repository, new XC_MethodHook() {
+                @Override protected void afterHookedMethod(MethodHookParam param) {
+                    NextUpQueue.rememberRepository(param.thisObject);
+                }
+            });
             if (bridge.findClass(FindClass.create().matcher(ClassMatcher.create()
                     .usingStrings("com.spotify.ubi.model.InteractionId"))).isEmpty()) {
                 installLegacy(repository, eventClass, eventInteraction, interactionMetadata, installed);

@@ -325,7 +325,7 @@ public class BeautifulLyricsHook extends SpotifyHook {
                         Object state = param.getResult();
                         References.playerState = new WeakReference<>(state);
                         References.notifyPlayerStateChanged(state);
-                        handleTrackChange();
+                        if (!com.lenerd46.spotifyplus.api2.Api2Runtime.isEnabled()) handleTrackChange();
                     }
                 });
 

@@ -44,6 +44,8 @@ def main():
             for relative in ['app/libnode/include','app/src/main/cpp','app/src/main/assets/nodejs-src','scripts/marketplace','scripts/settings','spotifyplus-sdk/src/main/java','app/src/main/java']:
                 shutil.copytree(args.source/relative,source/relative,dirs_exist_ok=True)
         else: archive('LeNerd46','SpotifyPlus',UPSTREAM,source)
+    cpp=source/'app/src/main/cpp/spotifyengine.cpp'
+    replace(cpp, '#include "spotifyengine.h"', '#include <unistd.h>\n#include "spotifyengine.h"')
     runtime=args.runtime_apk or cache/'upstream.apk'
     if not runtime.exists(): download(RUNTIME_URL,runtime)
     with runtime.open('rb') as stream: digest=hashlib.file_digest(stream,'sha256').hexdigest()
@@ -76,6 +78,9 @@ def main():
     manager=generated/'com/lenerd/spotifyplus/module/scripting/ScriptManager.java'
     replace(manager,'                extractAndLoad(Utils.MODULE_APK_PATH, outDir, "libnative-lib.so");\n                extractAndLoad(Utils.MODULE_APK_PATH, outDir, "libnode.so");','                extractAndLoad(Utils.MODULE_APK_PATH, outDir, "libnode.so");\n                extractAndLoad(Utils.MODULE_APK_PATH, outDir, "libnative-lib.so");')
     replace(manager,'        Log.i("SpotifyPlus", "Message from node: " + json);','        // Bridge messages can contain session data; do not log their payloads.')
+    replace(manager,
+        '            ScriptViewHost.preloadNativeLibraries(activity.getApplicationContext());\n            SpotifyNativeBridge bridge = new SpotifyNativeBridge(activity.getClassLoader(), marketplaceScripts, optimizedDirectory, activity);\n            initializeNativeBridge(bridge, new String[]{"node", hostFile.getAbsolutePath(), hostConfig.toString()});',
+        '            try {\n                ScriptViewHost.preloadNativeLibraries(activity.getApplicationContext());\n                SpotifyNativeBridge bridge = new SpotifyNativeBridge(activity.getClassLoader(), marketplaceScripts, optimizedDirectory, activity);\n                if (!initializeNativeBridge(bridge, new String[]{"node", hostFile.getAbsolutePath(), hostConfig.toString()})) throw new IllegalStateException("Native extension bridge could not initialize");\n            } catch (Throwable error) { com.lenerd46.spotifyplus.api2.Api2Runtime.startFailed(error); }')
     services=generated/'com/lenerd/spotifyplus/module/scripting/SpotifyServices.java'
     replace(services,'if (value != null && type("p.v8f").isInstance(value) && (Boolean) call(value, "c")) {\n            throw new IllegalStateException(String.valueOf(call(call(value, "a"), "g")));\n        }','if (value != null && String.valueOf(value).startsWith("Failure")) throw new IllegalStateException(String.valueOf(value));')
     start=services.read_text().index('    private synchronized Object queue() throws Exception {')
@@ -105,7 +110,7 @@ def main():
     replace(source/'scripts/marketplace/src/fetch-metadata.ts',
         "JSON.parse(SpotifyPlus.Platform.Storage.Cache.read(`${user}-${repo}`) as string ?? 'null')",
         "JSON.parse(await SpotifyPlus.Platform.Storage.Cache.read(`${user}-${repo}`) as string ?? 'null')")
-    runtime_source=source/'app/src/main/assets/nodejs-src' 
+    runtime_source=source/'app/src/main/assets/nodejs-src'
     if not args.no_js_build:
         run(['npm','ci','--ignore-scripts'],runtime_source)
         run(['npm','run','build'],runtime_source)
@@ -120,6 +125,11 @@ def main():
     assets=ROOT/'app/api2-assets'
     if assets.exists():shutil.rmtree(assets)
     shutil.copytree(source/'app/src/main/assets/nodejs',assets/'nodejs')
+    for name in ['marketplace','settings']:
+        destination=assets/'nodejs/elevated'/name
+        destination.mkdir(parents=True,exist_ok=True)
+        shutil.copy2(source/'scripts'/name/'manifest.json',destination/'manifest.json')
+        shutil.copytree(source/'scripts'/name/'assets',destination/'assets',dirs_exist_ok=True)
     # Never ship the upstream development test scripts or example token logging.
     for relative in ['scripts','scriptss','elevated/lyrics','elevated/liquid-glass','elevated/ui-showcase']:
         shutil.rmtree(assets/'nodejs'/relative,ignore_errors=True)

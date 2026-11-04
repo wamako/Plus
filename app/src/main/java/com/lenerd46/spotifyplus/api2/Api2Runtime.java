@@ -23,6 +23,11 @@ public final class Api2Runtime {
     private static String token="";
     private Api2Runtime(){}
     public static boolean isEnabled(){return enabled;}
+    public static void startFailed(Throwable error){
+        started=false;enabled=false;
+        Log.e("SpotifyPlus:API2","Native extension host failed",error);
+        com.lenerd46.spotifyplus.features.FeatureSheets.toast("Extensions could not start. The native Spotify Plus features remain available.");
+    }
     public static void initialize(Context context,ClassLoader loader,DexKitBridge dex,String modulePath){
         if(Build.VERSION.SDK_INT<30||!java.util.Arrays.asList(Build.SUPPORTED_ABIS).contains("arm64-v8a"))return;
         try{
@@ -43,7 +48,7 @@ public final class Api2Runtime {
             seedLyrics(activity);
             Utils.token=References.accessToken;Utils.clientToken=References.clientToken;
             new ScriptManager(activity).start();started=true;main.post(Api2Runtime::refresh);
-        }catch(Throwable e){starting.set(false);Log.e("SpotifyPlus:API2","Extension runtime failed to start",e);}
+        }catch(Throwable e){starting.set(false);startFailed(e);}
     }
     private static void seedLyrics(Context context)throws IOException{
         SharedPreferences prefs=context.getSharedPreferences("SpotifyPlusAPI2",Context.MODE_PRIVATE);

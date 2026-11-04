@@ -10,6 +10,10 @@ def verify(path):
             assert data[:5]==b'\x7fELF\x02' and struct.unpack_from('<H',data,18)[0]==183, f'Invalid ARM64 runtime binary: {name}'
         for name in ['assets/nodejs/host.js','assets/nodejs/elevated/marketplace/index.js','assets/nodejs/elevated/settings/index.js']:
             assert len(apk.read(name))>100, f'Missing runtime entry: {name}'
+        for name in ['marketplace','settings']:
+            base='assets/nodejs/elevated/'+name+'/'
+            metadata=json.loads(apk.read(base+'manifest.json'))
+            assert metadata['api']==2 and len(apk.read(base+metadata['main']))>100
         prefix='assets/api2-extensions/beautiful-lyrics/'
         manifest=json.loads(apk.read(prefix+'manifest.json'))
         assert manifest['api']==2

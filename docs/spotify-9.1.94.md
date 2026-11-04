@@ -56,7 +56,7 @@ Version `0.7.4-compat.9.1.94.3` (code 20) fixes the settings-entry crash capture
 
 ## Revision 4: Next Up, native Bookmarks, and glass styling
 
-Preserve the confirmed revision 3 settings callback fix. Track menu discovery now handles directly captured ContextTrack objects as well as the older singleton-list representation. Resolve queue services when Play Next is pressed, with a weak reference to Spotify's live queue repository if the callback dependency graph is deeper than expected. Successful and rejected updates now give feedback. Existing manually queued tracks retain their order: Play Next inserts at the beginning of Next up, after the explicit queue, matching the existing feature description. Swipe to Play Next remains opt-in under General settings.
+Preserve the confirmed revision 3 settings callback fix. Track menu discovery now handles directly captured ContextTrack objects, the older singleton-list representation, and unambiguous URI-only captures using Spotify's own ContextTrack.create factory. Resolve queue services when Play Next is pressed, with a weak reference to Spotify's live queue repository if the callback dependency graph is deeper than expected. Successful and rejected updates now give feedback. Existing manually queued tracks retain their order: Play Next inserts at the beginning of Next up, after the explicit queue, matching the existing feature description. Swipe to Play Next remains opt-in under General settings.
 
 The user selected native additions to preserve the working legacy runtime, rather than migrating to API 2. New drawer entries:
 

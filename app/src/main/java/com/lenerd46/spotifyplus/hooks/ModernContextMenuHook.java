@@ -85,7 +85,14 @@ final class ModernContextMenuHook extends SpotifyHook {
         if (template == null) return;
         if (queueItem != null) template = queueItem;
         Class<?> contextTrack = XposedHelpers.findClass("com.spotify.player.model.ContextTrack", lpparm.classLoader);
-        Object track = com.lenerd46.spotifyplus.compat.CapturedValues.find(queueItem, contextTrack, 6);
+        Object capturedTrack = com.lenerd46.spotifyplus.compat.CapturedValues.find(queueItem, contextTrack, 6);
+        if (capturedTrack == null) {
+            String trackUri = com.lenerd46.spotifyplus.features.MenuEntityFinder.uniqueUri(queueItem);
+            if (trackUri != null && trackUri.startsWith("spotify:track:")) {
+                capturedTrack = XposedHelpers.callStaticMethod(contextTrack, "create", trackUri);
+            }
+        }
+        final Object track = capturedTrack;
         String uri = track == null ? null : (String) XposedHelpers.callMethod(track, "uri");
         Object header = param.args[0];
         List<Field> headerText = header == null ? Collections.emptyList()

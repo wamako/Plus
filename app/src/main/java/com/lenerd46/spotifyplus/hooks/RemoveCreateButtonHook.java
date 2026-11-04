@@ -67,7 +67,6 @@ public class RemoveCreateButtonHook extends SpotifyHook {
     private int idToUse = 8001;
     private int settingsTitleId;
     private SharedPreferences prefs;
-    private Object kotlinUnit;
     private final Context context;
     private final static ConcurrentHashMap<Pair<Integer, String>, List<SettingItem.SettingSection>> scriptSettings = new ConcurrentHashMap<>();
     private final static ConcurrentHashMap<Pair<Integer, String>, Runnable> scriptSideButtons = new ConcurrentHashMap<>();
@@ -1243,18 +1242,11 @@ public class RemoveCreateButtonHook extends SpotifyHook {
 
     private Object createClickCallback(Class<?> fieldType, Class<?> constructorType, Object originalClick, int resId, Runnable onClick) throws Exception {
         if (fieldType.isInterface() && constructorType.isInterface()) {
-            if (kotlinUnit == null) {
-                Class<?> unitType = bridge.findClass(FindClass.create().matcher(ClassMatcher.create()
-                        .usingStrings("kotlin.Unit").fieldCount(1)
-                        .addMethod(MethodMatcher.create().name("toString")))).single().getInstance(lpparm.classLoader);
-                Field singleton = Arrays.stream(unitType.getDeclaredFields())
-                        .filter(f -> Modifier.isStatic(f.getModifiers()) && f.getType() == unitType)
-                        .findFirst().orElseThrow();
-                singleton.setAccessible(true);
-                kotlinUnit = singleton.get(null);
-            }
+            // Spotify 9.1.94 casts this callback's result to a nullable
+            // instrumentation event. The overlay handles the action itself;
+            // null means no native event. kotlin.Unit crashes that cast.
             return com.lenerd46.spotifyplus.compat.SpotifyCallback.create(
-                    lpparm.classLoader, constructorType, kotlinUnit, () -> runSideDrawerClick(resId, onClick));
+                    lpparm.classLoader, constructorType, null, () -> runSideDrawerClick(resId, onClick));
         }
         List<Field> clickFields = getInstanceFields(originalClick.getClass());
         Object clonedClick = instantiateCallbackLike(originalClick, readFieldValues(originalClick, clickFields));

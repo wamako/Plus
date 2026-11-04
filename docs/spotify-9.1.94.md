@@ -1,6 +1,6 @@
 # Spotify 9.1.94.1929 compatibility preview
 
-Module version: `0.7.4-compat.9.1.94.2` (version code 19).
+Module version: `0.7.4-compat.9.1.94.3` (version code 20).
 
 The first preview APK is withdrawn. The supplied framework log shows Android rejecting its `classes17.dex` before either Xposed entry point loads: the file is 5,767,168 bytes while its header requires 6,984,980. Inspection of the distributed APK confirms that truncated entry; it is a partial duplicate of `classes15.dex`. APK signing verification did not detect this DEX-level problem. Revision 2 is a clean CI rebuild, with DEX integrity and entry-point checks required before artifact upload. This addresses the observed loading blocker; device feature testing is still required.
 
@@ -49,3 +49,7 @@ Validation on November 4, 2026: debug assembly and all three unit tests passed. 
 5. Check lyric syncing/crossfade restoration, the heart button, Play Next, sleep timer, themes, and animated artwork on the device.
 
 If a feature fails, export an LSPosed/LSPatch log after reproducing it and include the Android version and feature preference. Device runtime testing and the long-duration private-session expiry check remain outstanding for this preview.
+
+## Preview revision 3: settings click result
+
+Version `0.7.4-compat.9.1.94.3` (code 20) fixes the settings-entry crash captured in the revision 2 device logs. In Spotify 9.1.94, the side-drawer handler casts the two-argument click callback result to a nullable instrumentation event. Returning Kotlin Unit opens the overlay, then crashes that cast. The module callback now returns null (no native event), matching the existing concrete callback path, while context-menu callbacks retain their Unit result. A regression test exercises the caller's typed cast and verifies that the module action runs once. Device confirmation is still required.

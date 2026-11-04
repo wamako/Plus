@@ -8,6 +8,19 @@ public class SpotifyCallbackTest {
     public interface Function1 { Object invoke(Object argument); }
     public interface Function2 { Object invoke(Object first, Object second); }
 
+    private static final class InstrumentationEvent {}
+
+    @Test public void drawerCallbackReturnsNullableInstrumentationEventRatherThanUnit() {
+        AtomicInteger calls = new AtomicInteger();
+        Function2 callback = (Function2) SpotifyCallback.create(
+                getClass().getClassLoader(), Function2.class, null, calls::incrementAndGet);
+        // Match the cast in Spotify's caller after invoking the drawer callback.
+        // Returning Unit (the previous behavior) throws ClassCastException here.
+        InstrumentationEvent result = (InstrumentationEvent) callback.invoke(new Object(), "spotify:null");
+        assertNull(result);
+        assertEquals(1, calls.get());
+    }
+
     @Test public void drawerCallbackSupportsTwoSpotifyArguments() {
         AtomicInteger calls = new AtomicInteger();
         Object unit = new Object();

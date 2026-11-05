@@ -1,0 +1,22 @@
+{
+  "name": "spotifyplus-local-suite",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "build": "node tools/build.mjs",
+    "test": "node --test tests/core.test.mjs",
+    "typecheck": "tsc --noEmit",
+    "check": "npm run test && npm run typecheck && npm run build && npm run preflight",
+    "preflight": "node --test tests/host-preflight.test.mjs"
+  },
+  "dependencies": {
+    "abort-controller": "3.0.0"
+  },
+  "devDependencies": {
+    "@types/react": "19.2.14",
+    "esbuild": "0.28.2",
+    "typescript": "5.9.3",
+    "@types/node": "22.19.17"
+  }
+}

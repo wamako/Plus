@@ -3,16 +3,28 @@
 Four removable **initial Android adaptations** of the requested Spicetify projects.
 Designed against the API-2 runtime shipped in Spotify Plus R10 for Spotify
 9.1.94.1929 / arm64. These are not the original desktop extensions and do not
-implement every feature of those projects. The working R10 APK is unchanged.
+implement every feature of those projects. Use the R11 module for persistent extension storage.
 No extension is published to a marketplace.
+
+## Required host: R11
+
+R10 omitted the API-2 native storage handler. That host could discover and run
+extensions but could not persist their keys, usernames, caches or write journals.
+R11 restores the handler. Keep these **0.1.6 JavaScript bundles** and use R11 as
+the module when repatching Spotify 9.1.94.1929 in LSPatch. Save settings again
+after R11 is active; settings that were never written cannot be recovered.
+
+This package revision changes documentation only. All four scripts and manifests
+are byte-for-byte unchanged from the original 0.1.6 ZIP.
 
 ## Update from earlier versions
 
 Replace the four old extension folders with the four folders in this ZIP, in the
 same selected parent directory. Do not leave a second copy with the same extension
 IDs elsewhere under that parent. Press **Refresh** in the Developer page. If the
-old version is still shown, force-stop and reopen Spotify. Keep the working R10
-APK; no module repatching or app data clearing is required. Local listening
+old version is still shown, force-stop and reopen Spotify. When updating from R10, activate the R11 module in LSPatch and repatch Spotify
+first. A JavaScript folder refresh cannot add its missing native storage handler.
+Keep your app data. Local listening
 history, saved keys, and genre presets keep their existing settings keys.
 
 Version **0.1.6** fixes settings saves that could capture the previous text when
@@ -124,7 +136,8 @@ The 0.1.1 native album reader, artist-ID recovery and genre fixes remain include
 
 ## Install on your non-root LSPatch setup
 
-1. Keep your working Spotify Plus R10 module. Do not install these files as APKs.
+1. Use Spotify Plus **R11** for persistent storage. If updating from R10, repatch
+   Spotify with the R11 module in LSPatch first. These extension files are not APKs.
 2. Extract `SpotifyPlus-Local-Extensions-0.1.6.zip` into a normal, accessible
    directory, e.g. `Documents/SpotifyPlusLocal/` on the phone.
 3. The extracted `SpotifyPlus-Local-Extensions` directory must contain four child

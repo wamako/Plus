@@ -38,6 +38,9 @@ public final class Api2Runtime {
             stage="hook initialization";
             Utils.MODULE_APK_PATH=modulePath;Utils.bridge=dex;Utils.spotifyVersion=context.getPackageManager().getPackageInfo("com.spotify.music",0).versionName;
             Utils.platformData=new PlatformData(Utils.spotifyVersion,"android",Build.VERSION.RELEASE,Build.VERSION.SDK_INT);
+            // All extension preferences, write journals and file storage route
+            // through this handler. Register it before the Node host can start.
+            new StorageHook().init(loader,dex);
             new ServicesHook().init(loader,dex);new PlayerHook().init(loader,dex);
             new SideDrawerHook().init(loader,dex);new ContextMenuHook().init(loader,dex);
             new ReactManager().init(loader,dex);new LocalExtensionHook().init(loader,dex);new NowPlayingUITarget().init(loader,dex);

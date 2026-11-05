@@ -90,7 +90,11 @@ Validated in the build workspace on 2026-11-05.
   background survival and private Java bridge behavior need device acceptance.
 
 Runtime SDK pin: `LeNerd46/SpotifyPlus@615455bf0a7a81cd2d01382a1f1e9e0a699fb082`.
-Target module: R10 / Spotify 9.1.94.1929 / API 2, Android arm64.
-The R10 APK, its native hooks and existing extension bundles were not modified.
+Target module: R11 / Spotify 9.1.94.1929 / API 2, Android arm64.
+The extension scripts remain unchanged from 0.1.6. The R11 APK separately adds
+native storage registration. The earlier host mocks supplied working storage and
+did not detect R10's omitted Android handler. R11 adds a production-handler JVM
+regression and a packaged DEX class requirement; physical phone verification is
+still needed.
 
 Reproduce with `npm run check` after the pinned SDK setup in README.md.

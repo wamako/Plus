@@ -3,6 +3,11 @@
 import io,json,struct,sys,zipfile
 from verify_module_apk import validate_dex
 
+def validate_storage_classes(classes):
+    assert "Lcom/lenerd/spotifyplus/module/hooks/StorageHook;" in classes, "Missing API-2 storage handler"
+    assert "Lcom/lenerd46/spotifyplus/api2/Api2Runtime;" in classes, "Missing API-2 bootstrap"
+
+
 def needed_libraries(data):
     """Read ELF64 DT_NEEDED through program headers, including stripped binaries."""
     assert data[:6] == b'\x7fELF\x02\x01', 'Expected little-endian ELF64'
@@ -26,6 +31,11 @@ def validate_load_order(binaries, order):
 
 def verify(path):
     with zipfile.ZipFile(path) as apk:
+        host_classes=set()
+        for entry in apk.namelist():
+            if entry.endswith('.dex') and '/' not in entry:
+                host_classes.update(validate_dex(entry,apk.read(entry)))
+        validate_storage_classes(host_classes)
         order=json.loads(apk.read('assets/api2-native-load-order.json'))
         assert set(order)=={'libc++_shared.so','libnode.so','libnative-lib.so'}, 'Incomplete native bootstrap'
         binaries={name:apk.read('lib/arm64-v8a/'+name) for name in order}
@@ -51,6 +61,6 @@ def verify(path):
                     found=validate_dex(name,native.read(name));assert not classes.intersection(found),'Duplicate extension classes';classes.update(found);count+=1
             assert count>0
             assert 'L'+manifest['native']['pluginClass'].replace('.','/')+';' in classes,'Missing native plugin entry point'
-        print(f'PASS: ARM64 API-2 runtime, marketplace, settings, Beautiful Lyrics ({count} DEX files)')
+        print(f'PASS: ARM64 API-2 storage handler, runtime, marketplace, settings, Beautiful Lyrics ({count} DEX files)')
 
 if __name__=='__main__':verify(sys.argv[1])

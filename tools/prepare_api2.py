@@ -61,7 +61,7 @@ def main():
     for relative in ['com/lenerd/spotifyplus/module/scripting','com/lenerd/spotifyplus/sdk']:
         origin=java/relative if 'module/' in relative else source/'spotifyplus-sdk/src/main/java'/relative
         shutil.copytree(origin,generated/relative,dirs_exist_ok=True)
-    selected=['module/Utils.java','module/hooks/ReactManager.java','module/hooks/LocalExtensionHook.java','module/hooks/NowPlayingUITarget.java',
+    selected=['module/Utils.java','module/hooks/ReactManager.java','module/hooks/StorageHook.java','module/hooks/LocalExtensionHook.java','module/hooks/NowPlayingUITarget.java',
               'manager/bridge/BridgeMessageBus.java','manager/bridge/BridgeMessageListener.java']
     for relative in selected:
         dest=generated/'com/lenerd/spotifyplus'/relative;dest.parent.mkdir(parents=True,exist_ok=True);shutil.copy2(java/'com/lenerd/spotifyplus'/relative,dest)

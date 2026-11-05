@@ -1,3 +1,4 @@
+import nodeUtil from "node:util";
 import { collectionResponse } from "./fixtures/collection.mjs";
 import { LIKED_URI } from "../shared/liked-songs.mjs";
 import test from "node:test";
@@ -49,17 +50,17 @@ function nodes(tree) {
 }
 const settle = () => new Promise((resolve) => setTimeout(resolve, 5));
 async function until(predicate, label) {
-  for (let n = 0; n < 50; n++) {
+  for (const deadline = Date.now() + 5000; Date.now() < deadline; ) {
     if (predicate()) return;
     await settle();
   }
   assert.fail(`Did not render ${label}`);
 }
 
-for (const mode of ["web", "native", "likes"]) {
+for (const mode of ["web", "native", "likes", "no-icu", "no-codecs"]) {
   const nativeReads = mode !== "web",
-    likedReads = mode === "likes";
-  test(`actual R10 loader: ${likedReads ? "dedicated Liked Songs via paged collection" : nativeReads ? "native album/genre reads with public GET 404" : "public read fallback"}, four sandboxes and independent cleanup`, async () => {
+    likedReads = ["likes", "no-icu", "no-codecs"].includes(mode);
+  test(`actual R10 loader: ${mode === "no-icu" ? "Node 18 no-ICU decoder" : mode === "no-codecs" ? "missing optional text codecs" : likedReads ? "dedicated Liked Songs via paged collection" : nativeReads ? "native album/genre reads with public GET 404" : "public read fallback"}, four sandboxes and independent cleanup`, async () => {
     const errors = [],
       values = new Map(),
       http = [],
@@ -188,6 +189,35 @@ for (const mode of ["web", "native", "likes"]) {
       toast() {},
       navigateBack() {},
     };
+    const codecDescriptors = new Map(
+      ["TextEncoder", "TextDecoder"].map((name) => [
+        name,
+        Object.getOwnPropertyDescriptor(nodeUtil, name),
+      ]),
+    );
+    const NativeDecoder = nodeUtil.TextDecoder;
+    if (mode === "no-icu")
+      Object.defineProperty(nodeUtil, "TextDecoder", {
+        configurable: true,
+        value: class AndroidNoIcuDecoder extends NativeDecoder {
+          constructor(encoding, options) {
+            if (options?.fatal) {
+              const error = new TypeError(
+                'The "fatal" option is not supported in Node.js builds without ICU',
+              );
+              error.code = "ERR_NO_ICU";
+              throw error;
+            }
+            super(encoding, options);
+          }
+        },
+      });
+    if (mode === "no-codecs")
+      for (const name of codecDescriptors.keys())
+        Object.defineProperty(nodeUtil, name, {
+          configurable: true,
+          value: undefined,
+        });
     const originalFetch = globalThis.fetch;
     let likedPages = 0;
     globalThis.fetch = async (input, options = {}) => {
@@ -397,8 +427,10 @@ for (const mode of ["web", "native", "likes"]) {
         "genre classification",
       );
       press("hip hop · 3 (100%)");
-      await settle();
-      assert.match(text(tree), /3 tracks in preview/);
+      await until(
+        () => text(tree).includes("3 tracks in preview"),
+        "selected genre preview",
+      );
       assert.equal(
         http.filter(
           (c) =>
@@ -458,6 +490,8 @@ for (const mode of ["web", "native", "likes"]) {
         runtime.unregisterScript(script.manifest.id);
       clearCommitListener("sideDrawer");
       globalThis.fetch = originalFetch;
+      for (const [name, descriptor] of codecDescriptors)
+        Object.defineProperty(nodeUtil, name, descriptor);
     }
     assert.equal(registry.getScripts().length, 0);
     assert.equal(registry.getSideDrawerItems().size, 0);

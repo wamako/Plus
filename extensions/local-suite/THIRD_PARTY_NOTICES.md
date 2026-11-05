@@ -73,3 +73,10 @@ Context URI/page semantics were checked against
 and its Context/ContextPage protocol descriptors. The extension implements its
 own bounded read-only wire encoder/parser; no upstream library code is bundled,
 and no collection write, remove or delta mutation operation is implemented.
+
+## Startup compatibility reference (0.1.3)
+
+Node 18's [non-ICU TextDecoder implementation](https://github.com/nodejs/node/blob/v18.20.4/lib/internal/encoding.js)
+rejects the `fatal` constructor option. The bundle now uses the Buffer global
+provided by the host and its own UTF-8 round-trip validation; no Node source is
+copied into the bundle.

@@ -1,7 +1,7 @@
 // Read-only collection-v2 protocol fields, grounded in collection2v2.proto.
 export const LIKED_URI = "spotify:collection:tracks";
-const encoder = new TextEncoder(),
-  decoder = new TextDecoder("utf-8", { fatal: true });
+// The R10 host provides Node's Buffer. Avoid eager optional text-codec
+// constructors: Node 18 builds without ICU reject TextDecoder's fatal option.
 export function validUsername(value) {
   return (
     typeof value === "string" &&
@@ -44,7 +44,7 @@ function varint(value) {
   return bytes;
 }
 function stringField(number, text) {
-  const bytes = encoder.encode(text);
+  const bytes = Buffer.from(text, "utf8");
   return [...varint(number * 8 + 2), ...varint(bytes.length), ...bytes];
 }
 export function encodeCollectionPage(username, token = "", limit = 100) {
@@ -108,7 +108,13 @@ function fields(input) {
 const text = (field) => {
   if (!(field.value instanceof Uint8Array))
     throw new Error("Invalid collection text.");
-  return decoder.decode(field.value);
+  const bytes = Buffer.from(field.value);
+  const decoded = bytes.toString("utf8");
+  // Buffer replaces malformed sequences. Round-tripping rejects those bytes,
+  // while preserving a valid literal U+FFFD and all valid Unicode strings.
+  if (!Buffer.from(decoded, "utf8").equals(bytes))
+    throw new Error("Invalid collection UTF-8.");
+  return decoded;
 };
 export function decodeCollectionPage(bytes) {
   const out = { items: [], next: "", sync: "" };

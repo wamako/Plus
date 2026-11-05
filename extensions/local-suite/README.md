@@ -1,4 +1,4 @@
-# Spotify Plus local Android extensions · 0.1.2
+# Spotify Plus local Android extensions · 0.1.3
 
 Four removable **initial Android adaptations** of the requested Spicetify projects.
 Designed against the API-2 runtime shipped in Spotify Plus R10 for Spotify
@@ -6,7 +6,7 @@ Designed against the API-2 runtime shipped in Spotify Plus R10 for Spotify
 implement every feature of those projects. The working R10 APK is unchanged.
 No extension is published to a marketplace.
 
-## Update from 0.1.0 or 0.1.1
+## Update from earlier versions
 
 Replace the four old extension folders with the four folders in this ZIP, in the
 same selected parent directory. Do not leave a second copy with the same extension
@@ -14,6 +14,20 @@ IDs elsewhere under that parent. Press **Refresh** in the Developer page. If the
 old version is still shown, force-stop and reopen Spotify. Keep the working R10
 APK; no module repatching or app data clearing is required. Local listening
 history, saved keys, and genre presets keep their existing settings keys.
+
+Version 0.1.3 fixes a shared startup dependency introduced in 0.1.2. That version
+constructed a `TextDecoder` with its strict `fatal` option as soon as each bundle
+loaded. Node 18 builds without ICU reject that option, which can prevent every
+page from registering even while the Developer screen lists all four manifests.
+The new build uses the host-provided Node `Buffer` for UTF-8 encoding/decoding and
+validates malformed bytes by round-trip comparison. No optional text-codec
+constructor runs during startup.
+
+Overwrite the four extension folders in your existing selected parent directory,
+press **Refresh**, then force-stop and reopen Spotify. The Developer screen should
+show version **0.1.3**. Keep the R10 APK and app data. A listed manifest confirms
+folder discovery; successful runtime startup is what makes its page appear in
+the Extensions launcher.
 
 Version 0.1.2 adds a dedicated **Load Liked Songs** button to Sort Play and
 Playlist Plus. Use that button for your saved songs, including when the playing
@@ -45,7 +59,7 @@ The 0.1.1 native album reader, artist-ID recovery and genre fixes remain include
 ## Install on your non-root LSPatch setup
 
 1. Keep your working Spotify Plus R10 module. Do not install these files as APKs.
-2. Extract `SpotifyPlus-Local-Extensions-0.1.2.zip` into a normal, accessible
+2. Extract `SpotifyPlus-Local-Extensions-0.1.3.zip` into a normal, accessible
    directory, e.g. `Documents/SpotifyPlusLocal/` on the phone.
 3. The extracted `SpotifyPlus-Local-Extensions` directory must contain four child
    folders: `listening-stats`, `sort-play`, `genres`, and `playlist-plus`. Each child

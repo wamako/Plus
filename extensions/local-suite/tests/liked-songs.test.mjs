@@ -373,3 +373,25 @@ test("unavailable catalog metadata retains the saved URI and date without blocki
     [],
   );
 });
+
+test("collection UTF-8 round-trips non-ASCII and supplementary characters without optional text codecs", () => {
+  const token = "café · 音楽 · 🎵 · \uFFFD";
+  const result = decodeCollectionPage(
+    collectionResponse([{ uri: uri(1) }], token, "snapshot"),
+  );
+  assert.equal(result.next, token);
+  const request = encodeCollectionPage("música", token);
+  assert.ok(Buffer.from(request).includes(Buffer.from(token, "utf8")));
+});
+test("strict Buffer decoding rejects overlong, surrogate and truncated UTF-8 sequences", () => {
+  const invalid = [
+    [0xc0, 0x80],
+    [0xed, 0xa0, 0x80],
+    [0xf0, 0x9f, 0x8e],
+    [0xf4, 0x90, 0x80, 0x80],
+  ];
+  for (const bytes of invalid) {
+    const message = Buffer.from([0x12, bytes.length, ...bytes, 0x1a, 1, 0x73]);
+    assert.throws(() => decodeCollectionPage(message), /UTF-8/);
+  }
+});

@@ -1,8 +1,8 @@
-# Validation record · 0.1.2
+# Validation record · 0.1.3
 
 Validated in the build workspace on 2026-11-05.
 
-- **65 core/regression tests passed**: link validation, both playlist schemas, stable sorting,
+- **67 core/regression tests passed**: link validation, both playlist schemas, stable sorting,
   unknown values, deduplication, genre matching, shuffle, CSV escaping, listening
   qualification, pauses/seeks/buffering, retention, cancellation, cache bounds,
   network allowlist and token separation, timeout/rate-limit behavior, pagination,
@@ -19,7 +19,7 @@ Validated in the build workspace on 2026-11-05.
   error classification, plus retained saved URIs when catalog metadata is unavailable.
 - **TypeScript check passed** against the exact pinned R10 SDK declarations.
 - **Four API-2 bundles built** using the SDK's official transformed extension builder.
-- **Three actual host-loader/React-renderer integration tests passed**: all four bundles
+- **Five actual host-loader/React-renderer integration tests passed**: all four bundles
   loaded as unprivileged user extensions with unique registrations; no HTTP on
   install; local tracking opt-in; collection preview; stale confirmation
   invalidation; confirmed new private copy and ordered queue append through mocked
@@ -31,6 +31,15 @@ Validated in the build workspace on 2026-11-05.
   Web API GET. Spotify writes remain mocked, permission-dependent Web API calls. A third scenario clicks **Load Liked Songs** in both Sort Play
   and Playlist Plus, supplies two binary saved-collection pages for each, and
   verifies the full liked preview and genre filtering without playlist/Web GETs.
+- **Startup regression reproduced before the fix**: the 0.1.2 bundle failed in the
+  actual pinned loader when the injected decoder rejected the `fatal` option
+  with `ERR_NO_ICU`, before its page could register. The corrected build registers
+  and renders all four extensions under both that restriction and a profile with
+  the optional encoder/decoder exports absent; both also run the Liked Songs flow.
+  These profiles emulate runtime capabilities, not a physical Android binary.
+- UTF-8 regression cases cover non-ASCII text, supplementary characters, literal
+  U+FFFD and rejected overlong/surrogate/truncated encodings. Strict validation is
+  preserved without an ICU-dependent codec.
 - Android-native service operations and HTTP responses are mocked in the host
   integration test. No test was run on a physical phone, live Spotify account,
   Android emulator or live LSPatch session. Native layout, live authorization,

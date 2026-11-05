@@ -16,7 +16,7 @@ for folder in folders:
     ids.add(manifest['id'])
     assert (parent / folder / 'index.js').stat().st_size < 300_000
 (root / 'artifacts').mkdir(exist_ok=True)
-output = root / 'artifacts' / 'SpotifyPlus-Local-Extensions-0.1.2.zip'
+output = root / 'artifacts' / 'SpotifyPlus-Local-Extensions-0.1.3.zip'
 paths = sorted(p for p in parent.rglob('*') if p.is_file() and p.name != 'SHA256SUMS.txt')
 sums = '\n'.join(f'{hashlib.sha256(p.read_bytes()).hexdigest()}  {p.relative_to(parent).as_posix()}' for p in paths) + '\n'
 (parent / 'SHA256SUMS.txt').write_text(sums)

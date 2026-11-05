@@ -252,6 +252,7 @@ public class BeautifulLyricsHook extends SpotifyHook {
         XposedHelpers.findAndHookMethod(LYRICS_ACTIVITY, lpparm.classLoader, "onCreate", Bundle.class, new XC_MethodHook() {
             @Override
             protected void afterHookedMethod(MethodHookParam param) {
+                if (com.lenerd46.spotifyplus.api2.Api2Runtime.isEnabled()) return;
                 Activity lyricsActivity = (Activity) param.thisObject;
                 Activity host = lastHostActivity.get();
                 lyricsActivity.overridePendingTransition(0, 0);
@@ -324,7 +325,7 @@ public class BeautifulLyricsHook extends SpotifyHook {
                         Object state = param.getResult();
                         References.playerState = new WeakReference<>(state);
                         References.notifyPlayerStateChanged(state);
-                        handleTrackChange();
+                        if (!com.lenerd46.spotifyplus.api2.Api2Runtime.isEnabled()) handleTrackChange();
                     }
                 });
 
@@ -361,7 +362,7 @@ public class BeautifulLyricsHook extends SpotifyHook {
             if (okHttp.size() != 1) throw new IllegalStateException("Ambiguous HTTP request builder: " + okHttp);
             var requests = bridge.findMethod(FindMethod.create().searchInClass(okHttp)
                     .matcher(MethodMatcher.create().returnType(void.class)
-                            .modifiers(Modifier.PUBLIC | Modifier.FINAL).paramTypes(String.class, String.class)));
+                            .paramTypes(String.class, String.class)));
             if (requests.isEmpty()) throw new IllegalStateException("No OkHttp header writers found");
             for (var request : requests) XposedBridge.hookMethod(request.getMethodInstance(lpparm.classLoader), new XC_MethodHook() {
                 @Override
@@ -3036,7 +3037,7 @@ public class BeautifulLyricsHook extends SpotifyHook {
         HttpURLConnection connection = null;
         java.io.File download = null;
         try {
-            connection = (HttpURLConnection) new URL("https://i.scdn.co/image/" + id).openConnection();
+            connection = (HttpURLConnection) new URL(com.lenerd46.spotifyplus.ArtworkSource.url(id)).openConnection();
             connection.setConnectTimeout(10000);
             connection.setReadTimeout(10000);
             download = java.io.File.createTempFile("lyrics-cover-", ".img", context.getCacheDir());

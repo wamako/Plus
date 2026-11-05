@@ -217,6 +217,11 @@ public final class AnimatedThemeBackground {
         }
         if (navigation != null) tintNavigation(navigation);
 
+        View home=find("app_bar");
+        if(home!=null&&com.lenerd46.spotifyplus.features.HeaderLayers.isHomeHeader(home)){
+            if(!headers.containsKey(home))headers.put(home,new HeaderBackground(this,home));
+            com.lenerd46.spotifyplus.features.HeaderLayers.apply(home,true);
+        }
         boolean albumOrPlaylist = find("cwp_header_artwork_background") != null
                 || find("artwork_background") != null || find("header_layout") != null;
         if (albumOrPlaylist) {
@@ -282,7 +287,7 @@ public final class AnimatedThemeBackground {
             if (list != null) desired.put(list, FrostedSurfaceDrawable.Surface.LIST);
         } else if (row && !inRow) {
             surface = FrostedSurfaceDrawable.Surface.TRACK;
-        } else if (name.equals("filter_chips_container")) {
+        } else if (name.equals("filter_chips_container") && find("app_bar")==null) {
 
             surface = FrostedSurfaceDrawable.Surface.STRIP;
         } else if (name.equals("button_play_and_pause")
@@ -408,6 +413,7 @@ public final class AnimatedThemeBackground {
         restorePlayer();
         restoreNavigation();
         for (Map.Entry<View, HeaderBackground> entry : headers.entrySet()) restoreHeader(entry.getKey(), entry.getValue());
+        for(View header:headers.keySet())com.lenerd46.spotifyplus.features.HeaderLayers.apply(header,false);
         headers.clear();
         for (Map.Entry<View, SurfaceBackground> entry : surfaces.entrySet()) entry.getValue().restore(entry.getKey());
         surfaces.clear();

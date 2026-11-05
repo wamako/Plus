@@ -84,6 +84,13 @@ public class RemoveCreateButtonHook extends SpotifyHook {
             }
 
             new SwipePlayNextHook(prefs).init(lpparm, bridge);
+            if (android.os.Build.VERSION.SDK_INT >= 30) {
+                registerSideButton("Marketplace", -405, () -> com.lenerd.spotifyplus.module.hooks.SideDrawerHook.openRegistered("com.lenerd.marketplace"));
+                registerSideButton("Extension settings", -406, () -> com.lenerd.spotifyplus.module.hooks.SideDrawerHook.openRegistered("com.lenerd.settings"));
+                registerSideButton("Extensions", -407, com.lenerd.spotifyplus.module.hooks.SideDrawerHook::showExtensions);
+            }
+            registerSideButton("Bookmarks", -401, com.lenerd46.spotifyplus.features.BookmarksFeature::show);
+            registerSideButton("Liquid Glass", -402, com.lenerd46.spotifyplus.features.GlassStyle::show);
 
             // var clazz =
             // bridge.findClass(FindClass.create().matcher(ClassMatcher.create().usingStrings("tracks_section",
@@ -153,13 +160,14 @@ public class RemoveCreateButtonHook extends SpotifyHook {
                 }
             });
 
+            // 9.1.94 uses a byte discriminator and a boolean coroutine label.
+            // Match the array-consuming coroutine rather than R8's field layout;
+            // the live Settings destination below limits which arrays we modify.
             var modifyDataListClass = bridge.findClass(FindClass.create().matcher(ClassMatcher.create()
-                    .modifiers(Modifier.PUBLIC | Modifier.FINAL).interfaceCount(1).methodCount(3)
-                    .fields(FieldsMatcher.create()
-                            .count(4)
-                            .add(FieldMatcher.create().modifiers(Modifier.PUBLIC | Modifier.FINAL).type(int.class))
-                            .add(FieldMatcher.create().modifiers(Modifier.PUBLIC).type(int.class))
-                            .add(FieldMatcher.create().modifiers(Modifier.PUBLIC).type(Object[].class)))));
+                    .interfaceCount(1).methodCount(3)
+                    .fields(FieldsMatcher.create().count(4).add(FieldMatcher.create().type(Object[].class)))
+                    .addMethod(MethodMatcher.create().name("invokeSuspend")
+                            .returnType(Object.class).paramTypes(Object.class))));
 
             // var things =
             // bridge.findClass(FindClass.create().matcher(ClassMatcher.create().modifiers(Modifier.PUBLIC
@@ -181,39 +189,83 @@ public class RemoveCreateButtonHook extends SpotifyHook {
             // x.getDeclaredClassName()));
 
             var methodsThing = bridge.findMethod(FindMethod.create().searchInClass(modifyDataListClass)
-                    .matcher(MethodMatcher.create().returnType(Object.class).modifiers(Modifier.PUBLIC | Modifier.FINAL)
-                            .paramCount(1).paramTypes(Object.class)));
+                    .matcher(MethodMatcher.create().name("invokeSuspend").returnType(Object.class)
+                            .paramTypes(Object.class)));
             List<Method> invokeSuspendMethods = new ArrayList<>();
             for (var methodData : methodsThing) {
                 Method method = methodData.getMethodInstance(lpparm.classLoader);
                 if (!invokeSuspendMethods.contains(method)) invokeSuspendMethods.add(method);
             }
-            XposedBridge.log("[SpotifyPlus] Side-drawer array mutation candidates: " + invokeSuspendMethods.stream().map(method -> method.getDeclaringClass().getName() + "#" + method.getName()).collect(java.util.stream.Collectors.joining(", ")));
+            Set<Method> listBuilders = new HashSet<>();
+            int nativeSettingsTitle = context.getResources().getIdentifier(
+                    "sidedrawer_link_settings", "string", context.getPackageName());
+            if (nativeSettingsTitle != 0) {
+                // Follow the Settings factory to its content type, then to the row
+                // constructor. 9.1.94 returns a List of those rows from a coroutine.
+                Set<Class<?>> contentTypes = new HashSet<>();
+                for (var factory : bridge.findMethod(FindMethod.create().matcher(
+                        MethodMatcher.create().usingNumbers(nativeSettingsTitle)))) {
+                    for (var call : factory.getInvokes()) {
+                        var types = call.getParamTypeNames();
+                        if (call.isConstructor() && types.size() == 7
+                                && types.get(1).equals(Integer.class.getName())
+                                && types.get(2).equals(String.class.getName())
+                                && types.get(6).equals("int")) {
+                            contentTypes.add(call.getConstructorInstance(lpparm.classLoader).getDeclaringClass());
+                        }
+                    }
+                }
+                for (Class<?> content : contentTypes) {
+                    for (var row : bridge.findMethod(FindMethod.create().matcher(MethodMatcher.create()
+                            .name("<init>").paramTypes("int", content.getName(), null)))) {
+                        Class<?> rowType = row.getConstructorInstance(lpparm.classLoader).getDeclaringClass();
+                        for (var builder : bridge.findMethod(FindMethod.create().matcher(MethodMatcher.create()
+                                .name("invokeSuspend").paramTypes(Object.class).returnType(Object.class)
+                                .addInvoke(MethodMatcher.create().name("<init>").declaredClass(rowType))))) {
+                            listBuilders.add(builder.getMethodInstance(lpparm.classLoader));
+                        }
+                    }
+                }
+            }
+            for (Method builder : listBuilders) if (!invokeSuspendMethods.contains(builder)) invokeSuspendMethods.add(builder);
+            XposedBridge.log("[SpotifyPlus] Side-drawer mutation candidates: " + invokeSuspendMethods.stream().map(method -> method.getDeclaringClass().getName() + "#" + method.getName()).collect(java.util.stream.Collectors.joining(", ")));
 
             // Identify the destination in the live array before cloning. The wrapper,
             // navigation props and instrumentation have changed independently of it.
             if (invokeSuspendMethods.isEmpty()) {
-                XposedBridge.log("[SpotifyPlus] No side-drawer array callback matched");
+                XposedBridge.log("[SpotifyPlus] No side-drawer callback matched");
                 return;
             }
 
-            for (Method invokeSuspend : invokeSuspendMethods) XposedBridge.hookMethod(invokeSuspend, new XC_MethodHook() {
+            XC_MethodHook drawerMutation = new XC_MethodHook() {
                 @Override
                 protected void beforeHookedMethod(MethodHookParam param) throws Throwable {
+                    if (listBuilders.contains(param.method)) return;
                     // Field a =
                     // bridge.findField(FindField.create().searchInClass(modifyDataListClass).matcher(FieldMatcher.create().modifiers(Modifier.PUBLIC
                     // |
                     // Modifier.FINAL).type(int.class))).get(0).getFieldInstance(lpparm.classLoader);
-                    Field d = bridge
-                            .findField(FindField.create()
-                                    .searchInClass(Collections.singletonList(bridge.getClassData(param.thisObject.getClass())))
-                                    .matcher(FieldMatcher.create().modifiers(Modifier.PUBLIC).type(Object[].class)))
-                            .get(0).getFieldInstance(lpparm.classLoader);
+                    List<Field> arrayFields = Arrays.stream(param.thisObject.getClass().getDeclaredFields())
+                            .filter(field -> !Modifier.isStatic(field.getModifiers()) && field.getType() == Object[].class)
+                            .collect(java.util.stream.Collectors.toList());
+                    if (arrayFields.size() != 1) return;
+                    Field d = arrayFields.get(0);
+                    d.setAccessible(true);
 
                     // int number = a.getInt(param.thisObject);
                     // if(number != 20) return;
 
                     Object[] originalItemsWithNull = (Object[]) d.get(param.thisObject);
+                    injectRows(param, originalItemsWithNull, d);
+                }
+
+                @Override
+                protected void afterHookedMethod(MethodHookParam param) throws Throwable {
+                    if (!listBuilders.contains(param.method) || !(param.getResult() instanceof List<?> rows)) return;
+                    injectRows(param, rows.toArray(), null);
+                }
+
+                private void injectRows(MethodHookParam param, Object[] originalItemsWithNull, Field d) throws Throwable {
                     if (originalItemsWithNull == null)
                         return;
                     Object[] originalItems = Arrays.stream(originalItemsWithNull).filter(Objects::nonNull)
@@ -409,106 +461,7 @@ public class RemoveCreateButtonHook extends SpotifyHook {
 
                                 MaterialButton manageSleepTimers = view.findViewById(R.id.btn_manage_timers);
 
-                                manageSleepTimers.setOnClickListener(managerView -> {
-                                    try {
-                                        int themeOverlayLast = R.style.Theme_SpotifyPlus;
-                                        Context themedCtxLast = new ModuleContextWrapper(activity.getApplicationContext(), themeOverlayLast, modResources, ModuleContextWrapper.class.getClassLoader());
-                                        LayoutInflater inflaterLast = LayoutInflater.from(activity.getApplicationContext()).cloneInContext(themedCtxLast);
-
-                                        View timerViews = inflaterLast.inflate(modResources.getIdentifier("manage_sleep_timers_view", "layout", "com.lenerd46.spotifyplus"), null, false);
-                                        SpotifyBottomSheet sheet = new SpotifyBottomSheet(lpparm.classLoader, activity);
-                                        sheet.create(timerViews);
-
-                                        MaterialSwitch autoReorderSwitch = timerViews.findViewById(modResources.getIdentifier("switch_sleep_timer_auto_reorder", "id", "com.lenerd46.spotifyplus"));
-                                        TextView hintView = timerViews.findViewById(modResources.getIdentifier("sleep_timer_presets_hint", "id", "com.lenerd46.spotifyplus"));
-                                        RecyclerView recycler = timerViews.findViewById(modResources.getIdentifier("recycler_sleep_timer_presets", "id", "com.lenerd46.spotifyplus"));
-                                        TextView emptyView = timerViews.findViewById(modResources.getIdentifier("sleep_timer_presets_empty", "id", "com.lenerd46.spotifyplus"));
-                                        View saveButton = timerViews.findViewById(modResources.getIdentifier("btn_save_sleep_timer_presets", "id", "com.lenerd46.spotifyplus"));
-                                        View cancelButton = timerViews.findViewById(modResources.getIdentifier("btn_cancel_sleep_timer_presets", "id", "com.lenerd46.spotifyplus"));
-
-                                        ArrayList<SleepTimerHook.SleepTimerInfo> presets = loadSleepTimerPresets(prefs);
-
-                                        boolean[] autoReorder = {prefs.getBoolean("custom_sleep_timers_auto_reorder", true)};
-
-                                        if (autoReorder[0]) {
-                                            sortSleepTimerPresets(presets);
-                                        }
-
-                                        autoReorderSwitch.setChecked(autoReorder[0]);
-                                        hintView.setText(autoReorder[0] ? References.getString(R.string.sleep_timer_hint) : References.getString(R.string.ui_hold_and_drag_a_preset_to_reorder_it));
-
-                                        SleepTimerPresetAdapter adapter = new SleepTimerPresetAdapter(themedCtxLast, modResources, inflaterLast, presets, () -> {
-                                            boolean empty = presets.isEmpty();
-                                            recycler.setVisibility(empty ? View.GONE : View.VISIBLE);
-                                            emptyView.setVisibility(empty ? View.VISIBLE : View.GONE);
-                                        });
-
-                                        recycler.setLayoutManager(new LinearLayoutManager(themedCtxLast));
-                                        recycler.setAdapter(adapter);
-
-                                        autoReorderSwitch.setOnCheckedChangeListener((button, checked) -> {
-                                            autoReorder[0] = checked;
-
-                                            if (checked) {
-                                                sortSleepTimerPresets(presets);
-                                                adapter.notifyDataSetChanged();
-                                            }
-
-                                            hintView.setText(checked ? References.getString(R.string.sleep_timer_hint) : References.getString(R.string.ui_hold_and_drag_a_preset_to_reorder_it));
-                                        });
-
-                                        boolean empty = presets.isEmpty();
-                                        recycler.setVisibility(empty ? View.GONE : View.VISIBLE);
-                                        emptyView.setVisibility(empty ? View.VISIBLE : View.GONE);
-
-                                        ItemTouchHelper helper = new ItemTouchHelper(new ItemTouchHelper.SimpleCallback(ItemTouchHelper.UP | ItemTouchHelper.DOWN, 0) {
-                                            @Override
-                                            public boolean onMove(@NonNull RecyclerView recyclerView, @NonNull RecyclerView.ViewHolder from, @NonNull RecyclerView.ViewHolder to) {
-                                                if (autoReorder[0])
-                                                    return false;
-
-                                                int fromPos = from.getBindingAdapterPosition();
-                                                int toPos = to.getBindingAdapterPosition();
-
-                                                if (fromPos == RecyclerView.NO_POSITION || toPos == RecyclerView.NO_POSITION)
-                                                    return false;
-
-                                                Collections.swap(presets, fromPos, toPos);
-                                                adapter.notifyItemMoved(fromPos, toPos);
-                                                return true;
-                                            }
-
-                                            @Override
-                                            public void onSwiped(
-                                                    @NonNull RecyclerView.ViewHolder viewHolder,
-                                                    int direction) {
-                                            }
-
-                                            @Override
-                                            public boolean isLongPressDragEnabled() {
-                                                return !autoReorder[0];
-                                            }
-                                        });
-
-                                        helper.attachToRecyclerView(recycler);
-
-                                        saveButton.setOnClickListener(save -> {
-                                            if (autoReorder[0]) {
-                                                sortSleepTimerPresets(presets);
-                                            }
-
-                                            prefs.edit().putBoolean("custom_sleep_timers_auto_reorder", autoReorder[0]).apply();
-                                            saveSleepTimerPresets(prefs, presets);
-                                            sheet.dismiss();
-                                        });
-
-                                        cancelButton.setOnClickListener(cancel -> sheet.dismiss());
-
-                                        timerViews.setOnClickListener(timer -> sheet.dismiss());
-                                    } catch (Throwable t) {
-                                        XposedBridge.log(t);
-                                    }
-                                });
+                                manageSleepTimers.setOnClickListener(managerView -> com.lenerd46.spotifyplus.features.CustomSleepTimer.show());
 
                                 MaterialRadioButton home = view.findViewById(R.id.rb_home);
                                 MaterialRadioButton search = view.findViewById(R.id.rb_search);
@@ -1047,10 +1000,12 @@ public class RemoveCreateButtonHook extends SpotifyHook {
                         index++;
                     }
 
-                    XposedHelpers.setObjectField(param.thisObject, d.getName(), newArray);
+                    if (d == null) param.setResult(new ArrayList<>(Arrays.asList((Object[]) newArray)));
+                    else d.set(param.thisObject, newArray);
                     XposedBridge.log("[SpotifyPlus] Injected Spotify Plus Settings after side-drawer item " + settingsItemIndex + " using " + runtimeButtonClass.getName() + " -> " + runtimeSideDrawerItem.getClass().getName() + " -> " + runtimeProperties.getClass().getName());
                 }
-            });
+            };
+            for (Method callback : invokeSuspendMethods) XposedBridge.hookMethod(callback, drawerMutation);
         } catch (Exception e) {
             XposedBridge.log(e);
             XposedBridge.log("[SpotifyPlus] Could not find class: " + e.getMessage());
@@ -1194,10 +1149,13 @@ public class RemoveCreateButtonHook extends SpotifyHook {
     }
 
     private Object createClickCallback(Class<?> fieldType, Class<?> constructorType, Object originalClick, int resId, Runnable onClick) throws Exception {
-        if (fieldType.isInterface() && constructorType.isInterface()) return Proxy.newProxyInstance(lpparm.classLoader, new Class[]{constructorType}, (proxy, method, args) -> {
-            if (method.getName().equals("invoke")) runSideDrawerClick(resId, onClick);
-            return defaultValue(method.getReturnType());
-        });
+        if (fieldType.isInterface() && constructorType.isInterface()) {
+            // Spotify 9.1.94 casts this callback's result to a nullable
+            // instrumentation event. The overlay handles the action itself;
+            // null means no native event. kotlin.Unit crashes that cast.
+            return com.lenerd46.spotifyplus.compat.SpotifyCallback.create(
+                    lpparm.classLoader, constructorType, null, () -> runSideDrawerClick(resId, onClick));
+        }
         List<Field> clickFields = getInstanceFields(originalClick.getClass());
         Object clonedClick = instantiateCallbackLike(originalClick, readFieldValues(originalClick, clickFields));
         XposedBridge.hookAllMethods(clonedClick.getClass(), "invoke", new XC_MethodHook() {
@@ -1340,6 +1298,10 @@ public class RemoveCreateButtonHook extends SpotifyHook {
             sections.add(section);
             scriptSettings.put(key, sections);
         }
+    }
+
+    public static void unregisterSideButton(int id) {
+        scriptSideButtons.keySet().removeIf(key -> key.first == id);
     }
 
     public static void registerSideButton(String title, int id, Runnable onClick) {

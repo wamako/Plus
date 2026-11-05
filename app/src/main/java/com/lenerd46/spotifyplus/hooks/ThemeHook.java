@@ -77,7 +77,7 @@ public class ThemeHook extends SpotifyHook {
         return themeEnabled && animatedBackgroundEnabled ? Color.TRANSPARENT : BACKGROUND;
     }
 
-    static boolean usesAnimatedBackground() { return themeEnabled && animatedBackgroundEnabled; }
+    public static boolean usesAnimatedBackground() { return themeEnabled && animatedBackgroundEnabled; }
     private static int textColor() { return usesAnimatedBackground() ? AnimatedThemePalette.TEXT : TEXT; }
     private static int subduedColor() { return usesAnimatedBackground() ? AnimatedThemePalette.SUBDUED : TEXT_SUBDUED; }
     private static int surfaceColor() { return usesAnimatedBackground() ? AnimatedThemePalette.SURFACE : SURFACE; }
@@ -635,6 +635,7 @@ public class ThemeHook extends SpotifyHook {
 
     private static void applyHomeHeaderPalette(View appBar) {
         if (!themeEnabled) return;
+        com.lenerd46.spotifyplus.features.HeaderLayers.apply(appBar,usesAnimatedBackground());
         // The app bar owns elevation/scroll drawables whose cached colors need
         // not equal the palette recorded when the view was constructed. Bind
         // this known background role directly, preserving the existing shape.
@@ -1657,6 +1658,25 @@ public class ThemeHook extends SpotifyHook {
     }
 
     private void hookTrackArtworkColor() {
+        // Named model survives changes to obfuscated Rx consumers in 9.1.94.
+        try {
+            XposedHelpers.findAndHookMethod("com.spotify.player.model.AutoValue_PlayerState$Builder", lpparm.classLoader, "build", new XC_MethodHook() {
+                protected void afterHookedMethod(MethodHookParam param) {
+                    try {
+                        Class<?> trackClass = XposedHelpers.findClass("com.spotify.player.model.ContextTrack", lpparm.classLoader);
+                        Object track = findCurrentTrackFromAccessors(param.getResult(), trackClass);
+                        Map<?, ?> metadata = findMapWithKey(track, "image_large_url", 2, new IdentityHashMap<>());
+                        if (metadata == null) metadata = findMapWithKey(track, "image_url", 2, new IdentityHashMap<>());
+                        if (metadata != null) {
+                            Object image = metadata.get("image_large_url");
+                            if (!(image instanceof String) || ((String) image).isEmpty()) image = metadata.get("image_url");
+                            if (image instanceof String) requestArtworkTheme((String) image, null);
+                        }
+                    } catch (Throwable error) { XposedBridge.log(error); }
+                }
+            });
+        } catch (Throwable error) { XposedBridge.log(error); }
+
         try {
             Class<?> playerStateClass = XposedHelpers.findClass("com.spotify.player.model.PlayerState", lpparm.classLoader);
             Class<?> contextTrackClass = XposedHelpers.findClass("com.spotify.player.model.ContextTrack", lpparm.classLoader);

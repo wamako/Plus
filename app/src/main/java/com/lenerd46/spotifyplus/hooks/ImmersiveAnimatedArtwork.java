@@ -538,7 +538,7 @@ public final class ImmersiveAnimatedArtwork extends SpotifyHook {
         }
     }
 
-    private static String lookup(String title, String artist) {
+    static String lookup(String title, String artist) {
         String key = title + "\n" + artist;
         synchronized (CACHE) {
             if (CACHE.containsKey(key)) return CACHE.get(key);

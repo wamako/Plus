@@ -770,6 +770,7 @@ final class NowPlayingControlsHook extends SpotifyHook {
         addCell(row, lyrics, dp(root, 48));
         addCell(row, share, dp(root, 48));
         addCell(row, queue, dp(root, 48));
+
     }
 
     private void arrangeLandscape(View root, LyricsState state) {

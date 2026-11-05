@@ -85,8 +85,8 @@ public class AnimatedAlbumArtwork extends SpotifyHook {
                         }
 
                         SharedPreferences prefs = References.getPreferences();
-                        if (!prefs.getBoolean("experiment_animated_art", true)
-                                || prefs.getBoolean(ImmersiveAnimatedArtwork.PREFERENCE, false))
+                        if (prefs != null && !prefs.getBoolean("experiment_animated_art", true)
+                                || (prefs != null && prefs.getBoolean(ImmersiveAnimatedArtwork.PREFERENCE, false)))
                             return;
 
                         attachOverlay((ViewGroup) image.getParent(), image);
@@ -124,12 +124,6 @@ public class AnimatedAlbumArtwork extends SpotifyHook {
 
     @OptIn(markerClass = UnstableApi.class)
     private void attachOverlay(ViewGroup parent, View image) {
-        SpotifyTrack track = References.getTrackTitle(lpparm, bridge);
-        if (track == null) {
-            XposedBridge.log("[SpotifyPlus] Failed to get current track");
-            return;
-        }
-
         Object existing = image.getTag(TAG_OVERLAY);
         if (existing instanceof View)
             return;
@@ -151,6 +145,8 @@ public class AnimatedAlbumArtwork extends SpotifyHook {
                 ViewGroup.LayoutParams.MATCH_PARENT));
 
         TextureView textureView = new TextureView(context);
+        textureView.setOpaque(false);
+        textureView.setAlpha(0f);
         textureView.setLayoutParams(new FrameLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT,
                 ViewGroup.LayoutParams.MATCH_PARENT));
@@ -248,6 +244,11 @@ public class AnimatedAlbumArtwork extends SpotifyHook {
                     @Override
                     public void onPlayerError(PlaybackException error) {
                         XposedBridge.log("[SpotifyPlus] ExoPlayer error: " + error);
+                        if (activeTextureView != null) activeTextureView.setAlpha(0f);
+                    }
+
+                    @Override public void onRenderedFirstFrame() {
+                        if (activeTextureView != null) activeTextureView.setAlpha(1f);
                     }
 
                     @Override
@@ -311,9 +312,10 @@ public class AnimatedAlbumArtwork extends SpotifyHook {
     }
 
     private void maybeActivate(View image, FrameLayout overlay, TextureView tv) {
+        SharedPreferences preferences = References.getPreferences();
         if (!isCenteredAndMostlyVisible(image) || image.getWindowVisibility() != View.VISIBLE
-                || !References.getPreferences().getBoolean("experiment_animated_art", true)
-                || References.getPreferences().getBoolean(ImmersiveAnimatedArtwork.PREFERENCE, false)) {
+                || (preferences != null && !preferences.getBoolean("experiment_animated_art", true))
+                || (preferences != null && preferences.getBoolean(ImmersiveAnimatedArtwork.PREFERENCE, false))) {
             releasePlayer(overlay);
             return;
         }
@@ -330,6 +332,7 @@ public class AnimatedAlbumArtwork extends SpotifyHook {
             return;
         }
 
+        tv.setAlpha(0f);
         overlay.setTag(TAG_LAST_URI, track.uri);
 
         ExoPlayer p = getOrCreatePlayer(image.getContext(), tv, overlay);
@@ -348,56 +351,16 @@ public class AnimatedAlbumArtwork extends SpotifyHook {
     }
 
     private void fetchAndPlayForActive(int gen, FrameLayout overlay, SpotifyTrack track) {
-        OkHttpClient client = ARTWORK_CLIENT;
-
-        final String term = track.title + " " + track.artist;
-        String enc = (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU)
-                ? URLEncoder.encode(term, StandardCharsets.UTF_8)
-                : URLEncoder.encode(term);
-
-        Request request = new Request.Builder()
-                .url("https://itunes.apple.com/search?country=us&media=music&limit=1&term=" + enc).get().build();
-
         new Thread(() -> {
-            try (Response response = client.newCall(request).execute()) {
-                if (!response.isSuccessful() || response.body() == null)
-                    return;
-
-                String json = response.body().string();
-                JsonObject root = JsonParser.parseString(json).getAsJsonObject();
-                String url = root.get("results").getAsJsonArray().get(0).getAsJsonObject()
-                        .get("collectionViewUrl").getAsString();
-                if (GEN.get() != gen) return;
-
-                Request appleMusicRequest = new Request.Builder().url(url).get().build();
-                try (Response appleResponse = client.newCall(appleMusicRequest).execute()) {
-                    if (!appleResponse.isSuccessful() || appleResponse.body() == null)
-                        return;
-
-                    Document doc = Jsoup.parse(appleResponse.body().string());
-                    Element video = doc.selectFirst("amp-ambient-video");
-                    if (video == null)
-                        return;
-
-                    String src = video.attr("src");
-                    new Handler(Looper.getMainLooper()).post(() -> {
-                        // stale request? ignore
-                        if (GEN.get() != gen)
-                            return;
-                        if (overlay != activeOverlay)
-                            return;
-
-                        if (activePlayer == null)
-                            return;
-                        activePlayer.setMediaItem(MediaItem.fromUri(src));
-                        activePlayer.prepare();
-                        activePlayer.play();
-                    });
-                }
-            } catch (Throwable t) {
-                XposedBridge.log(t);
-            }
-        }).start();
+            String src = ImmersiveAnimatedArtwork.lookup(track.album, track.artist);
+            if (src.isEmpty()) return;
+            new Handler(Looper.getMainLooper()).post(() -> {
+                if (GEN.get() != gen || overlay != activeOverlay || activePlayer == null) return;
+                activePlayer.setMediaItem(MediaItem.fromUri(src));
+                activePlayer.prepare();
+                activePlayer.play();
+            });
+        }, "SpotifyPlus-Artwork").start();
     }
 
     private void startHeartbeat(View image, FrameLayout overlay, TextureView tv) {
@@ -431,6 +394,7 @@ public class AnimatedAlbumArtwork extends SpotifyHook {
             GEN.incrementAndGet();
             ARTWORK_CLIENT.dispatcher().cancelAll();
             owner.setTag(TAG_LAST_URI, null);
+            if (activeTextureView != null) activeTextureView.setAlpha(0f);
             ExoPlayer player = activePlayer;
             activePlayer = null;
             activeOverlay = null;

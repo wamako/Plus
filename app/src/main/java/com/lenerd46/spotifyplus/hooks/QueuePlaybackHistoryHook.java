@@ -21,7 +21,9 @@ public final class QueuePlaybackHistoryHook extends SpotifyHook {
     }
     private static void attach(View root){
         try{
-            View recycler=find(root,"androidx.recyclerview.widget.RecyclerView");
+            View queue=find(root,"com.spotify.nowplayingqueue.bottomsheet.view.QueueInteractionLayout");
+            if(queue==null)return;
+            View recycler=find(queue,"androidx.recyclerview.widget.RecyclerView");
             if(recycler==null||!(recycler.getParent() instanceof ViewGroup content)||!(content.getParent() instanceof LinearLayout column))return;
             QueuePlaybackHistory.attach(column,content);
         }catch(Throwable error){XposedBridge.log("[SpotifyPlus][QueueHistory] "+error);}

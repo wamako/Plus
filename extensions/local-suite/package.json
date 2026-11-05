@@ -1,11 +1,11 @@
 {
   "name": "spotifyplus-local-suite",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "private": true,
   "type": "module",
   "scripts": {
     "build": "node tools/build.mjs",
-    "test": "node --test tests/core.test.mjs",
+    "test": "node --test tests/core.test.mjs tests/native-reads.test.mjs",
     "typecheck": "tsc --noEmit",
     "check": "npm run test && npm run typecheck && npm run build && npm run preflight",
     "preflight": "node --test tests/host-preflight.test.mjs"

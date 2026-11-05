@@ -31,7 +31,7 @@ function App() {
     task.run(
       async (job) =>
         client.genres(
-          await client.track(spotifyUri(input, "track")),
+          await client.track(spotifyUri(input, "track"), job),
           { key: settings.key },
           job,
         ),
@@ -77,6 +77,7 @@ function App() {
       {track ? (
         <View>
           <Label large>{track.title}</Label>
+          {track.genreStatus ? <Label muted>{track.genreStatus}</Label> : null}
           <Label>{track.artist}</Label>
           <Label muted>
             {track.genreSource}. Artist genres describe the artist’s catalog;

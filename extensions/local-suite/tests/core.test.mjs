@@ -358,11 +358,14 @@ test("collection reads all pages with new item schema and safe deprecated fallba
   assert.ok(calls.every((x) => x.startsWith("https://api.spotify.com/")));
 });
 test("incomplete playlist responses reject instead of exposing a partial preview", async () => {
-  const { client } = fixture(async (url) =>
+  const { client, api } = fixture(async (url) =>
     url.includes("/items")
       ? { items: [], total: 5, next: "more" }
       : { name: "Source" },
   );
+  api.Playlists.get = async () => {
+    throw new Error("Native reader unavailable");
+  };
   await assert.rejects(
     client.collection(playlist, { cancelled: false }),
     /Incomplete/,

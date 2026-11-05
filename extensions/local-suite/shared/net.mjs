@@ -24,6 +24,7 @@ export function makeHttp(
 ) {
   const hosts = [
     "api.spotify.com",
+    "spclient.wg.spotify.com",
     "ws.audioscrobbler.com",
     "api.stats.fm",
     "lucasoe.github.io",
@@ -101,12 +102,19 @@ export async function mapLimit(
   job = { cancelled: false },
 ) {
   const out = new Array(items.length);
-  let next = 0;
+  let next = 0,
+    failed = false,
+    failure;
   async function worker() {
-    while (!job.cancelled) {
+    while (!job.cancelled && !failed) {
       const i = next++;
       if (i >= items.length) return;
-      out[i] = await fn(items[i], i);
+      try {
+        out[i] = await fn(items[i], i);
+      } catch (error) {
+        failed = true;
+        failure = error;
+      }
     }
   }
   await Promise.all(
@@ -116,8 +124,10 @@ export async function mapLimit(
     ),
   );
   if (job.cancelled) throw new Error("Operation cancelled.");
+  if (failed) throw failure;
   return out;
 }
+
 export class Cache {
   constructor(storage, key, maximum = 1000) {
     this.storage = storage;

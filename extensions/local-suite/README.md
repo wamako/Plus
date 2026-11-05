@@ -1,4 +1,4 @@
-# Spotify Plus local Android extensions · 0.1.0
+# Spotify Plus local Android extensions · 0.1.1
 
 Four removable **initial Android adaptations** of the requested Spicetify projects.
 Designed against the API-2 runtime shipped in Spotify Plus R10 for Spotify
@@ -6,10 +6,26 @@ Designed against the API-2 runtime shipped in Spotify Plus R10 for Spotify
 implement every feature of those projects. The working R10 APK is unchanged.
 No extension is published to a marketplace.
 
+## Update from 0.1.0
+
+Replace the four old extension folders with the four folders in this ZIP, in the
+same selected parent directory. Do not leave a second copy with the same extension
+IDs elsewhere under that parent. Press **Refresh** in the Developer page. If the
+old version is still shown, force-stop and reopen Spotify. Keep the working R10
+APK; no module repatching or app data clearing is required. Local listening
+history, saved keys, and genre presets keep their existing settings keys.
+
+This release fixes the missing album reader used by both Sort Play and Playlist
+Plus. Collection reads now prefer the host's native metadata service. Genre lookup
+recovers artist identifiers from Spotify metadata and reads native artist genre
+labels before trying public Web API data. Failed/empty genre lookups are no longer
+persisted as cached results. Last.fm track-not-found responses continue to album
+and artist tags. Read failures identify the stage and HTTP status when available.
+
 ## Install on your non-root LSPatch setup
 
 1. Keep your working Spotify Plus R10 module. Do not install these files as APKs.
-2. Extract `SpotifyPlus-Local-Extensions-0.1.0.zip` into a normal, accessible
+2. Extract `SpotifyPlus-Local-Extensions-0.1.1.zip` into a normal, accessible
    directory, e.g. `Documents/SpotifyPlusLocal/` on the phone.
 3. The extracted `SpotifyPlus-Local-Extensions` directory must contain four child
    folders: `listening-stats`, `sort-play`, `genres`, and `playlist-plus`. Each child
@@ -52,13 +68,17 @@ Do not select a parent that also contains an older copy with the same extension 
   never clear/reorder existing entries, and are capped at 100 tracks per action.
 - Writes use the official Spotify endpoints; session scopes, account restrictions,
   Premium and an active player can affect availability. HTTP 401/403 is shown,
-  not bypassed. **No uncertain write is retried automatically.** If stopped or
+  not bypassed. These read fixes do not grant write permissions: saves/queue writes
+  still depend on the Web API and may be rejected independently. **No uncertain write is retried automatically.** If stopped or
   interrupted, inspect the recorded partial copy/queue before manually trying again.
-- Playlist reads support both new `item` and older `track` row formats, paginated
-  in full up to 10,000 items. Failed/incomplete reads do not expose a partial
-  preview as complete. A read-only native playlist/track fallback is attempted
-  only for supported authorization/not-found errors. That R10 bridge may itself
-  be unavailable; an error leaves the source intact.
+- Album and playlist reads prefer the host's native metadata readers. Albums
+  preserve multi-disc order, duplicate occurrences, release dates and matching
+  artist IDs. Truncated/incomplete native playlists fall back to the public API,
+  then the older paginated native playlist reader. The public API supports both
+  new `item` and older `track` row formats. All readers enforce a 10,000-item limit
+  and reject incomplete results. If every reader fails, the page shows stages
+  and statuses; it never labels a partial collection as complete. Native bridge
+  reads have a 17-second deadline and HTTP reads a 15-second deadline.
 - Podcasts, local-file playlist entries and null/unavailable metadata rows are
   excluded from playlist previews and counted as omitted. Local listening can
   record a local-file URI if the host exposes its playback state.
@@ -67,7 +87,8 @@ Do not select a parent that also contains an older copy with the same extension 
   popularity, play count, or genre is fabricated.
 - Genre labels describe artists or Last.fm tags, not a guaranteed classification
   of every recording. Empty data remains Unknown. Last.fm tags can contain labels
-  other than musical genres. Genre requests are cached with bounded retention;
+  other than musical genres. Successful genre requests are cached with bounded retention; failed/empty
+  classifications are not persisted;
   classification concurrency is two, with a 15-second timeout on HTTP requests.
   Rate limits stop requests; no automatic retry loop runs.
 - Local listening runs a two-second sampler only when recording is enabled.
@@ -83,7 +104,10 @@ Do not select a parent that also contains an older copy with the same extension 
 - No network requests are made by default until you press a read/lookup/write
   button. Only opted-in listening sampling runs in the background. Third-party
   hosts receive only the requested metadata/username and the key you supply;
-  Spotify bearer tokens are confined to `api.spotify.com`. Keys and tokens are
+  Spotify bearer tokens are confined to Spotify’s exact `api.spotify.com` and
+  `spclient.wg.spotify.com` hosts. Artist identification uses the same read-only
+  metadata path as the native host; no Spotify credentials go to genre directories
+  or third-party providers. Keys and tokens are
   never copied into exports or diagnostic messages. Clipboard exports require a
   tap and are capped at one million characters. CSV text is formula-escaped.
 - Unmounting a page cancels subsequent work; an in-flight request can still finish.

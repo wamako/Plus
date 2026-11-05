@@ -33,6 +33,11 @@ await fs.rm(destination, { recursive: true, force: true });
 await fs.rename(path.join(temp, selected), destination);
 run("npm", ["ci", "--ignore-scripts"], destination);
 run("npm", ["run", "build"], destination);
+// The emitted host is CommonJS even when the surrounding extension workspace is ESM.
+await fs.writeFile(
+  path.join(root, "nodejs/package.json"),
+  JSON.stringify({ private: true, type: "commonjs" }) + "\n",
+);
 // Runtime build emits beside nodejs-src, including the matching React dependencies.
 await fs.rm(path.join(root, "node_modules/spotifyplus"), {
   recursive: true,

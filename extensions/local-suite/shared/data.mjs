@@ -7,22 +7,39 @@ import {
   genreTags,
   requireConfirmation,
 } from "./model.mjs";
-
+import {
+  rawTrack,
+  uriToHex,
+  withAlbum,
+  nativeGenres,
+} from "./native-metadata.mjs";
 const check = (job) => {
   if (job?.cancelled) throw new Error("Operation cancelled.");
 };
+const isTrack = (uri) => /^spotify:track:[A-Za-z0-9]{22}$/.test(uri || "");
 const trackRows = (rows) =>
-  rows
-    .map(normalizeTrack)
-    .filter((t) => /^spotify:track:[A-Za-z0-9]{22}$/.test(t.uri));
+  rows.map(normalizeTrack).filter((t) => isTrack(t.uri));
+class ReadError extends Error {}
+const status = (error) =>
+  Number(error?.status) ||
+  Number(/\b(401|403|404|405|429|5\d\d)\b/.exec(error?.message || "")?.[1]) ||
+  0;
+const reason = (error) =>
+  status(error)
+    ? `HTTP ${status(error)}`
+    : error instanceof ReadError
+      ? error.message
+      : "unavailable";
 export class DataClient {
   constructor(api, request = makeHttp()) {
     this.api = api;
     this.request = request;
-    this.cache = new Cache(api.Platform.Storage, "metadata-cache-v1", 1200);
+    // v2 invalidates negative genre results and track rows that lost artist IDs in 0.1.0.
+    this.cache = new Cache(api.Platform.Storage, "metadata-cache-v2", 1200);
+    this.webUnavailable = new Map();
+    this.inflight = new Map();
   }
   async spotify(path, method = "GET", body) {
-    // Never accept a URL or a third-party host here: the session token stays at Spotify.
     if (!/^\/[A-Za-z0-9/?=&%._-]+$/.test(path))
       throw new Error("Invalid Spotify API path.");
     const token = this.api.Platform.Session.accessToken;
@@ -39,6 +56,45 @@ export class DataClient {
       ...(body ? { body: JSON.stringify(body) } : {}),
     });
   }
+  async native(method, uri, job) {
+    check(job);
+    if (typeof this.api.Internal?.[method] !== "function")
+      throw new ReadError("not exposed by this host");
+    let timer;
+    try {
+      const result = await Promise.race([
+        Promise.resolve().then(() => this.api.Internal[method](uri)),
+        new Promise((_, reject) => {
+          timer = setTimeout(() => reject(new ReadError("timed out")), 17000);
+        }),
+      ]);
+      check(job);
+      return result;
+    } finally {
+      clearTimeout(timer);
+    }
+  }
+  async routes(label, routes, job) {
+    const failures = [];
+    for (const [name, read] of routes) {
+      check(job);
+      try {
+        const result = await read();
+        check(job);
+        return result;
+      } catch (error) {
+        check(job);
+        if (status(error) === 429)
+          throw new ReadError(
+            `${label}: provider rate limit (HTTP 429). Wait before retrying.`,
+          );
+        failures.push(`${name}: ${reason(error)}`);
+      }
+    }
+    throw new ReadError(
+      `${label} could not be read. ${failures.join("; ")}. Check that this item opens in Spotify. No partial preview was used.`,
+    );
+  }
   async paged(path, job, progress = (_message) => {}) {
     const rows = [];
     let offset = 0;
@@ -48,164 +104,395 @@ export class DataClient {
         `${path}${path.includes("?") ? "&" : "?"}offset=${offset}&limit=50`,
       );
       if (!Array.isArray(page?.items))
-        throw new Error(
-          "Provider returned an invalid collection. No partial preview was used.",
-        );
+        throw new ReadError("Invalid collection response");
       rows.push(...page.items);
       offset += page.items.length;
       progress(
         `Loaded ${offset}${Number.isFinite(page.total) ? ` of ${page.total}` : ""} items`,
       );
-      if (rows.length > MAX_ITEMS || (page.next && rows.length >= MAX_ITEMS))
-        throw new Error(
-          `This collection exceeds the ${MAX_ITEMS}-item limit. No partial preview was used.`,
-        );
+      if (
+        rows.length > MAX_ITEMS ||
+        ((page.next || offset < page.total) && rows.length >= MAX_ITEMS)
+      )
+        throw new ReadError(`Collection exceeds ${MAX_ITEMS} items`);
       if (!page.next && !(Number.isFinite(page.total) && offset < page.total))
         break;
       if (!page.items.length)
-        throw new Error(
-          "Incomplete collection response. No partial preview was used.",
-        );
+        throw new ReadError("Incomplete collection response");
     }
     check(job);
     return rows;
   }
-  async collection(input, job, progress) {
-    const uri = spotifyUri(input),
-      { kind, id } = idFromUri(uri);
-    if (kind === "track")
-      return {
-        name: "Track",
-        uri,
-        tracks: [await this.track(uri)],
-        source: "Spotify metadata",
-        skipped: 0,
-      };
-    if (kind === "playlist") {
-      let rows,
-        meta,
-        native = false;
-      try {
-        meta = await this.spotify(`/playlists/${id}`);
-        check(job);
-        try {
-          rows = await this.paged(`/playlists/${id}/items`, job, progress);
-        } catch (error) {
-          if (![404, 405].includes(error.status)) throw error;
-          rows = await this.paged(`/playlists/${id}/tracks`, job, progress);
-        }
-      } catch (error) {
-        // Read-only fallback only. Never change transport after a write with an uncertain outcome.
-        if (![401, 403, 404].includes(error.status)) throw error;
-        native = true;
-        rows = [];
-        let offset = 0;
-        while (true) {
-          check(job);
-          const page = await this.api.Playlists.get(uri, {
-            offset,
-            limit: 100,
-          });
-          if (!Array.isArray(page?.items))
-            throw new Error(
-              "Native playlist reader is unavailable on this Spotify build.",
-            );
-          meta = { name: page.name };
-          rows.push(...page.items);
-          offset += page.items.length;
-          progress?.(`Loaded ${offset} items using the native reader`);
-          if (
-            rows.length > MAX_ITEMS ||
-            (offset < page.total && rows.length >= MAX_ITEMS)
-          )
-            throw new Error(
-              "Playlist is too large. No partial preview was used.",
-            );
-          if (
-            offset >= page.total ||
-            (!Number.isFinite(page.total) && page.items.length < 100)
-          )
-            break;
-          if (!page.items.length)
-            throw new Error("Incomplete native playlist response.");
-        }
-        rows = await mapLimit(
-          rows,
-          2,
-          async (row) => {
-            check(job);
-            if (!/^spotify:track:/.test(row.uri)) return row;
-            const metadata = await this.api.Internal.getTrack(row.uri);
-            if (!metadata)
-              throw new Error("Native track metadata was unavailable.");
-            // R10 normalized metadata does not expose reliable explicit/availability flags.
-            return { ...row, track: { ...metadata, explicit: undefined } };
-          },
-          job,
-        );
-      }
-      check(job);
-      const tracks = trackRows(rows);
-      return {
-        uri,
-        name: meta?.name || "Playlist",
-        tracks,
-        source: native
-          ? "Native read-only fallback; some fields unavailable"
-          : "Spotify Web API",
-        skipped: rows.length - tracks.length,
-      };
-    }
-    if (kind === "album") {
-      const album = await this.spotify(`/albums/${id}`);
-      const rows = await this.paged(`/albums/${id}/tracks`, job, progress);
-      return {
-        uri,
-        name: album.name || "Album",
-        tracks: trackRows(rows.map((item) => ({ ...item, album }))),
-        source: "Spotify Web API",
-        skipped: rows.length - trackRows(rows).length,
-      };
-    }
-    throw new Error(
-      "Load a playlist, album, or track. Artist discographies are not part of this first Android version.",
-    );
-  }
-  async track(uri) {
-    const { id } = idFromUri(uri, "track");
-    const key = `track:${id}`;
-    const cached = this.cache.get(key);
+  async nativeTrack(uri, job) {
+    const key = `track-native:${uri}`,
+      cached = this.cache.get(key);
     if (cached) return cached;
-    let track;
-    try {
-      track = normalizeTrack(await this.spotify(`/tracks/${id}`));
-    } catch (error) {
-      if (![401, 403, 404].includes(error.status)) throw error;
-      const native = await this.api.Internal.getTrack(uri);
-      if (!native) throw error;
-      track = normalizeTrack({ ...native, explicit: undefined });
-    }
+    const value = await this.native("getTrack", uri, job);
+    if (!value?.title && !value?.name)
+      throw new ReadError("track metadata unavailable");
+    const track = normalizeTrack({
+      ...value,
+      uri: value.uri || uri,
+      explicit: undefined,
+    });
     this.cache.set(key, track);
-    this.cache.save();
     return track;
   }
+  async webTrack(uri, job) {
+    check(job);
+    const key = `track-web:${uri}`,
+      cached = this.cache.get(key);
+    if (cached) return cached;
+    const { id } = idFromUri(uri, "track");
+    const raw = await this.spotify(`/tracks/${id}`);
+    check(job);
+    if (!raw?.uri || !raw?.name)
+      throw new ReadError("track metadata unavailable");
+    const track = normalizeTrack(raw);
+    this.cache.set(key, track);
+    return track;
+  }
+  currentTrack(uri) {
+    let current;
+    try {
+      current = this.api.Player?.getCurrentTrack?.();
+    } catch {}
+    if (current?.uri !== uri || !current?.title)
+      throw new ReadError("not the current track");
+    return normalizeTrack({ ...current, explicit: undefined });
+  }
+  async track(uri, job) {
+    idFromUri(uri, "track");
+    const value = await this.routes(
+      "Track",
+      [
+        ["Native metadata", () => this.nativeTrack(uri, job)],
+        ["Spotify Web API", () => this.webTrack(uri, job)],
+        ["Current player", () => this.currentTrack(uri)],
+      ],
+      job,
+    );
+    this.cache.save();
+    return value;
+  }
+  async hydrate(rows, job, progress = (_message) => {}, album) {
+    let count = 0;
+    return mapLimit(
+      rows,
+      2,
+      async (row, index) => {
+        check(job);
+        if (!isTrack(row.uri)) return row;
+        const metadata = await this.routes(
+          `Track ${index + 1}`,
+          [
+            ["Native metadata", () => this.nativeTrack(row.uri, job)],
+            ["Spotify Web API", () => this.webTrack(row.uri, job)],
+          ],
+          job,
+        );
+        progress(`Read metadata ${++count} of ${rows.length}`);
+        const track = album ? withAlbum(metadata, album) : metadata;
+        // Keep collection timestamps and duplicate occurrences while enriching metadata.
+        return {
+          ...track,
+          sourceIndex: index,
+          rowId: row.rowId || row.itemId || "",
+          addedAt: Number.isFinite(row.addedAt)
+            ? row.addedAt
+            : /^\d+$/.test(row.timestamp || "")
+              ? Number(row.timestamp)
+              : null,
+        };
+      },
+      job,
+    );
+  }
+  async nativeAlbum(uri, job, progress) {
+    const album = await this.native("getAlbum", uri, job);
+    if (!album || !Array.isArray(album.discs))
+      throw new ReadError("album metadata unavailable");
+    const rows = album.discs.flatMap((disc) =>
+      Array.isArray(disc.tracks) ? disc.tracks.map((uri) => ({ uri })) : [],
+    );
+    const rawCount = Array.isArray(album.raw?.disc)
+      ? album.raw.disc.reduce(
+          (n, disc) => n + (Array.isArray(disc.track) ? disc.track.length : 0),
+          0,
+        )
+      : rows.length;
+    if (
+      !rows.length ||
+      rows.length !== rawCount ||
+      rows.some((row) => !isTrack(row.uri))
+    )
+      throw new ReadError("Incomplete album track list");
+    if (rows.length > MAX_ITEMS)
+      throw new ReadError(`Album exceeds ${MAX_ITEMS} items`);
+    const tracks = await this.hydrate(rows, job, progress, { ...album, uri });
+    return {
+      uri,
+      name: album.name || "Album",
+      tracks,
+      source: "Native album metadata",
+      skipped: 0,
+    };
+  }
+  async webAlbum(uri, job, progress) {
+    const { id } = idFromUri(uri, "album"),
+      album = await this.spotify(`/albums/${id}`);
+    if (!album?.name) throw new ReadError("album metadata unavailable");
+    const rows = await this.paged(`/albums/${id}/tracks`, job, progress);
+    const tracks = trackRows(rows.map((item) => ({ ...item, album })));
+    return {
+      uri,
+      name: album.name,
+      tracks,
+      source: "Spotify Web API",
+      skipped: rows.length - tracks.length,
+    };
+  }
+  async nativePlaylist(uri, job, progress) {
+    const page = await this.native("getPlaylist", uri, job);
+    if (!Array.isArray(page?.items))
+      throw new ReadError("playlist metadata unavailable");
+    if (
+      page.truncated ||
+      page.position !== 0 ||
+      !Number.isInteger(page.length) ||
+      page.length !== page.items.length
+    )
+      throw new ReadError("Incomplete native playlist response");
+    if (page.length > MAX_ITEMS)
+      throw new ReadError(`Playlist exceeds ${MAX_ITEMS} items`);
+    const hydrated = await this.hydrate(page.items, job, progress);
+    const tracks = hydrated.filter((t) => isTrack(t.uri));
+    return {
+      uri,
+      name: page.name || "Playlist",
+      tracks,
+      source: "Native playlist metadata",
+      skipped: page.items.length - tracks.length,
+    };
+  }
+  async webPlaylist(uri, job, progress) {
+    const { id } = idFromUri(uri, "playlist");
+    let rows, meta;
+    // A metadata 404 must not prevent trying the independently addressable item endpoint.
+    try {
+      meta = await this.spotify(`/playlists/${id}`);
+    } catch (error) {
+      if (![401, 403, 404].includes(status(error))) throw error;
+    }
+    try {
+      rows = await this.paged(`/playlists/${id}/items`, job, progress);
+    } catch (error) {
+      if (![404, 405].includes(status(error))) throw error;
+      rows = await this.paged(`/playlists/${id}/tracks`, job, progress);
+    }
+    const tracks = trackRows(rows);
+    return {
+      uri,
+      name: meta?.name || "Playlist",
+      tracks,
+      source: "Spotify Web API",
+      skipped: rows.length - tracks.length,
+    };
+  }
+  async rpcPlaylist(uri, job, progress) {
+    let rows = [],
+      offset = 0,
+      name = "Playlist";
+    while (true) {
+      check(job);
+      const page = await this.api.Playlists.get(uri, { offset, limit: 100 });
+      check(job);
+      if (!Array.isArray(page?.items))
+        throw new ReadError("Native playlist reader unavailable");
+      if (page.offset !== undefined && page.offset !== offset)
+        throw new ReadError("Incomplete native playlist response");
+      name = page.name || name;
+      rows.push(...page.items);
+      offset += page.items.length;
+      progress?.(`Loaded ${offset} native playlist rows`);
+      if (
+        rows.length > MAX_ITEMS ||
+        (offset < page.total && rows.length >= MAX_ITEMS)
+      )
+        throw new ReadError(`Playlist exceeds ${MAX_ITEMS} items`);
+      if (Number.isFinite(page.total) && offset === page.total) break;
+      if (Number.isFinite(page.total) && offset > page.total)
+        throw new ReadError("Incomplete native playlist response");
+      if (!Number.isFinite(page.total))
+        throw new ReadError(
+          "Native reader omitted the total; completeness cannot be verified",
+        );
+      if (!page.items.length)
+        throw new ReadError("Incomplete native playlist response");
+    }
+    const hydrated = await this.hydrate(rows, job, progress),
+      tracks = hydrated.filter((t) => isTrack(t.uri));
+    return {
+      uri,
+      name,
+      tracks,
+      source: "Native read-only playlist fallback",
+      skipped: rows.length - tracks.length,
+    };
+  }
+  async collection(input, job, progress) {
+    const uri = spotifyUri(input),
+      { kind } = idFromUri(uri);
+    try {
+      if (kind === "track")
+        return {
+          uri,
+          name: "Track",
+          tracks: [await this.track(uri, job)],
+          source: "Spotify metadata",
+          skipped: 0,
+        };
+      if (kind === "album")
+        return await this.routes(
+          "Album",
+          [
+            [
+              "Native album metadata",
+              () => this.nativeAlbum(uri, job, progress),
+            ],
+            ["Spotify Web API", () => this.webAlbum(uri, job, progress)],
+          ],
+          job,
+        );
+      if (kind === "playlist")
+        return await this.routes(
+          "Playlist",
+          [
+            [
+              "Native playlist metadata",
+              () => this.nativePlaylist(uri, job, progress),
+            ],
+            ["Spotify Web API", () => this.webPlaylist(uri, job, progress)],
+            [
+              "Native playlist reader",
+              () => this.rpcPlaylist(uri, job, progress),
+            ],
+          ],
+          job,
+        );
+      throw new ReadError(
+        "Load a playlist, album, or track. Artist discographies are not supported.",
+      );
+    } finally {
+      this.cache.save();
+    }
+  }
+  async identifyTrack(track, job) {
+    // Albums preserve artist GIDs; the SDK's normalized track model does not.
+    // Resolve those identifiers through Spotify's own read-only metadata service.
+    const key = `identified:${track.uri}`,
+      cached = this.cache.get(key);
+    if (cached) return { ...track, ...cached };
+    check(job);
+    // For the current album, reuse the host's authenticated metadata reader so
+    // artist identification does not depend on a separate HTTP client header.
+    let state;
+    try {
+      state = this.api.Player?.getState?.();
+    } catch {}
+    if (
+      state?.trackUri === track.uri &&
+      /^spotify:album:[A-Za-z0-9]{22}$/.test(state.contextUri || "")
+    ) {
+      try {
+        const album = await this.native("getAlbum", state.contextUri, job);
+        if (album?.discs?.some((disc) => disc.tracks?.includes(track.uri))) {
+          const enriched = withAlbum(track, album);
+          if (enriched.artists.some((artist) => artist.uri)) {
+            this.cache.set(key, enriched);
+            return enriched;
+          }
+        }
+      } catch (error) {
+        check(job);
+        if (status(error) === 429) throw error;
+      }
+    }
+    const token = this.api.Platform.Session.accessToken;
+    if (!token) throw new ReadError("Spotify session unavailable");
+    const raw = await this.request(
+      `https://spclient.wg.spotify.com/metadata/4/track/${uriToHex(track.uri)}?market=from_token`,
+      {
+        headers: {
+          Authorization: `Bearer ${token}`,
+          Accept: "application/json",
+        },
+      },
+    );
+    check(job);
+    const metadata = rawTrack(raw, track.uri);
+    if (metadata.uri !== track.uri) metadata.uri = track.uri;
+    const result = {
+      ...track,
+      artists: metadata.artists.length ? metadata.artists : track.artists,
+      albumUri: metadata.albumUri || track.albumUri,
+      releaseDate: metadata.releaseDate || track.releaseDate,
+    };
+    this.cache.set(key, result);
+    return result;
+  }
   async artistGenres(track, job) {
-    const ids = track.artists
-      .map((a) => a.uri)
-      .filter((uri) => /^spotify:artist:[A-Za-z0-9]{22}$/.test(uri));
+    let identified = track;
+    if (
+      !track.artists.some((a) => /^spotify:artist:[A-Za-z0-9]{22}$/.test(a.uri))
+    )
+      identified = await this.identifyTrack(track, job);
+    const ids = [
+      ...new Set(
+        identified.artists
+          .map((a) => a.uri)
+          .filter((uri) => /^spotify:artist:[A-Za-z0-9]{22}$/.test(uri)),
+      ),
+    ];
+    if (!ids.length) throw new ReadError("Artist identifiers unavailable");
     const tags = [];
     for (const uri of ids) {
       check(job);
-      const { id } = idFromUri(uri, "artist"),
-        key = `artist-genres:${id}`;
+      const key = `artist-genres:${uri}`;
       let genres = this.cache.get(key);
       if (!genres) {
-        const artist = await this.spotify(`/artists/${id}`);
-        genres = genreTags(artist?.genres || []);
-        this.cache.set(key, genres, 7 * 86400000);
+        let shared = this.inflight.get(key);
+        if (!shared) {
+          shared = (async () => {
+            try {
+              const artist = await this.native("getArtist", uri);
+              const values = nativeGenres(artist);
+              if (values.length) return values;
+            } catch (error) {
+              if (status(error) === 429) throw error;
+            }
+            // Avoid repeating an unavailable Web-API artist request for every track by this artist.
+            if ((this.webUnavailable.get(uri) || 0) > Date.now())
+              throw new ReadError("Web artist genres unavailable");
+            try {
+              const { id } = idFromUri(uri, "artist");
+              const artist = await this.spotify(`/artists/${id}`);
+              return genreTags(artist?.genres || []);
+            } catch (error) {
+              if ([401, 403, 404].includes(status(error)))
+                this.webUnavailable.set(uri, Date.now() + 300000);
+              throw error;
+            }
+          })();
+          this.inflight.set(key, shared);
+          shared.finally(() => this.inflight.delete(key)).catch(() => {});
+        }
+        genres = await shared;
+        if (genres.length) this.cache.set(key, genres, 7 * 86400000);
       }
       tags.push(...genres);
     }
+    check(job);
     return genreTags(tags);
   }
   async lastfm(params, key) {
@@ -219,27 +506,32 @@ export class DataClient {
     const value = await this.request(
       `https://ws.audioscrobbler.com/2.0/?${query}`,
     );
-    if (value?.error)
-      throw new Error(
+    if (value?.error) {
+      const error = new Error(
         `Last.fm rejected this request (code ${Number(value.error) || 0}). Check your API key and username.`,
       );
+      error.providerCode = Number(value.error);
+      throw error;
+    }
     return value;
   }
   async genres(track, options = {}, job) {
     check(job);
     const strategy = options.lastfmFirst ? "lastfm-first" : "spotify-first";
-    const key = `genres:${strategy}:${options.key ? "lastfm" : "no-key"}:${track.uri}`;
-    const cached = this.cache.get(key);
+    const key = `genres:${strategy}:${options.key ? "lastfm" : "no-key"}:${track.uri}`,
+      cached = this.cache.get(key);
     if (cached) return { ...track, ...cached };
     let tags = [],
       source = "Unknown",
-      error = null;
+      failure = null;
     const spotify = async () => {
       try {
         tags = await this.artistGenres(track, job);
         if (tags.length) source = "Spotify artist genres";
-      } catch (e) {
-        error = e;
+      } catch (error) {
+        check(job);
+        if (status(error) === 429) throw error;
+        failure = error;
       }
     };
     const lastfm = async () => {
@@ -265,7 +557,13 @@ export class DataClient {
         { method: "artist.gettoptags", artist, autocorrect: "1" },
       ]) {
         check(job);
-        const result = await this.lastfm(params, options.key);
+        let result;
+        try {
+          result = await this.lastfm(params, options.key);
+        } catch (error) {
+          if (error.providerCode === 6 || error.providerCode === 7) continue;
+          throw error;
+        }
         tags = genreTags(result?.toptags?.tag || []);
         if (tags.length) {
           source = `Last.fm ${params.method.split(".")[0]} tags`;
@@ -281,10 +579,18 @@ export class DataClient {
       if (!tags.length) await lastfm();
     }
     check(job);
-    if (!tags.length && error && !options.key)
-      source = "Unknown — Spotify artist genres unavailable";
-    const value = { genres: tags, genreSource: source };
-    this.cache.set(key, value, tags.length ? 7 * 86400000 : 3600000);
+    const value = {
+      genres: tags,
+      genreSource: source,
+      genreStatus: tags.length
+        ? ""
+        : failure
+          ? `Spotify genre lookup unavailable (${reason(failure)}). Add your own Last.fm key for title/artist tag lookup.`
+          : "No genre labels were supplied by the provider.",
+    };
+    // Negative/failed results are deliberately not cached across retries.
+    if (tags.length) this.cache.set(key, value, 7 * 86400000);
+    if (!options.deferSave) this.cache.save();
     return { ...track, ...value };
   }
   async classify(tracks, options, job, progress = (_message) => {}) {
@@ -294,7 +600,11 @@ export class DataClient {
         tracks,
         2,
         async (track) => {
-          const value = await this.genres(track, options, job);
+          const value = await this.genres(
+            track,
+            { ...options, deferSave: true },
+            job,
+          );
           progress(`Classified ${++completed} of ${tracks.length}`);
           return value;
         },
@@ -307,12 +617,23 @@ export class DataClient {
   async genreInfo(name) {
     const slug = name.toLowerCase().replace(/:/g, "").replace(/ /g, "-");
     if (!/^[a-z0-9&'._+-]{1,120}$/.test(slug))
-      throw new Error("No genre directory page is available for this name.");
-    const data = await this.request(
-      `https://lucasoe.github.io/spicetify-genres/api/${encodeURIComponent(slug)}.json`,
-    );
+      throw new ReadError(
+        "No genre directory page is available for this name.",
+      );
+    let data;
+    try {
+      data = await this.request(
+        `https://lucasoe.github.io/spicetify-genres/api/${encodeURIComponent(slug)}.json`,
+      );
+    } catch (error) {
+      if (status(error) === 404)
+        throw new ReadError(
+          `The genre directory has no page for “${name}”. Your track lookup is still available.`,
+        );
+      throw error;
+    }
     if (!data?.pageProps)
-      throw new Error("Genre directory returned an invalid page.");
+      throw new ReadError("Genre directory returned an invalid page.");
     return data.pageProps;
   }
   async top(provider, username, key, range = "month", kind = "tracks") {

@@ -1,6 +1,6 @@
 # Spotify 9.1.94.1929 compatibility preview
 
-Module version: `0.10.0-api2.9.1.94.8` (version code 25), arm64 API-2 preview.
+Module version: `0.10.0-api2.9.1.94.9` (version code 26), arm64 API-2 preview.
 
 The first preview APK is withdrawn. The supplied framework log shows Android rejecting its `classes17.dex` before either Xposed entry point loads: the file is 5,767,168 bytes while its header requires 6,984,980. Inspection of the distributed APK confirms that truncated entry; it is a partial duplicate of `classes15.dex`. APK signing verification did not detect this DEX-level problem. Revision 2 is a clean CI rebuild, with DEX integrity and entry-point checks required before artifact upload. This addresses the observed loading blocker; device feature testing is still required.
 
@@ -98,3 +98,12 @@ Both libnode.so and libnative-lib.so declare libc++_shared.so as a required ELF 
 The R7 device diagnostic identifies `UnsatisfiedLinkError: Attempt to load writable file` for extracted libc++_shared.so. Extract bootstrap and renderer libraries, Node add-ons and bundled runtime files using a shared atomic writer. Open a new temporary file, mark it read-only before writing through the open descriptor, sync and close it, then atomically replace the cache path. Recreate prior writable caches directly from module assets without requiring Spotify data to be cleared. This preserves the R7 dependency order and startup diagnostics. Test sealing during writes, replacement of read-only files and failure atomicity.
 
 Queue history is now embedded directly in `layout_queue_sheet_content`, above Spotify's current/upcoming list, using the confirmed native layout hierarchy in 9.1.94. Remove the drawer history entry and the separate now-playing history button. A bounded history section keeps native queue rows, Edit, reordering and footer controls available, with older history scrolling inside the same sheet. Observe playback transitions while the sheet is attached and import native previous tracks when opened. No changes are made to the native upcoming queue or drag positions.
+
+## Revision 9: glass alignment, readable pills and custom timers
+
+- Share the Home header backdrop between profile/avatar and category containers. Clear only the row/gradient fills, preserve individual chip fills, and restore originals when glass is disabled.
+- Lift glass navigation using its original margin plus the system navigation inset and 8dp spacing; restore original margin/tint on disable.
+- Give feature buttons explicit compact text, padding and backgrounds; lay Bookmark actions/categories out at intrinsic widths in horizontal scroll rows so all labels can be read.
+- Restore custom sleep timers through a native manager from the drawer and Spotify Plus Manage timers. Preserve the saved custom_sleep_timers preferences, allow one-time minute/hour durations, preset saving, reordering, removal, active countdown and cancel. Use Spotify's own media session to pause at a monotonic exact alarm deadline with a handler backup; generation tokens suppress cancelled/replaced callbacks. Spotify's process must remain active during playback. This path avoids changed obfuscated native duration menu internals on Android 14+. It does not replace Spotify's built-in end-of-track timer.
+
+Reference reviewed: LeNerd46/spotifyplus-extensions/sleep-timer (presets, minutes/hours, one-time timers). The pinned API-2 host does not expose that extension's newer SleepTimer API, so its distribution is not blindly bundled. Device verification remains required.

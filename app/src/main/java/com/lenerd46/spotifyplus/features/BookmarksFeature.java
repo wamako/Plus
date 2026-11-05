@@ -45,10 +45,10 @@ public final class BookmarksFeature {
         Page(Activity a,LinearLayout root){
             activity=a;counts=FeatureSheets.text(a,"",13);root.addView(counts);
             LinearLayout tools=new LinearLayout(a);edit=FeatureSheets.button(a,"Edit",()->{editing=!editing;if(editing)filter="all";reload();});
-            tools.addView(edit,new LinearLayout.LayoutParams(0,-2,1));tools.addView(FeatureSheets.button(a,"Add link",this::addLink),new LinearLayout.LayoutParams(0,-2,1));
-            undo=FeatureSheets.button(a,"Undo",()->{try{if(store().undo(removed)){removed=null;reload();}}catch(Exception e){FeatureSheets.toast("Could not restore bookmark");}});tools.addView(undo,new LinearLayout.LayoutParams(0,-2,1));root.addView(tools);
+            tools.addView(edit,new LinearLayout.LayoutParams(-2,-2));tools.addView(FeatureSheets.button(a,"Add link",this::addLink),new LinearLayout.LayoutParams(-2,-2));
+            undo=FeatureSheets.button(a,"Undo",()->{try{if(store().undo(removed)){removed=null;reload();}}catch(Exception e){FeatureSheets.toast("Could not restore bookmark");}});tools.addView(undo,new LinearLayout.LayoutParams(-2,-2));FeatureSheets.pillRow(root,tools);
             LinearLayout filters=new LinearLayout(a);String[] types={"all","track","album","artist"},names={"All","Songs","Albums","Artists"};
-            for(int i=0;i<types.length;i++){final String type=types[i];filters.addView(FeatureSheets.button(a,names[i],()->{if(editing){FeatureSheets.toast("Finish editing to filter bookmarks");return;}filter=type;reload();}),new LinearLayout.LayoutParams(0,-2,1));}root.addView(filters);
+            for(int i=0;i<types.length;i++){final String type=types[i];filters.addView(FeatureSheets.button(a,names[i],()->{if(editing){FeatureSheets.toast("Finish editing to filter bookmarks");return;}filter=type;reload();}),new LinearLayout.LayoutParams(-2,-2));}FeatureSheets.pillRow(root,filters);
             empty=FeatureSheets.text(a,"",16);empty.setPadding(0,FeatureSheets.dp(a,24),0,0);root.addView(empty);
             list=new ListView(a);list.setDivider(null);list.setAdapter(this);root.addView(list,new LinearLayout.LayoutParams(-1,0,1));reload();
         }

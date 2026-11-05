@@ -15,9 +15,9 @@ public final class GlassStyle {
     private static SharedPreferences prefs;
     private static final Map<View,Saved> changed=new WeakHashMap<>();
     private static final class Saved {
-        final ViewGroup.LayoutParams layout; final int marginLeft,marginRight;
+        final ViewGroup.LayoutParams layout; final int marginLeft,marginRight,marginBottom;final android.content.res.ColorStateList tint;
         final Drawable.ConstantState state;final Drawable original;final boolean empty; final int left,top,right,bottom;
-        Saved(View view){layout=view.getLayoutParams();marginLeft=layout instanceof ViewGroup.MarginLayoutParams m?m.leftMargin:0;marginRight=layout instanceof ViewGroup.MarginLayoutParams m?m.rightMargin:0;Drawable bg=view.getBackground();state=bg==null?null:bg.getConstantState();original=bg;empty=bg==null;left=view.getPaddingLeft();top=view.getPaddingTop();right=view.getPaddingRight();bottom=view.getPaddingBottom();}
+        Saved(View view){tint=view.getBackgroundTintList();layout=view.getLayoutParams();marginBottom=layout instanceof ViewGroup.MarginLayoutParams m?m.bottomMargin:0;marginLeft=layout instanceof ViewGroup.MarginLayoutParams m?m.leftMargin:0;marginRight=layout instanceof ViewGroup.MarginLayoutParams m?m.rightMargin:0;Drawable bg=view.getBackground();state=bg==null?null:bg.getConstantState();original=bg;empty=bg==null;left=view.getPaddingLeft();top=view.getPaddingTop();right=view.getPaddingRight();bottom=view.getPaddingBottom();}
         Drawable restore(View v){return state!=null?state.newDrawable(v.getResources()):original;}
     }
     private GlassStyle(){}
@@ -27,15 +27,20 @@ public final class GlassStyle {
         String resource="";try{if(view.getId()!=View.NO_ID)resource=view.getResources().getResourceEntryName(view.getId());}catch(Exception ignored){}
         String category=GlassTargets.category(view.getClass().getName(),resource,view.isClickable());
         boolean enabled=category!=null&&prefs.getBoolean("enabled",false)&&prefs.getBoolean(category,true);
+        if(view.getClass().getName().toLowerCase(java.util.Locale.ROOT).endsWith("appbarlayout"))HeaderLayers.apply(view,enabled||com.lenerd46.spotifyplus.hooks.ThemeHook.usesAnimatedBackground());
         Saved old=changed.get(view);
-        if(!enabled){if(old!=null){view.setBackground(old.empty?null:old.restore(view));view.setPadding(old.left,old.top,old.right,old.bottom);if(view.getLayoutParams() instanceof ViewGroup.MarginLayoutParams m){m.leftMargin=old.marginLeft;m.rightMargin=old.marginRight;view.setLayoutParams(m);}changed.remove(view);}return;}
+        if(!enabled){if(old!=null){view.setBackground(old.empty?null:old.restore(view));view.setPadding(old.left,old.top,old.right,old.bottom);view.setBackgroundTintList(old.tint);if(view.getLayoutParams() instanceof ViewGroup.MarginLayoutParams m){m.leftMargin=old.marginLeft;m.rightMargin=old.marginRight;m.bottomMargin=old.marginBottom;view.setLayoutParams(m);}changed.remove(view);}return;}
         if(old==null){old=new Saved(view);changed.put(view,old);}
-        if(old!=null && view.getBackground() instanceof Surface surface && surface.intensity==prefs.getInt("intensity",50))return;
         if (isNavigation(resource) && view.getLayoutParams() instanceof ViewGroup.MarginLayoutParams m) {
             m.leftMargin=old.marginLeft+FeatureSheets.dp(view.getContext(),12);
             m.rightMargin=old.marginRight+FeatureSheets.dp(view.getContext(),12);
-            view.setLayoutParams(m);
+            android.view.WindowInsets insets=view.getRootWindowInsets();
+            int systemBottom=insets==null?0:insets.getInsets(WindowInsets.Type.navigationBars()).bottom;
+            int bottom=old.marginBottom+systemBottom+FeatureSheets.dp(view.getContext(),8);
+            if(m.bottomMargin!=bottom){m.bottomMargin=bottom;view.setLayoutParams(m);}
         }
+        view.setBackgroundTintList(null);
+        if(view.getBackground() instanceof Surface surface && surface.intensity==prefs.getInt("intensity",50))return;
         float radius=FeatureSheets.dp(view.getContext(),category.equals("headers")?20:40);
         view.setBackground(new Surface(view,radius,prefs.getInt("intensity",50)));
         view.setPadding(old.left,old.top,old.right,old.bottom);

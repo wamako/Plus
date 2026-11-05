@@ -14,7 +14,20 @@ public final class FeatureSheets {
     public static void close(){Dialog dialog=current.get();if(dialog!=null)dialog.dismiss();}
     public static int dp(Context c,int value){return Math.round(value*c.getResources().getDisplayMetrics().density);}
     public static TextView text(Context c,String label,int size){TextView t=new TextView(c);t.setText(label);t.setTextSize(size);t.setTextColor(Color.WHITE);return t;}
-    public static Button button(Context c,String label,Runnable action){Button b=new Button(c);b.setText(label);b.setAllCaps(false);b.setTextColor(Color.WHITE);b.setOnClickListener(v->action.run());return b;}
+    public static Button button(Context c,String label,Runnable action){
+        Button b=new Button(c);b.setText(label);b.setAllCaps(false);b.setTextSize(14);b.setTypeface(android.graphics.Typeface.DEFAULT,1);
+        b.setMinWidth(0);b.setMinimumWidth(0);b.setMinHeight(dp(c,44));b.setMinimumHeight(dp(c,44));
+        b.setPadding(dp(c,14),dp(c,8),dp(c,14),dp(c,8));b.setSingleLine(false);b.setMaxLines(2);b.setEllipsize(null);
+        b.setTextColor(new android.content.res.ColorStateList(new int[][]{{-android.R.attr.state_enabled},{}},new int[]{0xff8e96a5,Color.WHITE}));
+        GradientDrawable background=new GradientDrawable();background.setColor(0xff293142);background.setCornerRadius(dp(c,24));background.setStroke(dp(c,1),0xff727b91);
+        b.setBackground(new android.graphics.drawable.RippleDrawable(android.content.res.ColorStateList.valueOf(0x33ffffff),background,null));
+        b.setOnClickListener(v->action.run());return b;
+    }
+    public static void pillRow(LinearLayout root,LinearLayout row){
+        HorizontalScrollView scroll=new HorizontalScrollView(root.getContext());scroll.setHorizontalScrollBarEnabled(false);scroll.setFillViewport(true);
+        row.setPadding(0,dp(root.getContext(),4),0,dp(root.getContext(),4));scroll.addView(row);root.addView(scroll,new LinearLayout.LayoutParams(-1,-2));
+    }
+
     public static LinearLayout column(Context c){LinearLayout v=new LinearLayout(c);v.setOrientation(LinearLayout.VERTICAL);return v;}
     public static void toast(String message){Activity a=References.currentActivity;if(a!=null)a.runOnUiThread(()->Toast.makeText(a,message,Toast.LENGTH_LONG).show());}
     public static Dialog show(String title, java.util.function.Consumer<LinearLayout> content) {

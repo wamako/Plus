@@ -77,7 +77,7 @@ public class ThemeHook extends SpotifyHook {
         return themeEnabled && animatedBackgroundEnabled ? Color.TRANSPARENT : BACKGROUND;
     }
 
-    static boolean usesAnimatedBackground() { return themeEnabled && animatedBackgroundEnabled; }
+    public static boolean usesAnimatedBackground() { return themeEnabled && animatedBackgroundEnabled; }
     private static int textColor() { return usesAnimatedBackground() ? AnimatedThemePalette.TEXT : TEXT; }
     private static int subduedColor() { return usesAnimatedBackground() ? AnimatedThemePalette.SUBDUED : TEXT_SUBDUED; }
     private static int surfaceColor() { return usesAnimatedBackground() ? AnimatedThemePalette.SURFACE : SURFACE; }
@@ -635,6 +635,7 @@ public class ThemeHook extends SpotifyHook {
 
     private static void applyHomeHeaderPalette(View appBar) {
         if (!themeEnabled) return;
+        com.lenerd46.spotifyplus.features.HeaderLayers.apply(appBar,usesAnimatedBackground());
         // The app bar owns elevation/scroll drawables whose cached colors need
         // not equal the palette recorded when the view was constructed. Bind
         // this known background role directly, preserving the existing shape.

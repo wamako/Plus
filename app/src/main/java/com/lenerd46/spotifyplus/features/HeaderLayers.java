@@ -10,11 +10,11 @@ public final class HeaderLayers {
     private HeaderLayers(){}
     public static boolean isHomeHeader(View root){
         String name="";try{if(root.getId()!=View.NO_ID)name=root.getResources().getResourceEntryName(root.getId());}catch(Exception ignored){}
-        if(name.equals("filter_chips_container"))return true;
+        if(name.equals("filter_chips_container")||name.equals("filters_container"))return true;
         if(root instanceof ViewGroup group)for(int i=0;i<group.getChildCount();i++)if(isHomeHeader(group.getChildAt(i)))return true;
         return false;
     }
-    public static void apply(View root,boolean glass){if(isHomeHeader(root))visit(root,glass);}
+    public static void apply(View root,boolean glass){if(isHomeHeader(root)){HomeHeaderInsets.observe(root);visit(root,glass);}}
     private static void visit(View root,boolean glass){
         String name="";try{if(root.getId()!=View.NO_ID)name=root.getResources().getResourceEntryName(root.getId());}catch(Exception ignored){}
         if(name.equals("filter_chips_container")||name.equals("filter_row")||name.equals("filter_row_start_gradient")||name.equals("gradient")){

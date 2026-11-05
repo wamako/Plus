@@ -1,6 +1,6 @@
 # Spotify 9.1.94.1929 compatibility preview
 
-Module version: `0.10.0-api2.9.1.94.9` (version code 26), arm64 API-2 preview.
+Module version: `0.10.0-api2.9.1.94.10` (version code 27), arm64 API-2 preview.
 
 The first preview APK is withdrawn. The supplied framework log shows Android rejecting its `classes17.dex` before either Xposed entry point loads: the file is 5,767,168 bytes while its header requires 6,984,980. Inspection of the distributed APK confirms that truncated entry; it is a partial duplicate of `classes15.dex`. APK signing verification did not detect this DEX-level problem. Revision 2 is a clean CI rebuild, with DEX integrity and entry-point checks required before artifact upload. This addresses the observed loading blocker; device feature testing is still required.
 
@@ -107,3 +107,11 @@ Queue history is now embedded directly in `layout_queue_sheet_content`, above Sp
 - Restore custom sleep timers through a native manager from the drawer and Spotify Plus Manage timers. Preserve the saved custom_sleep_timers preferences, allow one-time minute/hour durations, preset saving, reordering, removal, active countdown and cancel. Use Spotify's own media session to pause at a monotonic exact alarm deadline with a handler backup; generation tokens suppress cancelled/replaced callbacks. Spotify's process must remain active during playback. This path avoids changed obfuscated native duration menu internals on Android 14+. It does not replace Spotify's built-in end-of-track timer.
 
 Reference reviewed: LeNerd46/spotifyplus-extensions/sleep-timer (presets, minutes/hours, one-time timers). The pinned API-2 host does not expose that extension's newer SleepTimer API, so its distribution is not blindly bundled. Device verification remains required.
+
+## Revision 10: native player timer presets and safe Home header
+
+Audit of the supplied 9.1.94 APK confirms the sleep-menu component's createState is now a one-argument instance method, not the two-argument static method expected by the old hook. Resolve it from its full semantic signature and directly invoked duration/list/state constructors. During that builder only, augment the native state constructor's list with saved durations, encoded by Spotify's own duration factory. Retain native row actions, default rows, end-of-track and cancel rows. Deduplicate amounts and insert extras before special rows. Native duration requests cancel the manager's separate one-time alarm so selecting a native duration supersedes it. The manager now has Save preset for player menu without starting playback/timing. Reopen the native menu after saving.
+
+Home XML has a collapsible 24dp toolbar spacer followed by filters_container. Protect the measured row against the status/cutout inset plus 4dp using a non-accumulating top margin; account for an offset already applied by this hook. Observe layout/inset changes and preserve current View padding during background replacement instead of replaying padding captured before native inset handling. Retain R9's shared header background and bottom navigation spacing.
+
+Offline evidence: supplied APK classes11 timer state builder/list construction, classes8 duration request and snackbar coroutine, and res/layout/funkis_home.xml. Obfuscated names are observed for verification, not embedded in runtime hooks. Device confirmation remains required.

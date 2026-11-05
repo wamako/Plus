@@ -58,7 +58,7 @@ public class SleepTimerHook extends SpotifyHook {
     @Override
     protected void hook() {
         com.lenerd46.spotifyplus.features.CustomSleepTimer.initialize(context);
-        if(android.os.Build.VERSION.SDK_INT>=34)return;
+        if(android.os.Build.VERSION.SDK_INT>=34){new NativeSleepTimerMenuHook(context).init(lpparm,bridge);return;}
         try {
             var timeUnitCandidates = bridge.findClass(FindClass.create().matcher(ClassMatcher.create().superClass("java.lang.Enum").addField(FieldMatcher.create().type("java.util.concurrent.TimeUnit"))));
             Class<?> timeUnit = requireSingleClass("Spotify duration-unit enum", timeUnitCandidates, "enum subclass containing a java.util.concurrent.TimeUnit field").getInstance(lpparm.classLoader);

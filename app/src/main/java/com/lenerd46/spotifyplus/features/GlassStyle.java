@@ -42,8 +42,9 @@ public final class GlassStyle {
         view.setBackgroundTintList(null);
         if(view.getBackground() instanceof Surface surface && surface.intensity==prefs.getInt("intensity",50))return;
         float radius=FeatureSheets.dp(view.getContext(),category.equals("headers")?20:40);
+        int left=view.getPaddingLeft(),top=view.getPaddingTop(),right=view.getPaddingRight(),bottom=view.getPaddingBottom();
         view.setBackground(new Surface(view,radius,prefs.getInt("intensity",50)));
-        view.setPadding(old.left,old.top,old.right,old.bottom);
+        view.setPadding(left,top,right,bottom);
     }
     private static boolean isNavigation(String resource){return resource.contains("bottom_navigation")||resource.equals("navigation_bar")||resource.equals("bottom_nav");}
     public static void observe(Activity activity){

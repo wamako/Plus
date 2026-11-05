@@ -73,6 +73,8 @@ def main():
     replace(utils,'classLoader.loadClass("p.ibl0").getMethod("c")','wrapper.getClass().getMethod("c")')
     replace(utils,'classLoader.loadClass("p.ibl0").getMethod("b")','wrapper.getClass().getMethod("b")')
     replace(utils,'Class<?> optional = state.getClass().getClassLoader().loadClass("p.ibl0");\n            Object position = model.getMethod("positionAsOfTimestamp").invoke(state);','Object position = model.getMethod("positionAsOfTimestamp").invoke(state);\n            if (position == null) return -1;\n            Class<?> optional = position.getClass();')
+    replace(utils, 'String imageId = metadata.get("image_large_url");', 'String imageId = metadata.get("image_large_url");\n                    if (imageId == null || imageId.isEmpty()) imageId = metadata.get("image_url");')
+    replace(utils, 'imageId == null ? null : imageId.replace("spotify:image:", "https://i.scdn.co/image/")', 'com.lenerd46.spotifyplus.ArtworkSource.url(imageId)')
     targets=generated/'com/lenerd/spotifyplus/module/scripting/UITargets.java'
     replace(targets,'"9.1.82.2160".equals(spotifyVersion)','"9.1.94.1929".equals(spotifyVersion)')
     manager=generated/'com/lenerd/spotifyplus/module/scripting/ScriptManager.java'

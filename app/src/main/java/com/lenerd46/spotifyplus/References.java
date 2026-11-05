@@ -92,6 +92,7 @@ public class References {
                     String album = md.get("album_title");
                     String color = md.get("extracted_color");
                     String imageId = md.get("image_large_url");
+                    if (imageId == null || imageId.isEmpty()) imageId = md.get("image_url");
                     long position = 0;
                     long timestamp = 0;
 

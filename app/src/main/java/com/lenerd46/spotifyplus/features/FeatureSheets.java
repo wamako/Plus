@@ -28,7 +28,10 @@ public final class FeatureSheets {
         TextView heading=text(a,title,26);heading.setTypeface(null,1);
         header.addView(heading,new LinearLayout.LayoutParams(0,dp(a,64),1));
         header.addView(button(a,"Close",dialog::dismiss));root.addView(header);
-        content.accept(root);dialog.setContentView(root);dialog.show();current=new java.lang.ref.WeakReference<>(dialog);
+        content.accept(root);
+        ScrollView scroll=new ScrollView(a);scroll.setFillViewport(true);scroll.addView(root);scroll.setBackgroundColor(0xff171f24);
+        scroll.setOnApplyWindowInsetsListener((v,insets)->{android.graphics.Insets bars=insets.getInsets(WindowInsets.Type.systemBars()|WindowInsets.Type.displayCutout());v.setPadding(bars.left,bars.top,bars.right,bars.bottom);return insets;});
+        dialog.setContentView(scroll);dialog.show();current=new java.lang.ref.WeakReference<>(dialog);
         dialog.setOnDismissListener(d->{if(current.get()==dialog)current.clear();});
         if(dialog.getWindow()!=null)dialog.getWindow().setLayout(-1,-1);
         return dialog;

@@ -3037,7 +3037,7 @@ public class BeautifulLyricsHook extends SpotifyHook {
         HttpURLConnection connection = null;
         java.io.File download = null;
         try {
-            connection = (HttpURLConnection) new URL("https://i.scdn.co/image/" + id).openConnection();
+            connection = (HttpURLConnection) new URL(com.lenerd46.spotifyplus.ArtworkSource.url(id)).openConnection();
             connection.setConnectTimeout(10000);
             connection.setReadTimeout(10000);
             download = java.io.File.createTempFile("lyrics-cover-", ".img", context.getCacheDir());

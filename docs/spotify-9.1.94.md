@@ -1,6 +1,6 @@
 # Spotify 9.1.94.1929 compatibility preview
 
-Module version: `0.10.0-api2.9.1.94.5` (version code 22), arm64 API-2 preview.
+Module version: `0.10.0-api2.9.1.94.6` (version code 23), arm64 API-2 preview.
 
 The first preview APK is withdrawn. The supplied framework log shows Android rejecting its `classes17.dex` before either Xposed entry point loads: the file is 5,767,168 bytes while its header requires 6,984,980. Inspection of the distributed APK confirms that truncated entry; it is a partial duplicate of `classes15.dex`. APK signing verification did not detect this DEX-level problem. Revision 2 is a clean CI rebuild, with DEX integrity and entry-point checks required before artifact upload. This addresses the observed loading blocker; device feature testing is still required.
 
@@ -78,3 +78,13 @@ Compatibility adapters use the existing 9.1.94 drawer/menu discovery, named lyri
 Sources: upstream runtime `LeNerd46/SpotifyPlus@615455bf0a7a81cd2d01382a1f1e9e0a699fb082`; Node binary donor `v0.10-preview-1`, APK SHA-256 `d94cabfe0f6fdeb07a81da60030bf8e63eab4c3a5339bc99fcda81028788cf48`; [Beautiful Lyrics](https://github.com/LeNerd46/beautiful-lyrics-spotify-plus) at `6e60d0a038149c2df72664275d35beb2916cafd1`, including its MIT license. Generated dependencies and binary assets are excluded from Git and recreated by `tools/prepare_api2.py` using these pins. The distribution manifest's `dist/index.js` path is normalized to its actual bundled `index.js` location. Marketplace metadata loading awaits cache reads, fixing an upstream Promise-to-JSON parsing error caught by its tests.
 
 Validation must include the upstream runtime, UI, native-installer and marketplace suites, local history regression tests, CMake/Android build, packaged DEX and native/extension asset checks. This is a larger experimental migration and must be verified on the reported Android 17 / LSPatch phone before merging.
+
+## Revision 6: artwork and glass
+
+- Glass preferences use explicit large ON/OFF buttons, avoiding Spotify's theme shrinking platform switches. Settings scroll and respect system bar insets.
+- Observe resumed activities and refresh native surfaces as views are created or rebound. Target the confirmed `navigation_bar` and `now_playing_bar_layout` IDs, not their anchors/inset spacers. Navigation uses inset pill geometry, a sampled frosted backdrop and a brighter rim. This is native surface styling; Compose content is not replaced.
+- Normalize Spotify image URIs, raw IDs and HTTPS artwork without inserting a stock album or double-prefixing image URLs. Fall back from large artwork to image_url.
+- Feed animated theme backgrounds from the named PlayerState builder on 9.1.94, retaining the older Rx adapter.
+- Attach animated cover tracking before player state is ready. Keep the static cover visible until the first video frame, and on errors, track changes and release. Use album/artist-matched motion lookup shared with immersive artwork instead of the first song search result. Motion art remains dependent on a matching provider asset.
+
+Device verification under LSPatch is still required for glass appearance, artwork playback and API-2 surfaces.

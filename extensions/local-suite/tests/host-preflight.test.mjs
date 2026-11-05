@@ -1,3 +1,5 @@
+import { collectionResponse } from "./fixtures/collection.mjs";
+import { LIKED_URI } from "../shared/liked-songs.mjs";
 import test from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs/promises";
@@ -54,8 +56,10 @@ async function until(predicate, label) {
   assert.fail(`Did not render ${label}`);
 }
 
-for (const nativeReads of [false, true]) {
-  test(`actual R10 loader: ${nativeReads ? "native album/genre reads with public GET 404" : "public read fallback"}, four sandboxes and independent cleanup`, async () => {
+for (const mode of ["web", "native", "likes"]) {
+  const nativeReads = mode !== "web",
+    likedReads = mode === "likes";
+  test(`actual R10 loader: ${likedReads ? "dedicated Liked Songs via paged collection" : nativeReads ? "native album/genre reads with public GET 404" : "public read fallback"}, four sandboxes and independent cleanup`, async () => {
     const errors = [],
       values = new Map(),
       http = [],
@@ -115,7 +119,7 @@ for (const nativeReads of [false, true]) {
         if (operation === "player.state")
           return {
             trackUri: uri(1),
-            contextUri: nativeReads ? album.uri : playlist,
+            contextUri: nativeReads && !likedReads ? album.uri : playlist,
             positionMs: 1000,
             isPlaying: true,
             isPaused: false,
@@ -125,6 +129,11 @@ for (const nativeReads of [false, true]) {
         throw new Error(`Unexpected native operation ${operation}`);
       },
       requestApi(operation, args) {
+        if (likedReads && operation === "user.get")
+          return Promise.resolve({
+            uri: "spotify:user:self",
+            username: "self",
+          });
         if (nativeReads && operation === "album.get")
           return Promise.resolve({
             name: "Native album",
@@ -180,6 +189,7 @@ for (const nativeReads of [false, true]) {
       navigateBack() {},
     };
     const originalFetch = globalThis.fetch;
+    let likedPages = 0;
     globalThis.fetch = async (input, options = {}) => {
       const url = new URL(String(input));
       http.push({ url, options });
@@ -212,6 +222,24 @@ for (const nativeReads of [false, true]) {
         else if (url.pathname.startsWith("/v1/artists/"))
           result = { genres: ["hip hop"] };
         else assert.fail(`Unexpected read ${url}`);
+      } else if (
+        url.hostname === "spclient.wg.spotify.com" &&
+        url.pathname === "/collection/v2/paging"
+      ) {
+        assert.equal(options.method, "POST");
+        assert.equal(options.headers.Authorization, "Bearer secret-token");
+        likedPages++;
+        const body = Buffer.from(options.body);
+        assert.ok(body.includes(Buffer.from("collection")));
+        assert.ok(body.includes(Buffer.from("self")));
+        const bytes =
+          likedPages % 2 === 1
+            ? collectionResponse(
+                [{ uri: uri(1), seconds: 1700000000 }, { uri: album.uri }],
+                "second",
+              )
+            : collectionResponse([{ uri: uri(2) }, { uri: uri(3) }]);
+        return new Response(bytes, { status: 200 });
       } else if (url.hostname === "spclient.wg.spotify.com") {
         assert.equal(options.headers.Authorization, "Bearer secret-token");
         assert.ok(url.pathname.startsWith("/metadata/4/track/"));
@@ -298,12 +326,18 @@ for (const nativeReads of [false, true]) {
       );
       assert.equal(http.length, 0);
       await open("Sort Play");
-      press("Load collection");
+      press(likedReads ? "Load Liked Songs" : "Load collection");
       await until(
         () => text(tree).includes("3 tracks in preview"),
         "sort preview",
       );
-      assert.equal(http.filter((c) => c.options.method === "POST").length, 0);
+      assert.equal(
+        http.filter(
+          (c) =>
+            c.options.method === "POST" && c.url.hostname === "api.spotify.com",
+        ).length,
+        0,
+      );
       press("Preview saving a new copy");
       await until(
         () => text(tree).includes("with 3 tracks?"),
@@ -324,7 +358,10 @@ for (const nativeReads of [false, true]) {
         () => text(tree).includes("Confirmed 3 of 3"),
         "copy completion",
       );
-      const writes = http.filter((c) => c.options.method === "POST");
+      const writes = http.filter(
+        (c) =>
+          c.options.method === "POST" && c.url.hostname === "api.spotify.com",
+      );
       assert.equal(writes.length, 2);
       assert.equal(JSON.parse(writes[0].options.body).public, false);
       assert.equal(writes[1].url.pathname, `/v1/playlists/${id(88)}/items`);
@@ -354,7 +391,7 @@ for (const nativeReads of [false, true]) {
         native.some((c) => c.operation === "navigate" && c.uri === playlist),
       );
       await open("Playlist Plus");
-      press("Load and classify genres");
+      press(likedReads ? "Load Liked Songs" : "Load and classify genres");
       await until(
         () => text(tree).includes("hip hop · 3 (100%)"),
         "genre classification",
@@ -363,11 +400,14 @@ for (const nativeReads of [false, true]) {
       await settle();
       assert.match(text(tree), /3 tracks in preview/);
       assert.equal(
-        http.filter((c) => c.options.method === "POST").length,
+        http.filter(
+          (c) =>
+            c.options.method === "POST" && c.url.hostname === "api.spotify.com",
+        ).length,
         5,
         "classifying and filtering cause no writes",
       );
-      if (nativeReads) {
+      if (nativeReads && !likedReads) {
         assert.match(text(tree), /Native album metadata/);
         assert.ok(
           http.every(
@@ -376,6 +416,18 @@ for (const nativeReads of [false, true]) {
               c.options.method === "POST",
           ),
           "native read flow never needs public GET",
+        );
+      }
+      if (likedReads) {
+        assert.match(text(tree), /Spotify saved collection/);
+        assert.equal(likedPages, 4);
+        assert.ok(
+          http.every(
+            (c) =>
+              c.url.hostname !== "api.spotify.com" ||
+              c.options.method === "POST",
+          ),
+          "likes previews do not use playlist or Web API readers",
         );
       }
       const removed = "com.wamako.genres";

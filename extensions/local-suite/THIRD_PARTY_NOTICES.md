@@ -62,3 +62,14 @@ AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
 LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
+
+## Read-only saved collection protocol references (0.1.2)
+
+The collection-v2 page fields and content type were checked against
+[collection2v2.proto](https://github.com/LargeModGames/spotatui-librespot/blob/spotatui/protocol/proto/collection2v2.proto)
+and the author's [SpClient collection paging implementation](https://github.com/LargeModGames/spotatui-librespot/blob/spotatui/core/src/spclient.rs).
+Context URI/page semantics were checked against
+[librespot SpClient](https://github.com/librespot-org/librespot/blob/dev/core/src/spclient.rs)
+and its Context/ContextPage protocol descriptors. The extension implements its
+own bounded read-only wire encoder/parser; no upstream library code is bundled,
+and no collection write, remove or delta mutation operation is implemented.

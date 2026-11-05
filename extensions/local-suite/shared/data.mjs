@@ -1,3 +1,11 @@
+import {
+  LIKED_URI,
+  likedInput,
+  validUsername,
+  encodeCollectionPage,
+  decodeCollectionPage,
+  contextPageUrl,
+} from "./liked-songs.mjs";
 import { Cache, makeHttp, mapLimit, RequestError } from "./net.mjs";
 import {
   MAX_ITEMS,
@@ -38,6 +46,7 @@ export class DataClient {
     this.cache = new Cache(api.Platform.Storage, "metadata-cache-v2", 1200);
     this.webUnavailable = new Map();
     this.inflight = new Map();
+    this.accountReads = new WeakMap();
   }
   async spotify(path, method = "GET", body) {
     if (!/^\/[A-Za-z0-9/?=&%._-]+$/.test(path))
@@ -340,7 +349,259 @@ export class DataClient {
       skipped: rows.length - tracks.length,
     };
   }
-  async collection(input, job, progress) {
+  async spotifyUsername(hint, job = {}) {
+    if (hint) {
+      if (!validUsername(hint))
+        throw new ReadError(
+          "Enter your Spotify username, not a display name or URL",
+        );
+      return hint;
+    }
+    if (!this.accountReads.has(job))
+      this.accountReads.set(job, this.resolveSpotifyUsername(job));
+    return this.accountReads.get(job);
+  }
+  async resolveSpotifyUsername(job) {
+    check(job);
+    let context;
+    try {
+      context = this.api.Player?.getState?.().contextUri;
+    } catch {}
+    const current = likedInput(context);
+    if (current?.username) return current.username;
+    const user = await this.routes(
+      "Account",
+      [
+        [
+          "Native account",
+          async () => {
+            if (typeof this.api.User?.getCurrent !== "function")
+              throw new ReadError("not exposed by this host");
+            let timer;
+            try {
+              return await Promise.race([
+                this.api.User.getCurrent(),
+                new Promise((_, reject) => {
+                  timer = setTimeout(
+                    () => reject(new ReadError("account read timed out")),
+                    17000,
+                  );
+                }),
+              ]);
+            } finally {
+              clearTimeout(timer);
+            }
+          },
+        ],
+        ["Spotify profile", () => this.spotify("/me")],
+      ],
+      job,
+    );
+    let username;
+    if (typeof user?.uri === "string")
+      try {
+        username = decodeURIComponent(
+          /^spotify:user:([^:]+)$/.exec(user.uri)?.[1] || "",
+        );
+      } catch {}
+    if (!validUsername(username)) username = user?.username || user?.id;
+    if (!validUsername(username))
+      throw new ReadError(
+        "Account username unavailable. Enter your Spotify username in the Liked Songs username field",
+      );
+    return username;
+  }
+  async likedCollection(hint, job, progress) {
+    const username = await this.spotifyUsername(hint, job),
+      rows = [],
+      seen = new Set(),
+      cursors = new Set();
+    let token = "",
+      sync = "",
+      scanned = 0;
+    while (true) {
+      check(job);
+      if (cursors.has(token))
+        throw new ReadError("Collection pagination repeated a cursor");
+      cursors.add(token);
+      if (cursors.size > 500)
+        throw new ReadError("Saved library scan exceeds 500 pages");
+      const access = this.api.Platform.Session.accessToken;
+      if (!access) throw new ReadError("Spotify session unavailable");
+      const bytes = await this.request(
+        "https://spclient.wg.spotify.com/collection/v2/paging",
+        {
+          method: "POST",
+          readOnly: true,
+          responseType: "bytes",
+          headers: {
+            Authorization: `Bearer ${access}`,
+            Accept: "application/vnd.collection-v2.spotify.proto",
+            "Content-Type": "application/vnd.collection-v2.spotify.proto",
+          },
+          body: encodeCollectionPage(username, token),
+        },
+      );
+      check(job);
+      let page;
+      try {
+        page = decodeCollectionPage(bytes);
+      } catch {
+        throw new ReadError("Incomplete or invalid saved collection response");
+      }
+      if (sync && sync !== page.sync)
+        throw new ReadError(
+          "Saved collection changed during loading; retry the read",
+        );
+      sync = page.sync;
+      scanned += page.items.length;
+      for (const item of page.items) {
+        if (item.removed || !isTrack(item.uri)) continue;
+        if (seen.has(item.uri))
+          throw new ReadError(
+            "Saved collection repeated a track; retry the read",
+          );
+        seen.add(item.uri);
+        rows.push(item);
+      }
+      if (rows.length > MAX_ITEMS || scanned > 50000)
+        throw new ReadError("Liked Songs exceeds the supported library size");
+      progress?.(
+        `Read ${rows.length} liked songs (${scanned} saved items checked)`,
+      );
+      if (!page.next) break;
+      if (!page.items.length)
+        throw new ReadError(
+          "Saved collection returned an empty nonterminal page",
+        );
+      token = page.next;
+    }
+    const tracks = (await this.hydrate(rows, job, progress)).map((track) => ({
+      ...track,
+      liked: true,
+    }));
+    return {
+      uri: LIKED_URI,
+      name: "Liked Songs",
+      tracks,
+      source: "Spotify saved collection",
+      skipped: 0,
+    };
+  }
+  async likedWeb(job, progress) {
+    const rows = await this.paged("/me/tracks", job, progress),
+      tracks = trackRows(rows).map((t) => ({ ...t, liked: true }));
+    return {
+      uri: LIKED_URI,
+      name: "Liked Songs",
+      tracks,
+      source: "Spotify saved-tracks API",
+      skipped: rows.length - tracks.length,
+    };
+  }
+  async likedContext(hint, job, progress) {
+    const username = await this.spotifyUsername(hint, job),
+      contextUri = `spotify:user:${encodeURIComponent(username)}:collection`;
+    const request = async (url) => {
+      check(job);
+      const token = this.api.Platform.Session.accessToken;
+      if (!token) throw new ReadError("Spotify session unavailable");
+      return this.request(contextPageUrl(url), {
+        headers: {
+          Authorization: `Bearer ${token}`,
+          Accept: "application/json",
+        },
+      });
+    };
+    const context = await request(`/context-resolve/v1/${contextUri}`);
+    check(job);
+    if (
+      context.loading ||
+      !Array.isArray(context.pages) ||
+      !context.pages.length
+    )
+      throw new ReadError("Liked Songs context is not fully loaded");
+    if (context.uri && context.uri !== contextUri && context.uri !== LIKED_URI)
+      throw new ReadError("Resolver returned a different collection");
+    const pages = [...context.pages],
+      scheduled = new Set(),
+      processed = new Set(),
+      seenTracks = new Set(),
+      rows = [];
+    for (const p of pages) {
+      const u = p.page_url || p.pageUrl;
+      if (u) scheduled.add(contextPageUrl(u));
+    }
+    for (let i = 0; i < pages.length; i++) {
+      check(job);
+      if (i >= 500)
+        throw new ReadError("Liked Songs context exceeds 500 pages");
+      let page = pages[i];
+      if (page.loading)
+        throw new ReadError("Liked Songs page is still loading");
+      const pageUrl = page.page_url || page.pageUrl;
+      if (pageUrl) {
+        const url = contextPageUrl(pageUrl);
+        if (processed.has(url)) throw new ReadError("Liked Songs page loop");
+        processed.add(url);
+        if (!Array.isArray(page.tracks)) page = await request(url);
+      }
+      if (page.loading || !Array.isArray(page.tracks))
+        throw new ReadError("Incomplete Liked Songs page");
+      for (const item of page.tracks) {
+        if (!isTrack(item.uri)) continue;
+        if (seenTracks.has(item.uri))
+          throw new ReadError("Liked Songs repeated a track during loading");
+        seenTracks.add(item.uri);
+        rows.push({ uri: item.uri, addedAt: null });
+      }
+      if (rows.length > MAX_ITEMS)
+        throw new ReadError("Liked Songs exceeds 10,000 tracks");
+      progress?.(`Read ${rows.length} liked songs`);
+      const next = page.next_page_url || page.nextPageUrl;
+      if (next) {
+        const url = contextPageUrl(next);
+        if (processed.has(url)) throw new ReadError("Liked Songs page loop");
+        if (!scheduled.has(url)) {
+          scheduled.add(url);
+          pages.push({ page_url: url });
+        }
+      }
+    }
+    const count = context.metadata?.track_count;
+    if (/^\d+$/.test(String(count)) && Number(count) !== rows.length)
+      throw new ReadError("Incomplete Liked Songs context track count");
+    const tracks = (await this.hydrate(rows, job, progress)).map((track) => ({
+      ...track,
+      liked: true,
+    }));
+    return {
+      uri: LIKED_URI,
+      name: "Liked Songs",
+      tracks,
+      source: "Spotify Liked Songs context",
+      skipped: 0,
+    };
+  }
+  async likedSongs(job = {}, progress, hint = "") {
+    try {
+      return await this.routes(
+        "Liked Songs",
+        [
+          ["Saved collection", () => this.likedCollection(hint, job, progress)],
+          ["Saved tracks API", () => this.likedWeb(job, progress)],
+          ["Liked Songs context", () => this.likedContext(hint, job, progress)],
+        ],
+        job,
+      );
+    } finally {
+      this.cache.save();
+    }
+  }
+  async collection(input, job, progress, options = {}) {
+    const liked = likedInput(input);
+    if (liked)
+      return this.likedSongs(job, progress, options.username || liked.username);
     const uri = spotifyUri(input),
       { kind } = idFromUri(uri);
     try {

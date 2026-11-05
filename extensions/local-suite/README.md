@@ -1,4 +1,4 @@
-# Spotify Plus local Android extensions · 0.1.1
+# Spotify Plus local Android extensions · 0.1.2
 
 Four removable **initial Android adaptations** of the requested Spicetify projects.
 Designed against the API-2 runtime shipped in Spotify Plus R10 for Spotify
@@ -6,7 +6,7 @@ Designed against the API-2 runtime shipped in Spotify Plus R10 for Spotify
 implement every feature of those projects. The working R10 APK is unchanged.
 No extension is published to a marketplace.
 
-## Update from 0.1.0
+## Update from 0.1.0 or 0.1.1
 
 Replace the four old extension folders with the four folders in this ZIP, in the
 same selected parent directory. Do not leave a second copy with the same extension
@@ -15,17 +15,35 @@ old version is still shown, force-stop and reopen Spotify. Keep the working R10
 APK; no module repatching or app data clearing is required. Local listening
 history, saved keys, and genre presets keep their existing settings keys.
 
-This release fixes the missing album reader used by both Sort Play and Playlist
-Plus. Collection reads now prefer the host's native metadata service. Genre lookup
-recovers artist identifiers from Spotify metadata and reads native artist genre
-labels before trying public Web API data. Failed/empty genre lookups are no longer
-persisted as cached results. Last.fm track-not-found responses continue to album
-and artist tags. Read failures identify the stage and HTTP status when available.
+Version 0.1.2 adds a dedicated **Load Liked Songs** button to Sort Play and
+Playlist Plus. Use that button for your saved songs, including when the playing
+context points to a generated playlist or some other collection. Liked Songs is
+not loaded through a playlist-ID endpoint. The sorter operates on a preview;
+saving creates a new playlist copy and never changes your likes or their save dates.
+
+The loader reads Spotify's paged saved collection, with the saved-tracks Web API
+and paged Liked Songs context resolver as alternate read routes. It filters out
+saved albums and removed items, keeps saved timestamps when supplied, and checks
+cursors, snapshots, duplicate entries and incomplete pages. Actual track metadata
+is hydrated through the existing native read path. Reads never call collection
+write/remove endpoints. The collection paging request uses a read-only protobuf
+POST; the network helper treats its timeout as a read failure, not an uncertain write.
+
+Account identity is detected from a personal collection context, the host's
+current-account reader, or Spotify's profile API. If detection is unavailable,
+open **Liked Songs account options** and enter your Spotify **username**, not your
+display name. The optional username is private to this extension. No password,
+access token or application key needs to be entered. Collection URIs such as
+`spotify:collection:tracks`, `spotify:user:USERNAME:collection`, and
+`https://open.spotify.com/collection/tracks` are recognized as Liked Songs. Ordinary
+playlist IDs are never silently substituted with Liked Songs.
+
+The 0.1.1 native album reader, artist-ID recovery and genre fixes remain included.
 
 ## Install on your non-root LSPatch setup
 
 1. Keep your working Spotify Plus R10 module. Do not install these files as APKs.
-2. Extract `SpotifyPlus-Local-Extensions-0.1.1.zip` into a normal, accessible
+2. Extract `SpotifyPlus-Local-Extensions-0.1.2.zip` into a normal, accessible
    directory, e.g. `Documents/SpotifyPlusLocal/` on the phone.
 3. The extracted `SpotifyPlus-Local-Extensions` directory must contain four child
    folders: `listening-stats`, `sort-play`, `genres`, and `playlist-plus`. Each child
@@ -50,12 +68,12 @@ Do not select a parent that also contains an older copy with the same extension 
 
 ## What is implemented
 
-| Extension          | Android functionality in this release                                                                                                                                                                                                                                                               | Not included from the desktop project                                                                                                                                                                                      |
-| ------------------ | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Listening Stats    | Opt-in local listening sessions; 30-second/90%-of-short-track qualification; top tracks/artists/albums; 7/30-day and all-retained ranges; daily activity bars and weekday totals; CSV/JSON clipboard export; optional Last.fm and Stats.fm top-50 reads                                             | Historical import, scrobbling, share images, draggable dashboard, full heatmap, exact listening while Spotify/module is suspended                                                                                          |
-| Sort Play          | Playlist/album/track preview; title, artist, album, release date, date-added, duration and available popularity sorting; ascending/descending; search; URI or ISRC dedupe; one track per primary artist; known explicit/clean filters; artist-aware shuffle; new private copy; append queue; export | Desktop columns/player modifications, artist discography, Last.fm play-count/taste sorting, audio features/BPM/key/energy, liked/followed filters, color sorting, AI/chat, remote integrations, in-place source reordering |
-| What’s That Genre? | Current/entered track lookup; Spotify artist genres; optional Last.fm tag fallback; descriptions and related genres from LucasOe's directory; Spotify links to artists and genre playlists                                                                                                          | Desktop player label injection, track-list columns, desktop theme modifications                                                                                                                                            |
-| Playlist Plus      | Genre classification of playlist/album; Last.fm track→album→artist fallback then Spotify artist genres; Any/All multi-tag matching; genre counts/percentages; named presets; cached classification; shuffled preview; new copy, queue append, export                                                | Desktop menu replacement, automatic playback or queue replacement, full preset interoperability with the original extension                                                                                                |
+| Extension          | Android functionality in this release                                                                                                                                                                                                                                                                           | Not included from the desktop project                                                                                                                                                                                      |
+| ------------------ | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Listening Stats    | Opt-in local listening sessions; 30-second/90%-of-short-track qualification; top tracks/artists/albums; 7/30-day and all-retained ranges; daily activity bars and weekday totals; CSV/JSON clipboard export; optional Last.fm and Stats.fm top-50 reads                                                         | Historical import, scrobbling, share images, draggable dashboard, full heatmap, exact listening while Spotify/module is suspended                                                                                          |
+| Sort Play          | Liked Songs/playlist/album/track preview; title, artist, album, release date, date-added, duration and available popularity sorting; ascending/descending; search; URI or ISRC dedupe; one track per primary artist; known explicit/clean filters; artist-aware shuffle; new private copy; append queue; export | Desktop columns/player modifications, artist discography, Last.fm play-count/taste sorting, audio features/BPM/key/energy, liked/followed filters, color sorting, AI/chat, remote integrations, in-place source reordering |
+| What’s That Genre? | Current/entered track lookup; Spotify artist genres; optional Last.fm tag fallback; descriptions and related genres from LucasOe's directory; Spotify links to artists and genre playlists                                                                                                                      | Desktop player label injection, track-list columns, desktop theme modifications                                                                                                                                            |
+| Playlist Plus      | Genre classification of Liked Songs/playlist/album; Last.fm track→album→artist fallback then Spotify artist genres; Any/All multi-tag matching; genre counts/percentages; named presets; cached classification; shuffled preview; new copy, queue append, export                                                | Desktop menu replacement, automatic playback or queue replacement, full preset interoperability with the original extension                                                                                                |
 
 ## Behavior and limits
 
@@ -130,7 +148,8 @@ Before using a large library, check on your phone:
 1. Open and close each extension, including Android Back. Existing bookmarks,
    glass styling, queue history, lyrics and timers should still behave as before.
 2. Enable local tracking, play for over 30 seconds, pause/seek/resume, reopen Stats.
-3. Load a small playlist; compare count/order; sort/shuffle without writing.
+3. Press **Load Liked Songs** and compare the loaded count to Spotify. Also load a
+   small playlist/album; compare count/order and sort/shuffle without writing.
 4. Save a copy and verify only that new copy changes. Append 1–2 tracks and verify
    they appear after the existing queue. If Spotify rejects the permissions,
    keep using read previews/exports and send the displayed error before any APK change.

@@ -1,8 +1,8 @@
-# Validation record · 0.1.1
+# Validation record · 0.1.2
 
 Validated in the build workspace on 2026-11-05.
 
-- **48 core/regression tests passed**: link validation, both playlist schemas, stable sorting,
+- **64 core/regression tests passed**: link validation, both playlist schemas, stable sorting,
   unknown values, deduplication, genre matching, shuffle, CSV escaping, listening
   qualification, pauses/seeks/buffering, retention, cancellation, cache bounds,
   network allowlist and token separation, timeout/rate-limit behavior, pagination,
@@ -11,18 +11,26 @@ Validated in the build workspace on 2026-11-05.
   order, duplicate occurrences, artist ID recovery, native genre data, all-Web-404
   behavior, missing labels, Last.fm not-found fallback, cancellation, truncated
   playlists, rate limits, and waiting for in-flight workers after a read failure.
+- New saved-track regression cases cover collection URI recognition, exact protobuf
+  request bytes, UTF-8/wire parsing, paginated liked entries, saved-album/removal
+  exclusion, saved timestamps, empty collections, 101-track Web API pagination,
+  context page chaining/preloaded pages, cursor/snapshot failures, cancellation,
+  account fallback, credential host restrictions, rate limits and read-only POST
+  error classification.
 - **TypeScript check passed** against the exact pinned R10 SDK declarations.
 - **Four API-2 bundles built** using the SDK's official transformed extension builder.
-- **Two actual host-loader/React-renderer integration tests passed**: all four bundles
+- **Three actual host-loader/React-renderer integration tests passed**: all four bundles
   loaded as unprivileged user extensions with unique registrations; no HTTP on
   install; local tracking opt-in; collection preview; stale confirmation
   invalidation; confirmed new private copy and ordered queue append through mocked
   service responses; current-track genre lookup and directory details; multi-genre
   preview; independent unload; stale callback rejection; Android Back callback;
   registration/listener/cleanup removal. One scenario supplies public read responses;
-  the other supplies actual raw native metadata shapes and makes every public Web
+  a second supplies actual raw native metadata shapes and makes every public Web
   API GET return 404. The native album/genre scenario completes without a public
-  Web API GET. Spotify writes remain mocked, permission-dependent Web API calls.
+  Web API GET. Spotify writes remain mocked, permission-dependent Web API calls. A third scenario clicks **Load Liked Songs** in both Sort Play
+  and Playlist Plus, supplies two binary saved-collection pages for each, and
+  verifies the full liked preview and genre filtering without playlist/Web GETs.
 - Android-native service operations and HTTP responses are mocked in the host
   integration test. No test was run on a physical phone, live Spotify account,
   Android emulator or live LSPatch session. Native layout, live authorization,

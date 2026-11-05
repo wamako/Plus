@@ -1,3 +1,4 @@
+import { LIKED_URI } from "../../shared/liked-songs.mjs";
 import React, { useMemo, useState } from "react";
 import { View } from "spotifyplus/react";
 import { SpotifyPlus as S } from "spotifyplus";
@@ -20,11 +21,14 @@ import {
   initialUri,
   currentContext,
   register,
+  useLikedSource,
+  LikedSongsSource,
   useGenreSettings,
   GenreSettings,
 } from "../../shared/ui";
 const client = new DataClient(S);
 function App() {
+  const liked = useLikedSource();
   const [uri, setUri] = useState(initialUri),
     [genreQuery, setGenreQuery] = useState(""),
     [genreLimit, setGenreLimit] = useState(80),
@@ -53,12 +57,37 @@ function App() {
     );
     setShuffle(null);
   }
+
+  function load(input = uri) {
+    setData(null);
+    setShuffle(null);
+    task.run(async (job, progress) => {
+      const collection = await client.collection(input, job, progress, {
+        username: liked.username.trim(),
+      });
+      const tracks = await client.classify(
+        collection.tracks,
+        { key: settings.key, lastfmFirst: true },
+        job,
+        progress,
+      );
+      return { ...collection, tracks };
+    }, setData);
+  }
   return (
     <Page title="Playlist Plus · Android">
       <Label muted>
         Filter a collection by genre. Select one or more tags, choose Any or
         All, and review the results. The original playlist stays intact.
       </Label>
+      <LikedSongsSource
+        settings={liked}
+        busy={task.busy}
+        onLoad={() => {
+          setUri(LIKED_URI);
+          load(LIKED_URI);
+        }}
+      />
       <Field
         label="Spotify collection link / URI"
         value={uri}
@@ -72,20 +101,7 @@ function App() {
       <Button
         title="Load and classify genres"
         disabled={task.busy}
-        onPress={() => {
-          setData(null);
-          setShuffle(null);
-          task.run(async (job, progress) => {
-            const collection = await client.collection(uri, job, progress);
-            const tracks = await client.classify(
-              collection.tracks,
-              { key: settings.key, lastfmFirst: true },
-              job,
-              progress,
-            );
-            return { ...collection, tracks };
-          }, setData);
-        }}
+        onPress={() => load()}
       />
       <Status task={task} />
       {data ? (

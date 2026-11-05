@@ -1,3 +1,4 @@
+import { LIKED_URI } from "../../shared/liked-songs.mjs";
 import React, { useMemo, useState } from "react";
 import { View } from "spotifyplus/react";
 import { SpotifyPlus as S } from "spotifyplus";
@@ -22,9 +23,12 @@ import {
   initialUri,
   currentContext,
   register,
+  useLikedSource,
+  LikedSongsSource,
 } from "../../shared/ui";
 const client = new DataClient(S);
 function App() {
+  const liked = useLikedSource();
   const [uri, setUri] = useState(initialUri),
     [data, setData] = useState<any>(null),
     [query, setQuery] = useState(""),
@@ -50,12 +54,32 @@ function App() {
     setShuffled(null);
     fn();
   }
+
+  function load(input = uri) {
+    setData(null);
+    setShuffled(null);
+    task.run(
+      (job, progress) =>
+        client.collection(input, job, progress, {
+          username: liked.username.trim(),
+        }),
+      setData,
+    );
+  }
   return (
     <Page title="Sort Play · Android">
       <Label muted>
         Read a playlist or album, adjust its preview, then save a separate copy
         or append to the queue.
       </Label>
+      <LikedSongsSource
+        settings={liked}
+        busy={task.busy}
+        onLoad={() => {
+          setUri(LIKED_URI);
+          load(LIKED_URI);
+        }}
+      />
       <Field
         label="Spotify playlist, album, or track link / URI"
         value={uri}
@@ -69,14 +93,7 @@ function App() {
       <Button
         title="Load collection"
         disabled={task.busy}
-        onPress={() => {
-          setData(null);
-          setShuffled(null);
-          task.run(
-            (job, progress) => client.collection(uri, job, progress),
-            setData,
-          );
-        }}
+        onPress={() => load()}
       />
       <Status task={task} />
       {data ? (

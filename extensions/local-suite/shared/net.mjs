@@ -31,8 +31,17 @@ export function makeHttp(
   ];
   let cooldown = 0;
   return async function request(url, options = {}) {
+    const { responseType = "json", readOnly = false, ...init } = options;
     const parsed = hostAllowed(url, hosts),
-      method = options.method || "GET";
+      method = init.method || "GET";
+    const isWrite = method !== "GET" && !readOnly;
+    if (
+      readOnly &&
+      (parsed.hostname !== "spclient.wg.spotify.com" ||
+        parsed.pathname !== "/collection/v2/paging" ||
+        method !== "POST")
+    )
+      throw new Error("Invalid read-only POST.");
     if (Date.now() < cooldown)
       throw new RequestError("Provider rate limit: wait before retrying.", 429);
     if (typeof fetcher !== "function")
@@ -41,7 +50,7 @@ export function makeHttp(
     let handle;
     const work = (async () => {
       const response = await fetcher(parsed.toString(), {
-        ...options,
+        ...init,
         signal: controller.signal,
         redirect: "error",
       });
@@ -60,9 +69,17 @@ export function makeHttp(
         throw new RequestError(
           `${parsed.hostname} returned HTTP ${response.status}.`,
           response.status,
-          method !== "GET" && response.status >= 500,
+          isWrite && response.status >= 500,
         );
       if (response.status === 204) return null;
+      if (responseType === "bytes") {
+        if (Number(response.headers?.get?.("content-length")) > 4 * 1024 * 1024)
+          throw new RequestError("Collection page exceeds the size limit.");
+        const bytes = new Uint8Array(await response.arrayBuffer());
+        if (bytes.length > 4 * 1024 * 1024)
+          throw new RequestError("Collection page exceeds the size limit.");
+        return bytes;
+      }
       return response.json();
     })();
     try {
@@ -73,9 +90,11 @@ export function makeHttp(
             controller.abort();
             reject(
               new RequestError(
-                "Request timed out. A write may have completed; inspect Spotify before retrying.",
+                isWrite
+                  ? "Request timed out. A write may have completed; inspect Spotify before retrying."
+                  : "Read request timed out.",
                 0,
-                method !== "GET",
+                isWrite,
               ),
             );
           }, timeout);
@@ -84,11 +103,11 @@ export function makeHttp(
     } catch (error) {
       if (error instanceof RequestError) throw error;
       throw new RequestError(
-        method === "GET"
+        !isWrite
           ? "Network request failed."
           : "Write outcome is unknown. Inspect Spotify before retrying.",
         0,
-        method !== "GET",
+        isWrite,
       );
     } finally {
       if (handle) timer.clear(handle);

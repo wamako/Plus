@@ -1,3 +1,4 @@
+import { likedInput } from "./liked-songs.mjs";
 import React, { useEffect, useRef, useState } from "react";
 import { SpotifyPlus as S } from "spotifyplus";
 import {
@@ -507,10 +508,63 @@ export function register(
     new S.ContextMenu(
       `Select for ${title} (open in Extensions)`,
       (uri) => {
-        S.Platform.Storage.set("selected-uri", spotifyUri(uri));
+        S.Platform.Storage.set(
+          "selected-uri",
+          likedInput(uri) ? uri : spotifyUri(uri),
+        );
       },
       undefined,
       false,
       types,
     ).register();
+}
+
+export function useLikedSource() {
+  const [username, setUsername] = useState(
+    () => S.Platform.Storage.get<string>("liked-username") || "",
+  );
+  return { username, setUsername };
+}
+export function LikedSongsSource({
+  settings,
+  onLoad,
+  busy,
+}: {
+  settings: ReturnType<typeof useLikedSource>;
+  onLoad: () => void;
+  busy: boolean;
+}) {
+  const [options, setOptions] = useState(false);
+  return (
+    <View>
+      <Button title="Load Liked Songs" disabled={busy} onPress={onLoad} />
+      <Label muted>
+        Reads your saved tracks directly. Sorting this preview keeps your likes
+        unchanged.
+      </Label>
+      <Button
+        title="Liked Songs account options"
+        onPress={() => setOptions(!options)}
+      />
+      {options ? (
+        <View>
+          <Field
+            label="Spotify username (only if automatic account lookup fails)"
+            value={settings.username}
+            onChange={settings.setUsername}
+          />
+          <Label muted>
+            Use your Spotify account username, not your display name. Leave
+            blank to detect the current account.
+          </Label>
+          <Button
+            title="Save username option"
+            onPress={() =>
+              S.Platform.Storage.set("liked-username", settings.username.trim())
+            }
+          />
+        </View>
+      ) : null}
+    </View>
+  );
 }

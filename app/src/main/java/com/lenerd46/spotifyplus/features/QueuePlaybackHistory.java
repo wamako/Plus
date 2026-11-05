@@ -30,9 +30,17 @@ public final class QueuePlaybackHistory {
         Context context=parent.getContext();
         section=FeatureSheets.column(context);section.setPadding(dp(16),dp(8),dp(16),dp(8));
         TextView heading=FeatureSheets.text(context,"Previously played",16);heading.setTypeface(null,1);heading.setPadding(0,0,0,dp(6));section.addView(heading);
-        scroll=new ScrollView(context);scroll.setFillViewport(false);scroll.setNestedScrollingEnabled(true);
+        scroll=new ScrollView(context){
+            @Override public boolean dispatchTouchEvent(MotionEvent event){
+                ViewParent parent=getParent();
+                if(parent!=null)parent.requestDisallowInterceptTouchEvent(event.getActionMasked()!=MotionEvent.ACTION_UP&&event.getActionMasked()!=MotionEvent.ACTION_CANCEL);
+                return super.dispatchTouchEvent(event);
+            }
+        };
+        scroll.setFillViewport(false);
+        // Keep Spotify's RecyclerView as the bottom sheet's nested scrolling child.
+        scroll.setNestedScrollingEnabled(false);
         rows=FeatureSheets.column(context);scroll.addView(rows);section.addView(scroll,new LinearLayout.LayoutParams(-1,dp(64)));
-        scroll.setOnTouchListener((v,event)->{v.getParent().requestDisallowInterceptTouchEvent(event.getActionMasked()!=MotionEvent.ACTION_UP&&event.getActionMasked()!=MotionEvent.ACTION_CANCEL);return false;});
         // Confirmed queue XML: vertical column -> header + FrameLayout(recycler + Compose host).
         LinearLayout.LayoutParams original=(LinearLayout.LayoutParams)content.getLayoutParams();
         LinearLayout.LayoutParams remaining=new LinearLayout.LayoutParams(original);remaining.height=0;remaining.weight=1;

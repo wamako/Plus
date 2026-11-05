@@ -1,7 +1,9 @@
 package com.lenerd46.spotifyplus.features;
 import android.app.*;
 import android.content.*;
-import android.media.session.*;
+import android.media.session.MediaController;
+import android.media.session.MediaSession;
+import android.media.session.PlaybackState;
 import android.os.*;
 import android.graphics.Color;
 import android.text.InputType;

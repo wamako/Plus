@@ -24,35 +24,22 @@ public final class RecentlyPlayed {
     }
     private static BookmarkCollection.Item item(Object track){
         String uri=(String)XposedHelpers.callMethod(track,"uri");Map<?,?> metadata=(Map<?,?>)XposedHelpers.callMethod(track,"metadata");
-        return new BookmarkCollection.Item(uri,(String)metadata.get("title"),(String)metadata.get("artist_name"),(String)metadata.get("image_large_url"));
+        String artwork=(String)metadata.get("image_large_url");if(artwork==null||artwork.isEmpty())artwork=(String)metadata.get("image_url");
+        return new BookmarkCollection.Item(uri,(String)metadata.get("title"),(String)metadata.get("artist_name"),artwork);
     }
-    public static void show(){
-        Activity a=References.currentActivity;if(a==null||history==null)return;
-        a.runOnUiThread(()->FeatureSheets.show("Recently played",root->{
-            TextView detail=FeatureSheets.text(a,"Previously played songs on this device, newest first.",14);root.addView(detail);
-            ListView list=new ListView(a);root.addView(list,new LinearLayout.LayoutParams(-1,0,1));render(a,list,detail);
-            // Spotify may already hold earlier songs from before this module was installed.
-            new Thread(()->{try{
-                Object repository=com.lenerd46.spotifyplus.player.NextUpQueue.currentRepository();if(repository==null)return;
-                Object stream=null;for(Field f:repository.getClass().getDeclaredFields()){f.setAccessible(true);Object value=f.get(repository);if(value!=null&&isFlowable(value.getClass())){stream=value;break;}}
-                if(stream==null)return;
-                Class<?> single=XposedHelpers.findClass("io.reactivex.rxjava3.core.Single",repository.getClass().getClassLoader());
-                Method read=Arrays.stream(stream.getClass().getMethods()).filter(m->!Modifier.isStatic(m.getModifiers())&&m.getParameterCount()==0&&single.isAssignableFrom(m.getReturnType())).findFirst().orElseThrow();
-                Object snapshot=XposedHelpers.callMethod(XposedHelpers.callMethod(read.invoke(stream),"timeout",3L,TimeUnit.SECONDS),"blockingGet");
-                List<BookmarkCollection.Item> previous=new ArrayList<>();for(Object track:(Iterable<?>)XposedHelpers.callMethod(snapshot,"prevTracks")){try{previous.add(item(track));}catch(Exception ignored){}}
-                history.importPrevious(previous,System.currentTimeMillis());a.runOnUiThread(()->render(a,list,detail));
-            }catch(Exception ignored){}},"SpotifyPlus-PreviousTracks").start();
-        }));
+    public static List<PlaybackHistory.Entry> entries(){return history==null?List.of():history.entries();}
+    public static void refreshFromQueue(Runnable refreshed){
+        if(history==null)return;
+        new Thread(()->{try{
+            Object repository=com.lenerd46.spotifyplus.player.NextUpQueue.currentRepository();if(repository==null)return;
+            Object stream=null;for(Field f:repository.getClass().getDeclaredFields()){f.setAccessible(true);Object value=f.get(repository);if(value!=null&&isFlowable(value.getClass())){stream=value;break;}}
+            if(stream==null)return;
+            Class<?> single=XposedHelpers.findClass("io.reactivex.rxjava3.core.Single",repository.getClass().getClassLoader());
+            Method read=Arrays.stream(stream.getClass().getMethods()).filter(m->!Modifier.isStatic(m.getModifiers())&&m.getParameterCount()==0&&single.isAssignableFrom(m.getReturnType())).findFirst().orElseThrow();
+            Object snapshot=XposedHelpers.callMethod(XposedHelpers.callMethod(read.invoke(stream),"timeout",3L,TimeUnit.SECONDS),"blockingGet");
+            List<BookmarkCollection.Item> previous=new ArrayList<>();for(Object track:(Iterable<?>)XposedHelpers.callMethod(snapshot,"prevTracks")){try{previous.add(item(track));}catch(Exception ignored){}}
+            history.importPrevious(previous,System.currentTimeMillis());
+        }catch(Exception ignored){}finally{new android.os.Handler(android.os.Looper.getMainLooper()).post(refreshed);}},"SpotifyPlus-QueueHistory").start();
     }
     private static boolean isFlowable(Class<?> type){for(;type!=null;type=type.getSuperclass())if(type.getName().equals("io.reactivex.rxjava3.core.Flowable"))return true;return false;}
-    private static void render(Activity a,ListView list,TextView detail){
-        List<PlaybackHistory.Entry> entries=history.entries();List<String> labels=new ArrayList<>();for(var e:entries)labels.add(e.track.title+"\n"+e.track.artist);
-        detail.setText(entries.isEmpty()?"Play a song, then another. The previous song will appear here.":"Previously played songs on this device, newest first.");
-        list.setAdapter(new ArrayAdapter<String>(a,android.R.layout.simple_list_item_1,labels){
-            @Override public android.view.View getView(int position,android.view.View convert,android.view.ViewGroup parent){
-                TextView row=(TextView)super.getView(position,convert,parent);row.setTextColor(android.graphics.Color.WHITE);row.setSingleLine(false);row.setMaxLines(2);return row;
-            }
-        });
-        list.setOnItemClickListener((parent,view,position,id)->FeatureSheets.openSpotify(entries.get(position).track.uri));
-    }
 }

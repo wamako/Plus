@@ -770,12 +770,7 @@ final class NowPlayingControlsHook extends SpotifyHook {
         addCell(row, lyrics, dp(root, 48));
         addCell(row, share, dp(root, 48));
         addCell(row, queue, dp(root, 48));
-        android.widget.ImageButton historyButton = new android.widget.ImageButton(root.getContext());
-        historyButton.setImageResource(android.R.drawable.ic_menu_recent_history);
-        historyButton.setContentDescription("Recently played");
-        historyButton.setBackgroundColor(android.graphics.Color.TRANSPARENT);
-        historyButton.setOnClickListener(v -> com.lenerd46.spotifyplus.features.RecentlyPlayed.show());
-        addCell(row, historyButton, dp(root, 48));
+
     }
 
     private void arrangeLandscape(View root, LyricsState state) {

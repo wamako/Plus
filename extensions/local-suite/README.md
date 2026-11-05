@@ -1,4 +1,4 @@
-# Spotify Plus local Android extensions · 0.1.4
+# Spotify Plus local Android extensions · 0.1.5
 
 Four removable **initial Android adaptations** of the requested Spicetify projects.
 Designed against the API-2 runtime shipped in Spotify Plus R10 for Spotify
@@ -15,6 +15,40 @@ old version is still shown, force-stop and reopen Spotify. Keep the working R10
 APK; no module repatching or app data clearing is required. Local listening
 history, saved keys, and genre presets keep their existing settings keys.
 
+Version **0.1.5** fixes a real-fetch compatibility defect: native Node fetch can
+reject the previously bundled AbortSignal before sending any request. The reader
+now uses a native AbortController when the host exposes one, or omits the signal
+when the R10 sandbox does not. The 15-second caller deadline remains; without a
+native controller the underlying request may finish after that deadline. A timed-out
+write is always treated as uncertain and is never automatically resent.
+
+Track/artist reads also try Spotify's raw metadata service. The current playing
+song can use the host's supplied metadata immediately. Once Liked Songs membership
+has been fully paged and checked, an individual metadata failure retains that
+saved URI with an explicit unavailable label and controlled diagnostic, instead
+of rejecting the entire library. It does not invent titles, artists, genres or
+dates. Incomplete membership pages, cancellation and rate limits still stop reads.
+A complete membership list can contain songs that cannot yet be sorted by title.
+
+For saves, choose **Preview native Spotify copy** to use the host's native playlist
+service rather than the public Web API. It creates a new playlist and awaits each
+server acknowledgment; it never edits the original. **Native playlist visibility
+follows Spotify defaults**: check it in Spotify. The existing **Preview saving a
+new copy** requests a private playlist through the Web API. Both require their
+own confirmation and use the selected range of up to 10,000 tracks. Neither path
+automatically switches transport or retries after an uncertain outcome. The native
+path still depends on the R10 Java bridge working with your installed Spotify build.
+
+Playlist Plus shows all loaded songs until a genre filter is chosen, so missing
+genres no longer leave its preview empty. Unknown songs stay excluded from an
+active genre filter. Optional **Use MusicBrainz fallback (no API key)** supplies
+artist genres when Spotify and Last.fm do not. It starts disabled. It sends the
+artist name, accepts only one exact matching artist from a complete bounded search,
+and verifies a Spotify URL relation when a Spotify artist ID is already known.
+Name-only matches are labelled as such; missing or ambiguous matches stay Unknown.
+Requests are serialized at least 1.1 seconds apart per extension and cached. Run
+one genre extension at a time; a large uncached library can take a long time.
+
 Version **0.1.4** removes the old 10,000-track read guard for Liked Songs and
 supports up to **100,000 liked tracks** across up to 10,000 pages. It tries the
 paged Liked Songs context first and reuses the returned title/artist metadata,
@@ -28,7 +62,7 @@ fixes overly strict validation; it does not guarantee that a changed private
 Spotify response format will be readable. The 0.1.3 no-ICU startup fix remains.
 
 Large previews offer explicit **Copy range** choices of up to 10,000 tracks per
-new private playlist. Each range has its own name suffix, preview and confirmation.
+new playlist. Each range has its own name suffix, preview and confirmation.
 Saving a range keeps the full loaded preview. Neither loading nor sorting writes
 to Liked Songs. The ordinary playlist/album and per-copy guards stay at 10,000;
 queue append stays capped at 100. Phone memory and Spotify permissions still apply.
@@ -64,7 +98,7 @@ The 0.1.1 native album reader, artist-ID recovery and genre fixes remain include
 ## Install on your non-root LSPatch setup
 
 1. Keep your working Spotify Plus R10 module. Do not install these files as APKs.
-2. Extract `SpotifyPlus-Local-Extensions-0.1.4.zip` into a normal, accessible
+2. Extract `SpotifyPlus-Local-Extensions-0.1.5.zip` into a normal, accessible
    directory, e.g. `Documents/SpotifyPlusLocal/` on the phone.
 3. The extracted `SpotifyPlus-Local-Extensions` directory must contain four child
    folders: `listening-stats`, `sort-play`, `genres`, and `playlist-plus`. Each child
@@ -92,9 +126,9 @@ Do not select a parent that also contains an older copy with the same extension 
 | Extension          | Android functionality in this release                                                                                                                                                                                                                                                                           | Not included from the desktop project                                                                                                                                                                                      |
 | ------------------ | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | Listening Stats    | Opt-in local listening sessions; 30-second/90%-of-short-track qualification; top tracks/artists/albums; 7/30-day and all-retained ranges; daily activity bars and weekday totals; CSV/JSON clipboard export; optional Last.fm and Stats.fm top-50 reads                                                         | Historical import, scrobbling, share images, draggable dashboard, full heatmap, exact listening while Spotify/module is suspended                                                                                          |
-| Sort Play          | Liked Songs/playlist/album/track preview; title, artist, album, release date, date-added, duration and available popularity sorting; ascending/descending; search; URI or ISRC dedupe; one track per primary artist; known explicit/clean filters; artist-aware shuffle; new private copy; append queue; export | Desktop columns/player modifications, artist discography, Last.fm play-count/taste sorting, audio features/BPM/key/energy, liked/followed filters, color sorting, AI/chat, remote integrations, in-place source reordering |
-| What’s That Genre? | Current/entered track lookup; Spotify artist genres; optional Last.fm tag fallback; descriptions and related genres from LucasOe's directory; Spotify links to artists and genre playlists                                                                                                                      | Desktop player label injection, track-list columns, desktop theme modifications                                                                                                                                            |
-| Playlist Plus      | Genre classification of Liked Songs/playlist/album; Last.fm track→album→artist fallback then Spotify artist genres; Any/All multi-tag matching; genre counts/percentages; named presets; cached classification; shuffled preview; new copy, queue append, export                                                | Desktop menu replacement, automatic playback or queue replacement, full preset interoperability with the original extension                                                                                                |
+| Sort Play          | Liked Songs/playlist/album/track preview; title, artist, album, release date, date-added, duration and available popularity sorting; ascending/descending; search; URI or ISRC dedupe; one track per primary artist; known explicit/clean filters; artist-aware shuffle; new Web/native copy; append queue; export | Desktop columns/player modifications, artist discography, Last.fm play-count/taste sorting, audio features/BPM/key/energy, liked/followed filters, color sorting, AI/chat, remote integrations, in-place source reordering |
+| What’s That Genre? | Current/entered track lookup; Spotify artist genres; optional Last.fm/MusicBrainz fallback; descriptions and related genres from LucasOe's directory; Spotify links to artists and genre playlists                                                                                                                      | Desktop player label injection, track-list columns, desktop theme modifications                                                                                                                                            |
+| Playlist Plus      | Genre classification of Liked Songs/playlist/album; Last.fm track→album→artist fallback then Spotify artist genres; optional MusicBrainz fallback; Any/All multi-tag matching; genre counts/percentages; named presets; cached classification; shuffled preview; new copy, queue append, export                                                | Desktop menu replacement, automatic playback or queue replacement, full preset interoperability with the original extension                                                                                                |
 
 ## Behavior and limits
 
@@ -103,12 +137,13 @@ Do not select a parent that also contains an older copy with the same extension 
   are supplied by the existing host, not bundled a second time.
 - No playlist/queue mutation occurs on install, launch, read, sort, filter, or
   shuffle. Each write requires a separate preview and confirmation. Saves create
-  a **new private playlist**, never edit the source. Queue actions **append**,
+  a **new playlist**, never edit the source. Web copies request private visibility;
+  native copies use Spotify defaults, as stated in their confirmation. Queue actions **append**,
   never clear/reorder existing entries, and are capped at 100 tracks per action.
-- Writes use the official Spotify endpoints; session scopes, account restrictions,
+- Web writes use the official Spotify endpoints; session scopes, account restrictions,
   Premium and an active player can affect availability. HTTP 401/403 is shown,
   not bypassed. These read fixes do not grant write permissions: saves/queue writes
-  still depend on the Web API and may be rejected independently. **No uncertain write is retried automatically.** If stopped or
+  still depend on either Web permissions or native bridge compatibility and may be rejected independently. **No uncertain write is retried automatically.** If stopped or
   interrupted, inspect the recorded partial copy/queue before manually trying again.
 - Album and playlist reads prefer the host's native metadata readers. Albums
   preserve multi-disc order, duplicate occurrences, release dates and matching
@@ -146,7 +181,8 @@ Do not select a parent that also contains an older copy with the same extension 
   Spotify bearer tokens are confined to Spotify’s exact `api.spotify.com` and
   `spclient.wg.spotify.com` hosts. Artist identification uses the same read-only
   metadata path as the native host; no Spotify credentials go to genre directories
-  or third-party providers. Keys and tokens are
+  or third-party providers. MusicBrainz receives artist-name searches only after
+  opt-in and no Spotify bearer token. Keys and tokens are
   never copied into exports or diagnostic messages. Clipboard exports require a
   tap and are capped at one million characters. CSV text is formula-escaped.
 - Unmounting a page cancels subsequent work; an in-flight request can still finish.
@@ -198,5 +234,6 @@ Alternatively point `SPOTIFYPLUS_SDK_SOURCE` at an already-built copy of that ex
 host React). The build uses its official API-2 extension builder including the
 required transformed-bundle marker. Never use a plain desktop Spicetify build.
 
-Bundled dependencies: abort-controller 3.0.0 and event-target-shim 5.0.1.
+There are no bundled runtime dependencies; React and SpotifyPlus are supplied by
+R10. The incompatible abort-controller and its event-target-shim dependency were removed.
 See THIRD_PARTY_NOTICES.md for source inspirations and licenses.

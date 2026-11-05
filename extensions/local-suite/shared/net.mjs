@@ -1,10 +1,25 @@
-import { AbortController } from "abort-controller";
 export class RequestError extends Error {
   constructor(message, status = 0, unknown = false) {
     super(message);
     this.status = status;
     this.unknown = unknown;
   }
+}
+// Only controlled categories reach diagnostics; URLs, bodies, keys and native
+// exception text can contain account data and must never be echoed.
+export function failureReason(error) {
+  const code = String(error?.code || error?.cause?.code || "");
+  const message = String(error?.message || "");
+  if (/timeout|timed out/i.test(message) || code === "ETIMEDOUT") return "request timed out";
+  if (/ENOTFOUND|EAI_AGAIN/.test(code)) return "DNS lookup failed";
+  if (/CERT|TLS|SSL/.test(code)) return "TLS connection failed";
+  if (/ECONN|ENET|EHOST/.test(code)) return "network connection failed";
+  if (error?.name === "SyntaxError") return "invalid JSON response";
+  if (/fetch|network/i.test(message)) return "network request failed";
+  if (/not exposed|not provide|not supported|unsupported|not ready|NoSuchMethod|ClassNotFound|NoSuchField/i.test(message)) return "service not ready or unsupported";
+  if (error?.name === "TypeError") return "runtime type error";
+  if (error?.name === "ReferenceError") return "runtime dependency unavailable";
+  return "provider or host operation failed";
 }
 export function hostAllowed(url, hosts) {
   const parsed = new URL(url);
@@ -28,6 +43,7 @@ export function makeHttp(
     "ws.audioscrobbler.com",
     "api.stats.fm",
     "lucasoe.github.io",
+    "musicbrainz.org",
   ];
   let cooldown = 0;
   return async function request(url, options = {}) {
@@ -46,12 +62,16 @@ export function makeHttp(
       throw new RequestError("Provider rate limit: wait before retrying.", 429);
     if (typeof fetcher !== "function")
       throw new Error("This host does not provide fetch.");
-    const controller = new AbortController();
+    // Native fetch rejects polyfilled AbortSignal instances. The R10 user
+    // sandbox may omit AbortController entirely; in that case omit the signal
+    // and enforce the caller deadline without pretending to cancel the transport.
+    const controller = typeof globalThis.AbortController === "function"
+      ? new globalThis.AbortController() : null;
     let handle;
     const work = (async () => {
       const response = await fetcher(parsed.toString(), {
         ...init,
-        signal: controller.signal,
+        ...(controller ? { signal: controller.signal } : {}),
         redirect: "error",
       });
       if (response.status === 429) {
@@ -65,7 +85,7 @@ export function makeHttp(
           429,
         );
       }
-      if (!response.ok)
+      if (!(response.status >= 200 && response.status < 300))
         throw new RequestError(
           `${parsed.hostname} returned HTTP ${response.status}.`,
           response.status,
@@ -80,14 +100,15 @@ export function makeHttp(
           throw new RequestError("Collection page exceeds the size limit.");
         return bytes;
       }
-      return response.json();
+      try { return await response.json(); }
+      catch { throw new RequestError("Provider returned an invalid JSON response.", 0, isWrite); }
     })();
     try {
       return await Promise.race([
         work,
         new Promise((_, reject) => {
           handle = timer.set(() => {
-            controller.abort();
+            controller?.abort();
             reject(
               new RequestError(
                 isWrite
@@ -104,7 +125,7 @@ export function makeHttp(
       if (error instanceof RequestError) throw error;
       throw new RequestError(
         !isWrite
-          ? "Network request failed."
+          ? `Read failed: ${failureReason(error)}.`
           : "Write outcome is unknown. Inspect Spotify before retrying.",
         0,
         isWrite,

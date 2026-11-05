@@ -45,9 +45,8 @@ function App() {
   const counts = useMemo(() => genreCounts(data?.tracks || []), [data]);
   const preview = useMemo(
     () =>
-      data && selected.length
-        ? filterTracks(data.tracks, { genres: selected, match })
-        : [],
+      !data ? [] : selected.length
+        ? filterTracks(data.tracks, { genres: selected, match }) : data.tracks,
     [data, selected, match],
   );
   const tracks = shuffle || preview;
@@ -67,7 +66,7 @@ function App() {
       });
       const tracks = await client.classify(
         collection.tracks,
-        { key: settings.key, lastfmFirst: true },
+        { key: settings.key, lastfmFirst: true, musicbrainz: settings.musicbrainz },
         job,
         progress,
       );
@@ -120,7 +119,7 @@ function App() {
           <Label muted>
             {data.source}.{" "}
             {data.tracks.filter((t: any) => !t.genres.length).length} tracks
-            have unknown genres. Unknown tracks cannot match genre filters.{" "}
+            have unknown genres. Unknown tracks cannot match genre filters. With no genres selected, all loaded songs are shown.{" "}
             {data.skipped} non-track rows omitted.
           </Label>
           <Choices

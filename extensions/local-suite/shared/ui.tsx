@@ -254,6 +254,9 @@ export function Results({ tracks }: { tracks: any[] }) {
             {t.artist}
             {t.album ? ` · ${t.album}` : ""}
           </Label>
+          {t.metadataUnavailable ? (
+            <Label muted>{t.metadataStatus || "Metadata unavailable"}. Saved URI retained: {t.uri}</Label>
+          ) : null}
           {t.genreSource ? (
             <Label muted>
               {t.genres.length ? t.genres.join(" · ") : "Unknown genre"} —{" "}
@@ -313,8 +316,8 @@ export function Actions({
     setConfirm({
       source: tracks,
       action,
-      tracks: action === "copy" ? tracks.slice(from, to) : [...tracks],
-      name: action === "copy" && partCount > 1
+      tracks: action !== "queue" ? tracks.slice(from, to) : [...tracks],
+      name: action !== "queue" && partCount > 1
         ? `${copyName} · ${from + 1}-${to}` : copyName,
       token: `${Date.now()}:${Math.random()}`,
     });
@@ -325,7 +328,9 @@ export function Actions({
     setConfirm(null);
     task.run(
       (job, progress) =>
-        pending.action === "copy"
+        pending.action === "native-copy"
+          ? client.nativeCopy(pending.tracks, pending.name, pending.token, pending.token, job, progress)
+          : pending.action === "copy"
           ? client.createCopy(
               pending.tracks,
               pending.name,
@@ -372,7 +377,7 @@ export function Actions({
   return (
     <View>
       <Field
-        label="Name for a new private playlist copy"
+        label="Name for a new playlist copy"
         value={copyName}
         onChange={(value) => {
           setCopyName(value);
@@ -410,6 +415,16 @@ export function Actions({
         onPress={() => stage("copy")}
       />
       <Button
+        title="Preview native Spotify copy"
+        disabled={blocked || task.busy || !tracks.length || (typeof client.api.Playlists?.create !== "function" || typeof client.api.Playlists?.addTracks !== "function")}
+        onPress={() => stage("native-copy")}
+      />
+      <Label muted>
+        Native copy uses Spotify’s own playlist service when Web API saves fail.
+        It creates a separate playlist using Spotify’s default visibility; check
+        its visibility in Spotify. Web API copy requests a private playlist.
+      </Label>
+      <Button
         title="Preview appending to queue (up to 100)"
         disabled={blocked || task.busy || !tracks.length || tracks.length > 100}
         onPress={() => stage("queue")}
@@ -417,9 +432,9 @@ export function Actions({
       {confirm ? (
         <View>
           <Label>
-            {confirm.action === "copy"
-              ? `Create “${confirm.name}” with ${confirm.tracks.length} tracks?`
-              : `Append ${confirm.tracks.length} tracks in preview order?`}
+            {confirm.action === "queue"
+              ? `Append ${confirm.tracks.length} tracks in preview order?`
+              : `Create “${confirm.name}” with ${confirm.tracks.length} tracks?${confirm.action === "native-copy" ? " Native Spotify service; visibility follows Spotify defaults." : ""}`}
           </Label>
           <Button
             title="Confirm this action"
@@ -475,9 +490,17 @@ export function useGenreSettings() {
   const [key, setKey] = useState(
     () => S.Platform.Storage.get<string>("lastfm-key") || "",
   );
+  const [musicbrainz, setMusicBrainz] = useState(
+    () => S.Platform.Storage.get<boolean>("musicbrainz-enabled") === true,
+  );
   return {
     key,
     setKey,
+    musicbrainz,
+    setMusicBrainz: (value: boolean) => {
+      setMusicBrainz(value);
+      S.Platform.Storage.set("musicbrainz-enabled", value);
+    },
     save: () => S.Platform.Storage.set("lastfm-key", key.trim()),
     clear: () => {
       setKey("");
@@ -502,6 +525,12 @@ export function GenreSettings({
         Last.fm requests send the artist, album, or track name with your key.
         Keys are saved only in this extension’s private settings. Last.fm tags
         can include non-genre labels.
+      </Label>
+      <Toggle label="Use MusicBrainz fallback (no API key)" value={settings.musicbrainz} onChange={settings.setMusicBrainz} />
+      <Label muted>
+        MusicBrainz receives the artist name only when enabled. It supplies artist
+        genres, not a classification of each song. Ambiguous names stay Unknown.
+        Large libraries are slow; run one genre extension at a time.
       </Label>
       <Button title="Save key" onPress={settings.save} />
       <Button title="Remove saved key" onPress={settings.clear} />

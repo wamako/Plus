@@ -101,8 +101,7 @@ export function nativeGenres(artist) {
 // Context resolver metadata uses the same keys as R10's ContextTrack reader.
 export function contextTrackMetadata(item) {
   const md = item?.metadata;
-  if (typeof md?.title !== "string" || !md.title.trim() ||
-      typeof md.artist_name !== "string" || !md.artist_name.trim()) return null;
+  if (typeof md?.title !== "string" || !md.title.trim()) return null;
   const valid = (uri, kind) =>
     new RegExp(`^spotify:${kind}:[A-Za-z0-9]{22}$`).test(uri || "") ? uri : "";
   const duration = /^\d+$/.test(String(md.duration)) ? Number(md.duration) : null;
@@ -113,7 +112,7 @@ export function contextTrackMetadata(item) {
   const raw = {
     uri: item.uri,
     title: md.title,
-    artists: [{ name: md.artist_name, uri: valid(md.artist_uri, "artist") }],
+    artists: [{ name: typeof md.artist_name === "string" ? md.artist_name : "", uri: valid(md.artist_uri, "artist") }],
     durationMs: Number.isFinite(duration) && duration > 0 ? duration : undefined,
     album: { name: md.album_title || "", uri: valid(md.album_uri, "album"), image },
   };

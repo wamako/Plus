@@ -1,8 +1,8 @@
-# Validation record · 0.1.4
+# Validation record · 0.1.5
 
 Validated in the build workspace on 2026-11-05.
 
-- **72 core/regression tests passed**: link validation, both playlist schemas, stable sorting,
+- **87 core/regression tests passed**: link validation, both playlist schemas, stable sorting,
   unknown values, deduplication, genre matching, shuffle, CSV escaping, listening
   qualification, pauses/seeks/buffering, retention, cancellation, cache bounds,
   network allowlist and token separation, timeout/rate-limit behavior, pagination,
@@ -19,7 +19,7 @@ Validated in the build workspace on 2026-11-05.
   error classification, plus retained saved URIs when catalog metadata is unavailable.
 - **TypeScript check passed** against the exact pinned R10 SDK declarations.
 - **Four API-2 bundles built** using the SDK's official transformed extension builder.
-- **Six actual host-loader/React-renderer integration tests passed**: all four bundles
+- **Seven actual host-loader/React-renderer integration tests passed**: all four bundles
   loaded as unprivileged user extensions with unique registrations; no HTTP on
   install; local tracking opt-in; collection preview; stale confirmation
   invalidation; confirmed new private copy and ordered queue append through mocked
@@ -28,7 +28,7 @@ Validated in the build workspace on 2026-11-05.
   registration/listener/cleanup removal. One scenario supplies public read responses;
   a second supplies actual raw native metadata shapes and makes every public Web
   API GET return 404. The native album/genre scenario completes without a public
-  Web API GET. Spotify writes remain mocked, permission-dependent Web API calls. A third scenario clicks **Load Liked Songs** in both Sort Play
+  Web API GET. Spotify writes remain mocked, with transport-specific permission/bridge requirements. A third scenario clicks **Load Liked Songs** in both Sort Play
   and Playlist Plus, supplies two binary saved-collection pages for each, and
   verifies the full liked preview and genre filtering without playlist/Web GETs.
 - Large-library regression cases reproduce the old 10,001-track error, then
@@ -43,6 +43,23 @@ Validated in the build workspace on 2026-11-05.
   exactly 100 ordered write batches of 100 tracks. Reading/sorting/range selection
   makes no write request; saving retains the full 20,001-track preview. This is a
   host-renderer test with mocked Spotify responses, not a live account test.
+- Real native Node fetch **reproduced a failure before the network fix**:
+  `RequestInit: Expected signal to be an instance of AbortSignal` for the bundled
+  polyfill signal. The fixed helper succeeds with real fetch against a local
+  data response. Every host integration request now passes native Request
+  construction to enforce that brand check even when service responses are mocked.
+- The seventh actual-loader profile exercises R10's user sandbox with no exposed
+  AbortController, real fetch-backed data responses, a failing track bridge,
+  raw-track recovery, a retained unreadable liked URI, a complete 3-song preview,
+  explicitly confirmed native create/add operations, and opt-in MusicBrainz lookup.
+  Playlist Plus still shows all three songs with no active genre filter even when
+  all their genres are unknown. Native write acknowledgments are mocked, not live.
+- New core cases cover raw track/artist fallback, metadata failures without lost
+  membership, rate-limit propagation, controlled network/JSON diagnostics, real
+  fetch compatibility, awaited native batches and partial unknown outcomes,
+  MusicBrainz identity/URL checks, ambiguous matches, spacing, caching, no default
+  provider traffic and token separation. Native visibility is explicitly described
+  as Spotify's default rather than promising a private playlist.
 - **Startup regression reproduced before the fix**: the 0.1.2 bundle failed in the
   actual pinned loader when the injected decoder rejected the `fatal` option
   with `ERR_NO_ICU`, before its page could register. The corrected build registers

@@ -1,3 +1,4 @@
+import { MusicBrainz } from "./musicbrainz.mjs";
 import {
   LIKED_URI,
   MAX_LIKED_ITEMS,
@@ -8,9 +9,10 @@ import {
   decodeCollectionPage,
   contextPageUrl,
 } from "./liked-songs.mjs";
-import { Cache, makeHttp, mapLimit, RequestError } from "./net.mjs";
+import { Cache, makeHttp, mapLimit, RequestError, failureReason } from "./net.mjs";
 import {
   MAX_ITEMS,
+  clean,
   idFromUri,
   spotifyUri,
   normalizeTrack,
@@ -38,15 +40,16 @@ const status = (error) =>
 const reason = (error) =>
   status(error)
     ? `HTTP ${status(error)}`
-    : error instanceof ReadError
+    : error instanceof ReadError || error instanceof RequestError
       ? error.message
-      : "unavailable";
+      : failureReason(error);
 export class DataClient {
   constructor(api, request = makeHttp()) {
     this.api = api;
     this.request = request;
     // v2 invalidates negative genre results and track rows that lost artist IDs in 0.1.0.
     this.cache = new Cache(api.Platform.Storage, "metadata-cache-v2", 1200);
+    this.musicbrainz = new MusicBrainz(this.request, this.cache);
     this.webUnavailable = new Map();
     this.inflight = new Map();
     this.accountReads = new WeakMap();
@@ -150,6 +153,26 @@ export class DataClient {
     this.cache.set(key, track);
     return track;
   }
+  async rawMetadata(kind, uri, job) {
+    check(job);
+    const token = this.api.Platform.Session.accessToken;
+    if (!token) throw new ReadError("Spotify session unavailable");
+    const raw = await this.request(
+      `https://spclient.wg.spotify.com/metadata/4/${kind}/${uriToHex(uri)}?market=from_token`,
+      { headers: { Authorization: `Bearer ${token}`, Accept: "application/json" } },
+    );
+    check(job);
+    return raw;
+  }
+  async rawMetadataTrack(uri, job) {
+    const key = `track-raw:${uri}`, cached = this.cache.get(key);
+    if (cached) return cached;
+    const raw = await this.rawMetadata("track", uri, job);
+    if (!raw?.name) throw new ReadError("track metadata unavailable");
+    const track = { ...rawTrack(raw, uri), uri };
+    this.cache.set(key, track);
+    return track;
+  }
   async webTrack(uri, job) {
     check(job);
     const key = `track-web:${uri}`,
@@ -175,10 +198,12 @@ export class DataClient {
   }
   async track(uri, job) {
     idFromUri(uri, "track");
+    try { return this.currentTrack(uri); } catch {}
     const value = await this.routes(
       "Track",
       [
         ["Native metadata", () => this.nativeTrack(uri, job)],
+        ["Raw Spotify metadata", () => this.rawMetadataTrack(uri, job)],
         ["Spotify Web API", () => this.webTrack(uri, job)],
         ["Current player", () => this.currentTrack(uri)],
       ],
@@ -198,7 +223,9 @@ export class DataClient {
         const metadata = await this.routes(
           `Track ${index + 1}`,
           [
+            ["Current player", () => this.currentTrack(row.uri)],
             ["Native metadata", () => this.nativeTrack(row.uri, job)],
+            ["Raw Spotify metadata", () => this.rawMetadataTrack(row.uri, job)],
             ["Spotify Web API", () => this.webTrack(row.uri, job)],
           ],
           job,
@@ -425,17 +452,12 @@ export class DataClient {
         try {
           if (row.metadataTrack) track = row.metadataTrack;
           else [track] = await this.hydrate([row], job);
-       } catch (error) {
+        } catch (error) {
           check(job);
-          // A deleted catalog entry remains a real saved URI. Keep its membership
-          // and timestamp instead of dropping it or rejecting the entire library.
-          if (
-            !/Native metadata: (track metadata unavailable|HTTP 404)/.test(
-              error.message,
-            ) ||
-            !/Spotify Web API: HTTP 404/.test(error.message)
-          )
-            throw error;
+          // Membership was fully paged and checked before enrichment. Retain an
+          // unreadable row rather than failing the whole library or losing a like.
+          // Cancellation and provider rate limits still stop the operation.
+          if (status(error) === 429) throw error;
           track = {
             ...normalizeTrack({
               uri: row.uri,
@@ -444,12 +466,13 @@ export class DataClient {
             }),
             addedAt: Number.isFinite(row.addedAt) ? row.addedAt : null,
             metadataUnavailable: true,
+            metadataStatus: reason(error),
           };
         }
         completed++;
         if (completed <= 10 || completed % 100 === 0 || completed === rows.length)
           progress?.(`Read metadata ${completed} of ${rows.length} liked songs`);
-        return { ...track, sourceIndex: index, liked: true };
+        return { ...track, addedAt: Number.isFinite(row.addedAt) ? row.addedAt : track.addedAt, sourceIndex: index, liked: true };
       },
       job,
     );
@@ -770,7 +793,15 @@ export class DataClient {
               const artist = await this.native("getArtist", uri);
               const values = nativeGenres(artist);
               if (values.length) return values;
-           } catch (error) {
+            } catch (error) {
+              if (status(error) === 429) throw error;
+            }
+            try {
+              const raw = await this.rawMetadata("artist", uri, job);
+              const values = nativeGenres(raw);
+              if (values.length) return values;
+            } catch (error) {
+              check(job);
               if (status(error) === 429) throw error;
             }
             // Avoid repeating an unavailable Web-API artist request for every track by this artist.
@@ -780,7 +811,7 @@ export class DataClient {
               const { id } = idFromUri(uri, "artist");
               const artist = await this.spotify(`/artists/${id}`);
               return genreTags(artist?.genres || []);
-           } catch (error) {
+            } catch (error) {
               if ([401, 403, 404].includes(status(error)))
                 this.webUnavailable.set(uri, Date.now() + 300000);
               throw error;
@@ -827,7 +858,7 @@ export class DataClient {
       };
     check(job);
     const strategy = options.lastfmFirst ? "lastfm-first" : "spotify-first";
-    const key = `genres:${strategy}:${options.key ? "lastfm" : "no-key"}:${track.uri}`,
+    const key = `genres:${strategy}:${options.key ? "lastfm" : "no-key"}:${options.musicbrainz ? "mb" : "no-mb"}:${track.uri}`,
       cached = this.cache.get(key);
     if (cached) return { ...track, ...cached };
     let tags = [],
@@ -869,7 +900,7 @@ export class DataClient {
         let result;
         try {
           result = await this.lastfm(params, options.key);
-       } catch (error) {
+        } catch (error) {
           if (error.providerCode === 6 || error.providerCode === 7) continue;
           throw error;
         }
@@ -887,6 +918,22 @@ export class DataClient {
       await spotify();
       if (!tags.length) await lastfm();
     }
+    if (!tags.length && options.musicbrainz) {
+      try {
+        let identified = track;
+        if (!track.artists.some(a => /^spotify:artist:[A-Za-z0-9]{22}$/.test(a.uri || ""))) {
+          try { identified = await this.identifyTrack(track, job); }
+          catch (error) { check(job); if (status(error) === 429) throw error; }
+        }
+        const value = await this.musicbrainz.artist(identified, job);
+        tags = value.genres;
+        if (tags.length) source = value.genreSource;
+      } catch (error) {
+        check(job);
+        if (status(error) === 429) throw error;
+        failure = error;
+      }
+    }
     check(job);
     const value = {
       genres: tags,
@@ -894,7 +941,7 @@ export class DataClient {
       genreStatus: tags.length
         ? ""
         : failure
-          ? `Spotify genre lookup unavailable (${reason(failure)}). Add your own Last.fm key for title/artist tag lookup.`
+          ? `Genre lookup unavailable (${reason(failure)}). Try MusicBrainz fallback or your own Last.fm key for title/artist tag lookup.`
           : "No genre labels were supplied by the provider.",
     };
     // Negative/failed results are deliberately not cached across retries.
@@ -996,6 +1043,55 @@ export class DataClient {
       uri: "",
     }));
   }
+  async nativeCopy(tracks, name, token, expected, job, progress = (_message) => {}) {
+    requireConfirmation(token, expected);
+    check(job);
+    if (typeof this.api.Playlists?.create !== "function" || typeof this.api.Playlists?.addTracks !== "function")
+      throw new Error("Native playlist service is not exposed by this host.");
+    if (!name?.trim()) throw new Error("Give the new playlist a name.");
+    const uris = tracks.map(t => idFromUri(t.uri, "track").uri);
+    if (!uris.length || uris.length > MAX_ITEMS) throw new Error("Preview between 1 and 10,000 tracks first.");
+    const journal = { action: "native-copy", startedAt: Date.now(), requested: uris.length, completed: 0, uri: "", phase: "creating" };
+    this.api.Platform.Storage.set("last-write-v1", { ...journal });
+    const invoke = async (operation, args) => {
+      // A timed-out bridge call may still finish. Never resend it automatically.
+      let timer;
+      try {
+        return await Promise.race([
+          Promise.resolve().then(() => operation === "playlists.create"
+            ? this.api.Playlists.create(args.name)
+            : this.api.Playlists.addTracks(args.uri, args.uris)),
+          new Promise((_, reject) => { timer = setTimeout(() => reject(new RequestError("Native playlist request timed out; its outcome is unknown.", 0, true)), 30000); }),
+        ]);
+      } catch (error) {
+        if (error instanceof RequestError) throw error;
+        throw new RequestError(`Native playlist service: ${reason(error)}.`, status(error), true);
+      } finally { clearTimeout(timer); }
+    };
+    try {
+      const created = await invoke("playlists.create", { name: name.trim().slice(0, 100) });
+      try { journal.uri = idFromUri(created?.uri, "playlist").uri; }
+      catch { throw new RequestError("Native playlist response did not identify the created copy.", 0, true); }
+      journal.phase = "adding";
+      this.api.Platform.Storage.set("last-write-v1", { ...journal });
+      for (let i = 0; i < uris.length; i += 100) {
+        check(job);
+        await invoke("playlists.addTracks", { uri: journal.uri, uris: uris.slice(i, i + 100) });
+        journal.completed += Math.min(100, uris.length - i);
+        this.api.Platform.Storage.set("last-write-v1", { ...journal });
+        progress(`Saved ${journal.completed} of ${uris.length} to the native copy`);
+        // Let the host render progress/cancellation between acknowledged batches.
+        await new Promise(resolve => setTimeout(resolve, 0));
+      }
+      journal.phase = "complete";
+      this.api.Platform.Storage.set("last-write-v1", { ...journal });
+      return journal;
+    } catch (error) {
+      journal.phase = error.unknown ? "unknown" : "stopped";
+      this.api.Platform.Storage.set("last-write-v1", { ...journal });
+      throw new Error(`${error.message} Confirmed ${journal.completed}/${uris.length}.${journal.uri ? ` New copy: ${journal.uri}.` : ""} Inspect Spotify before repeating this action.`);
+    }
+  }
   async createCopy(
     tracks,
     name,
@@ -1028,7 +1124,9 @@ export class DataClient {
       });
       journal.uri =
         created?.uri || (created?.id ? `spotify:playlist:${created.id}` : "");
-      const { id } = idFromUri(journal.uri, "playlist");
+      let id;
+      try { ({ id } = idFromUri(journal.uri, "playlist")); }
+      catch { throw new RequestError("Spotify did not identify the created copy; its outcome is unknown.", 0, true); }
       journal.phase = "adding";
       this.api.Platform.Storage.set("last-write-v1", { ...journal });
       for (let i = 0; i < uris.length; i += 100) {

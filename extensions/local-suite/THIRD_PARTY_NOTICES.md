@@ -17,7 +17,8 @@ https://lucasoe.github.io/spicetify-genres/api/ after an explicit genre tap.
 That data is credited in the page. Last.fm and Stats.fm are optional remote
 providers; their data and availability remain their responsibility.
 
-Each bundle includes abort-controller 3.0.0 and event-target-shim 5.0.1:
+Builds through 0.1.4 included abort-controller 3.0.0 and event-target-shim 5.0.1.
+They are removed in 0.1.5; their license notices are retained here for history:
 
 ## abort-controller — MIT License
 
@@ -88,3 +89,19 @@ ContextTrack metadata keys are grounded in the pinned SDK's
 Only supplied fields are reused; omitted dates, ratings and identifiers are not
 inferred. The same collection protocol references above establish the optional
 sync-token field and int32 saved timestamp.
+
+## Read/write recovery references (0.1.5)
+
+The pinned SDK's `loader/script-api.ts` exposes `Playlists.create` and
+`Playlists.addTracks` through the native bridge; its Java
+[SpotifyServices](https://github.com/LeNerd46/SpotifyPlus/blob/615455bf0a7a81cd2d01382a1f1e9e0a699fb082/app/src/main/java/com/lenerd/spotifyplus/module/scripting/SpotifyServices.java)
+waits for the playlist RPC response and checks its status. This is a bridge
+compatibility path, not a guarantee of live success on each Spotify build.
+The same source defines authenticated `/metadata/4/track` and `/metadata/4/artist`
+JSON reads. No private endpoint mutation has been reimplemented in JavaScript.
+
+Optional MusicBrainz genre requests follow the official
+[MusicBrainz API](https://musicbrainz.org/doc/MusicBrainz_API) and
+[search](https://musicbrainz.org/doc/MusicBrainz_API/Search) documentation.
+MusicBrainz is credited in results; no dataset or upstream code is bundled.
+Its data is supplied at runtime under MusicBrainz's published terms and availability.

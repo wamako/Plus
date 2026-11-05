@@ -57,11 +57,11 @@ async function until(predicate, label) {
   assert.fail(`Did not render ${label}`);
 }
 
-for (const mode of ["web", "native", "likes", "no-icu", "no-codecs", "large-likes"]) {
+for (const mode of ["web", "native", "likes", "no-icu", "no-codecs", "large-likes", "recovery"]) {
   const nativeReads = mode !== "web",
-    likedReads = ["likes", "no-icu", "no-codecs", "large-likes"].includes(mode),
-    largeLikes = mode === "large-likes";
-  test(`actual R10 loader: ${largeLikes ? "20,001 context likes and explicit 10,000-track copy range" : mode === "no-icu" ? "Node 18 no-ICU decoder" : mode === "no-codecs" ? "missing optional text codecs" : likedReads ? "dedicated Liked Songs via paged collection" : nativeReads ? "native album/genre reads with public GET 404" : "public read fallback"}, four sandboxes and independent cleanup`, async () => {
+    likedReads = ["likes", "no-icu", "no-codecs", "large-likes", "recovery"].includes(mode),
+    largeLikes = mode === "large-likes", recovery = mode === "recovery";
+  test(`actual R10 loader: ${recovery ? "metadata failures, awaited native save and opt-in MusicBrainz with real fetch" : largeLikes ? "20,001 context likes and explicit 10,000-track copy range" : mode === "no-icu" ? "Node 18 no-ICU decoder" : mode === "no-codecs" ? "missing optional text codecs" : likedReads ? "dedicated Liked Songs via paged collection" : nativeReads ? "native album/genre reads with public GET 404" : "public read fallback"}, four sandboxes and independent cleanup`, async () => {
     const errors = [],
       values = new Map(),
       http = [],
@@ -127,6 +127,8 @@ for (const mode of ["web", "native", "likes", "no-icu", "no-codecs", "large-like
             isPaused: false,
             isBuffering: false,
           };
+        if (recovery && operation === "playlists.create") return {uri:copy};
+        if (recovery && operation === "playlists.addTracks") return;
         if (operation === "clipboard.write") return;
         throw new Error(`Unexpected native operation ${operation}`);
       },
@@ -151,7 +153,7 @@ for (const mode of ["web", "native", "likes", "no-icu", "no-codecs", "large-like
             ],
           });
         if (nativeReads && operation === "artist.get")
-          return Promise.resolve({ name: "Artist 1", genre: ["hip hop"] });
+          return Promise.resolve(recovery ? null : { name: "Artist 1", genre: ["hip hop"] });
         throw new Error("Unexpected native asynchronous mutation");
       },
       getCurrentTrack() {
@@ -169,6 +171,7 @@ for (const mode of ["web", "native", "likes", "no-icu", "no-codecs", "large-like
       },
       getTrack: async (input) => {
         metadataReads++;
+        if (recovery) throw new TypeError("simulated incompatible native metadata bridge");
         assert.ok(!largeLikes, "context metadata avoids per-track bridge calls");
         return nativeReads
           ? {
@@ -226,6 +229,9 @@ for (const mode of ["web", "native", "likes", "no-icu", "no-codecs", "large-like
     let likedPages = 0, contextPages = 0, metadataReads = 0;
     globalThis.fetch = async (input, options = {}) => {
       const url = new URL(String(input));
+      // Real native Request performs the AbortSignal brand check ignored by a
+      // plain fetch mock. R10 omits AbortController in the user sandbox.
+      new Request(String(input), options);
       http.push({ url, options });
       let result;
       if (url.hostname === "api.spotify.com") {
@@ -277,6 +283,9 @@ for (const mode of ["web", "native", "likes", "no-icu", "no-codecs", "large-like
       } else if (url.hostname === "spclient.wg.spotify.com" &&
         (url.pathname.startsWith("/context-resolve/") || url.pathname.startsWith("/large-likes/"))) {
         assert.equal(options.headers.Authorization, "Bearer secret-token");
+        if (recovery) {
+          result = {uri:"spotify:user:self:collection",metadata:{track_count:"3"},pages:[{tracks:[{uri:uri(1)},{uri:uri(2)},{uri:uri(3)}]}]};
+        } else {
         if (!largeLikes) return new Response(null, { status: 404 });
         contextPages++;
         const page = url.pathname.startsWith("/context-resolve/") ? 0 : Number(url.pathname.split("/").at(-1));
@@ -292,18 +301,24 @@ for (const mode of ["web", "native", "likes", "no-icu", "no-codecs", "large-like
           ...(end < 20001 ? { next_page_url: `/large-likes/${page + 1}` } : {}),
         };
         result = page === 0 ? { uri: "spotify:user:self:collection", metadata: { track_count: "20001" }, pages: [value] } : value;
+        }
       } else if (url.hostname === "spclient.wg.spotify.com") {
         assert.equal(options.headers.Authorization, "Bearer secret-token");
+        if (recovery && (url.pathname.startsWith("/metadata/4/artist/") || url.pathname.endsWith(uriToHex(uri(2))))) return new Response(null, {status:404});
         assert.ok(url.pathname.startsWith("/metadata/4/track/"));
         result = {
-          name: "Song 1",
+          name: recovery && url.pathname.endsWith(uriToHex(uri(3))) ? "Recovered Song 3" : "Song 1",
           artist: [
             { name: "Artist 1", gid: uriToHex(`spotify:artist:${id(1)}`) },
           ],
         };
       } else {
         assert.equal(options.headers?.Authorization, undefined);
-        if (url.hostname === "lucasoe.github.io")
+        if (url.hostname === "musicbrainz.org")
+          result = url.searchParams.has("query")
+            ? {count:1,artists:[{id:"01234567-0123-4567-89ab-0123456789ab",name:"Artist 1",score:100}]}
+            : {id:"01234567-0123-4567-89ab-0123456789ab",name:"Artist 1",genres:[{name:"hip hop",count:3}],relations:[{url:{resource:`https://open.spotify.com/artist/${id(1)}`}}]};
+        else if (url.hostname === "lucasoe.github.io")
           result = {
             pageProps: {
               genresAdvancedInfo: {
@@ -317,6 +332,7 @@ for (const mode of ["web", "native", "likes", "no-icu", "no-codecs", "large-like
           };
         else assert.fail(`Unexpected provider ${url.hostname}`);
       }
+      if (recovery) return originalFetch(`data:application/json,${encodeURIComponent(JSON.stringify(result))}`, {...options,method:"GET",body:undefined});
       return new Response(JSON.stringify(result), {
         status: 200,
         headers: { "Content-Type": "application/json" },
@@ -379,7 +395,35 @@ for (const mode of ["web", "native", "likes", "no-icu", "no-codecs", "large-like
       assert.equal(http.length, 0);
       await open("Sort Play");
       press(likedReads ? "Load Liked Songs" : "Load collection");
-      if (largeLikes) {
+      if (recovery) {
+        await until(() => text(tree).includes("3 tracks in preview"), "complete recovered membership");
+        assert.match(text(tree), /1 saved tracks have unavailable metadata/);
+        assert.match(text(tree), /Recovered Song 3/);
+        assert.equal(http.filter(c => c.options.method === "POST").length, 0);
+        press("Preview native Spotify copy");
+        await until(() => text(tree).includes("visibility follows Spotify defaults"), "native copy confirmation");
+        press("Confirm this action");
+        await until(() => text(tree).includes("Confirmed 3 of 3"), "acknowledged native copy");
+        const writes = native.filter(c => c.operation.startsWith("playlists."));
+        assert.equal(writes.length, 2);
+        assert.equal(writes[0].operation, "playlists.create");
+        assert.equal(writes[1].operation, "playlists.addTracks");
+        assert.equal(writes[1].args.uri, copy);
+        assert.deepEqual(writes[1].args.uris, [uri(3),uri(1),uri(2)], "title-sorted preview with unavailable metadata last");
+        await open("What’s That Genre?");
+        assert.equal(http.filter(c => c.url.hostname === "musicbrainz.org").length, 0);
+        press("○ Use MusicBrainz fallback (no API key)");
+        await until(() => text(tree).includes("✓ Use MusicBrainz fallback"), "MusicBrainz opt in");
+        press("Look up current track");
+        await until(() => text(tree).includes("Explore hip hop"), "keyless genre fallback");
+        assert.match(text(tree), /MusicBrainz artist genres/);
+        assert.equal(http.filter(c => c.url.hostname === "musicbrainz.org").length, 2);
+        await open("Playlist Plus");
+        press("Load Liked Songs");
+        await until(() => text(tree).includes("3 tracks in preview"), "all songs preview without genre filters");
+        assert.match(text(tree), /3 tracks have unknown genres/);
+        assert.equal(http.filter(c => c.options.method === "POST").length, 0, "native saves never fall through to Web writes");
+      } else if (largeLikes) {
         await until(() => text(tree).includes("20001 tracks in preview"), "full large-library preview");
         assert.equal(contextPages, 3);
         assert.equal(likedPages, 0);

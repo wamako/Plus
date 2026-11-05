@@ -32,7 +32,7 @@ function App() {
       async (job) =>
         client.genres(
           await client.track(spotifyUri(input, "track"), job),
-          { key: settings.key },
+          { key: settings.key, musicbrainz: settings.musicbrainz },
           job,
         ),
       setTrack,
@@ -94,8 +94,8 @@ function App() {
             ))
           ) : (
             <Label>
-              No genre data is available for this track. You can try a Last.fm
-              key for tag fallback.
+              No genre data is available for this track. Enable MusicBrainz
+              fallback above or try your own Last.fm key.
             </Label>
           )}
         </View>

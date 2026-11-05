@@ -99,6 +99,16 @@ function App() {
       {data ? (
         <View>
           <Label large>{data.name}</Label>
+          {data.tracks.some((track: any) => track.metadataUnavailable) ? (
+            <Label muted>
+              {
+                data.tracks.filter((track: any) => track.metadataUnavailable)
+                  .length
+              }{" "}
+              saved tracks have unavailable metadata; their URIs remain in the
+              preview.
+            </Label>
+          ) : null}
           <Label muted>
             {data.source}. {data.skipped} non-track or unavailable metadata rows
             omitted.

@@ -26,7 +26,9 @@ and paged Liked Songs context resolver as alternate read routes. It filters out
 saved albums and removed items, keeps saved timestamps when supplied, and checks
 cursors, snapshots, duplicate entries and incomplete pages. Actual track metadata
 is hydrated through the existing native read path. Reads never call collection
-write/remove endpoints. The collection paging request uses a read-only protobuf
+write/remove endpoints. Saved URIs with unavailable catalog metadata remain visibly
+labelled in the preview, retain their save dates, sort last for unknown metadata
+fields and skip genre guessing. The collection paging request uses a read-only protobuf
 POST; the network helper treats its timeout as a read failure, not an uncertain write.
 
 Account identity is detected from a personal collection context, the host's

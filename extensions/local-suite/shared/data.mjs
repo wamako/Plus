@@ -411,6 +411,45 @@ export class DataClient {
       );
     return username;
   }
+  async hydrateLikes(rows, job, progress) {
+    let completed = 0;
+    return mapLimit(
+      rows,
+      2,
+      async (row, index) => {
+        check(job);
+        let track;
+        try {
+          [track] = await this.hydrate([row], job);
+        } catch (error) {
+          check(job);
+          // A deleted catalog entry remains a real saved URI. Keep its membership
+          // and timestamp instead of dropping it or rejecting the entire library.
+          if (
+            !/Native metadata: (track metadata unavailable|HTTP 404)/.test(
+              error.message,
+            ) ||
+            !/Spotify Web API: HTTP 404/.test(error.message)
+          )
+            throw error;
+          track = {
+            ...normalizeTrack({
+              uri: row.uri,
+              name: "Track metadata unavailable",
+              artists: [],
+            }),
+            addedAt: Number.isFinite(row.addedAt) ? row.addedAt : null,
+            metadataUnavailable: true,
+          };
+        }
+        progress?.(
+          `Read metadata ${++completed} of ${rows.length} liked songs`,
+        );
+        return { ...track, sourceIndex: index, liked: true };
+      },
+      job,
+    );
+  }
   async likedCollection(hint, job, progress) {
     const username = await this.spotifyUsername(hint, job),
       rows = [],
@@ -476,10 +515,7 @@ export class DataClient {
         );
       token = page.next;
     }
-    const tracks = (await this.hydrate(rows, job, progress)).map((track) => ({
-      ...track,
-      liked: true,
-    }));
+    const tracks = await this.hydrateLikes(rows, job, progress);
     return {
       uri: LIKED_URI,
       name: "Liked Songs",
@@ -571,10 +607,7 @@ export class DataClient {
     const count = context.metadata?.track_count;
     if (/^\d+$/.test(String(count)) && Number(count) !== rows.length)
       throw new ReadError("Incomplete Liked Songs context track count");
-    const tracks = (await this.hydrate(rows, job, progress)).map((track) => ({
-      ...track,
-      liked: true,
-    }));
+    const tracks = await this.hydrateLikes(rows, job, progress);
     return {
       uri: LIKED_URI,
       name: "Liked Songs",
@@ -777,6 +810,13 @@ export class DataClient {
     return value;
   }
   async genres(track, options = {}, job) {
+    if (track.metadataUnavailable)
+      return {
+        ...track,
+        genres: [],
+        genreSource: "Unknown",
+        genreStatus: "Track metadata is unavailable.",
+      };
     check(job);
     const strategy = options.lastfmFirst ? "lastfm-first" : "spotify-first";
     const key = `genres:${strategy}:${options.key ? "lastfm" : "no-key"}:${track.uri}`,

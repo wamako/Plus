@@ -2,7 +2,7 @@
 
 Validated in the build workspace on 2026-11-05.
 
-- **64 core/regression tests passed**: link validation, both playlist schemas, stable sorting,
+- **65 core/regression tests passed**: link validation, both playlist schemas, stable sorting,
   unknown values, deduplication, genre matching, shuffle, CSV escaping, listening
   qualification, pauses/seeks/buffering, retention, cancellation, cache bounds,
   network allowlist and token separation, timeout/rate-limit behavior, pagination,
@@ -16,7 +16,7 @@ Validated in the build workspace on 2026-11-05.
   exclusion, saved timestamps, empty collections, 101-track Web API pagination,
   context page chaining/preloaded pages, cursor/snapshot failures, cancellation,
   account fallback, credential host restrictions, rate limits and read-only POST
-  error classification.
+  error classification, plus retained saved URIs when catalog metadata is unavailable.
 - **TypeScript check passed** against the exact pinned R10 SDK declarations.
 - **Four API-2 bundles built** using the SDK's official transformed extension builder.
 - **Three actual host-loader/React-renderer integration tests passed**: all four bundles

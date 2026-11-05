@@ -109,6 +109,8 @@ export function normalizeTrack(raw, index = 0) {
   };
 }
 export function trackMetric(track, metric) {
+  if (track.metadataUnavailable && metric !== "added" && metric !== "liked")
+    return null;
   switch (metric) {
     case "title":
       return clean(track.title);

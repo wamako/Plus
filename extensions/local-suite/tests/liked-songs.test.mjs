@@ -348,3 +348,28 @@ test("read-only protobuf POSTs parse bytes and never report an uncertain write",
     /Invalid read-only POST/,
   );
 });
+
+test("unavailable catalog metadata retains the saved URI and date without blocking other likes or guessing genres", async () => {
+  const { client, api, respond } = fixture();
+  const original = api.Internal.getTrack;
+  api.Internal.getTrack = async (value) =>
+    value === uri(2) ? null : original(value);
+  respond(async (url) => {
+    if (url.endsWith("/collection/v2/paging"))
+      return collectionResponse([
+        { uri: uri(1), seconds: 1700000000 },
+        { uri: uri(2), seconds: 1700000001 },
+      ]);
+    throw new RequestError("not found", 404);
+  });
+  const data = await client.collection(LIKED_URI, {});
+  assert.equal(data.tracks.length, 2);
+  assert.equal(data.tracks[1].uri, uri(2));
+  assert.equal(data.tracks[1].addedAt, 1700000001000);
+  assert.equal(data.tracks[1].liked, true);
+  assert.equal(data.tracks[1].metadataUnavailable, true);
+  assert.deepEqual(
+    (await client.genres(data.tracks[1], { key: "unused" }, {})).genres,
+    [],
+  );
+});

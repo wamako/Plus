@@ -16,9 +16,9 @@ public final class GlassStyle {
     private static final Map<View,Saved> changed=new WeakHashMap<>();
     private static final class Saved {
         final ViewGroup.LayoutParams layout; final int marginLeft,marginRight;
-        final Drawable.ConstantState state;final WeakReference<Drawable> original;final boolean empty; final int left,top,right,bottom;
-        Saved(View view){layout=view.getLayoutParams();marginLeft=layout instanceof ViewGroup.MarginLayoutParams m?m.leftMargin:0;marginRight=layout instanceof ViewGroup.MarginLayoutParams m?m.rightMargin:0;Drawable bg=view.getBackground();state=bg==null?null:bg.getConstantState();original=new WeakReference<>(bg);empty=bg==null;left=view.getPaddingLeft();top=view.getPaddingTop();right=view.getPaddingRight();bottom=view.getPaddingBottom();}
-        Drawable restore(View v){return state!=null?state.newDrawable(v.getResources()):original.get();}
+        final Drawable.ConstantState state;final Drawable original;final boolean empty; final int left,top,right,bottom;
+        Saved(View view){layout=view.getLayoutParams();marginLeft=layout instanceof ViewGroup.MarginLayoutParams m?m.leftMargin:0;marginRight=layout instanceof ViewGroup.MarginLayoutParams m?m.rightMargin:0;Drawable bg=view.getBackground();state=bg==null?null:bg.getConstantState();original=bg;empty=bg==null;left=view.getPaddingLeft();top=view.getPaddingTop();right=view.getPaddingRight();bottom=view.getPaddingBottom();}
+        Drawable restore(View v){return state!=null?state.newDrawable(v.getResources()):original;}
     }
     private GlassStyle(){}
     public static void initialize(Context context){prefs=context.getSharedPreferences("SpotifyPlusGlass",Context.MODE_PRIVATE);}
@@ -29,7 +29,7 @@ public final class GlassStyle {
         boolean enabled=category!=null&&prefs.getBoolean("enabled",false)&&prefs.getBoolean(category,true);
         Saved old=changed.get(view);
         if(!enabled){if(old!=null){view.setBackground(old.empty?null:old.restore(view));view.setPadding(old.left,old.top,old.right,old.bottom);if(view.getLayoutParams() instanceof ViewGroup.MarginLayoutParams m){m.leftMargin=old.marginLeft;m.rightMargin=old.marginRight;view.setLayoutParams(m);}changed.remove(view);}return;}
-        if(old==null){old=new Saved(view);if(!old.empty&&old.state==null)return;changed.put(view,old);}
+        if(old==null){old=new Saved(view);changed.put(view,old);}
         if(old!=null && view.getBackground() instanceof Surface surface && surface.intensity==prefs.getInt("intensity",50))return;
         if (isNavigation(resource) && view.getLayoutParams() instanceof ViewGroup.MarginLayoutParams m) {
             m.leftMargin=old.marginLeft+FeatureSheets.dp(view.getContext(),12);

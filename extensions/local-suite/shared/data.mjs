@@ -1,5 +1,7 @@
 import {
   LIKED_URI,
+  MAX_LIKED_ITEMS,
+  MAX_LIKED_PAGES,
   likedInput,
   validUsername,
   encodeCollectionPage,
@@ -20,6 +22,7 @@ import {
   uriToHex,
   withAlbum,
   nativeGenres,
+  contextTrackMetadata,
 } from "./native-metadata.mjs";
 const check = (job) => {
   if (job?.cancelled) throw new Error("Operation cancelled.");
@@ -104,7 +107,7 @@ export class DataClient {
       `${label} could not be read. ${failures.join("; ")}. Check that this item opens in Spotify. No partial preview was used.`,
     );
   }
-  async paged(path, job, progress = (_message) => {}) {
+  async paged(path, job, progress = (_message) => {}, maximum = MAX_ITEMS) {
     const rows = [];
     let offset = 0;
     while (true) {
@@ -120,10 +123,10 @@ export class DataClient {
         `Loaded ${offset}${Number.isFinite(page.total) ? ` of ${page.total}` : ""} items`,
       );
       if (
-        rows.length > MAX_ITEMS ||
-        ((page.next || offset < page.total) && rows.length >= MAX_ITEMS)
+        rows.length > maximum ||
+        ((page.next || offset < page.total) && rows.length >= maximum)
       )
-        throw new ReadError(`Collection exceeds ${MAX_ITEMS} items`);
+        throw new ReadError(`Collection exceeds ${maximum} items`);
       if (!page.next && !(Number.isFinite(page.total) && offset < page.total))
         break;
       if (!page.items.length)
@@ -420,8 +423,9 @@ export class DataClient {
         check(job);
         let track;
         try {
-          [track] = await this.hydrate([row], job);
-        } catch (error) {
+          if (row.metadataTrack) track = row.metadataTrack;
+          else [track] = await this.hydrate([row], job);
+       } catch (error) {
           check(job);
           // A deleted catalog entry remains a real saved URI. Keep its membership
           // and timestamp instead of dropping it or rejecting the entire library.
@@ -442,9 +446,9 @@ export class DataClient {
             metadataUnavailable: true,
           };
         }
-        progress?.(
-          `Read metadata ${++completed} of ${rows.length} liked songs`,
-        );
+        completed++;
+        if (completed <= 10 || completed % 100 === 0 || completed === rows.length)
+          progress?.(`Read metadata ${completed} of ${rows.length} liked songs`);
         return { ...track, sourceIndex: index, liked: true };
       },
       job,
@@ -463,8 +467,8 @@ export class DataClient {
       if (cursors.has(token))
         throw new ReadError("Collection pagination repeated a cursor");
       cursors.add(token);
-      if (cursors.size > 500)
-        throw new ReadError("Saved library scan exceeds 500 pages");
+      if (cursors.size > MAX_LIKED_PAGES)
+        throw new ReadError(`Saved library scan exceeds ${MAX_LIKED_PAGES} pages`);
       const access = this.api.Platform.Session.accessToken;
       if (!access) throw new ReadError("Spotify session unavailable");
       const bytes = await this.request(
@@ -485,14 +489,16 @@ export class DataClient {
       let page;
       try {
         page = decodeCollectionPage(bytes);
-      } catch {
-        throw new ReadError("Incomplete or invalid saved collection response");
+      } catch (error) {
+        const detail = /^(Invalid|Truncated|Unsupported|Collection)/.test(error.message || "")
+          ? ` (${error.message.slice(0, 120)})` : "";
+        throw new ReadError(`Incomplete or invalid saved collection response${detail}`);
       }
-      if (sync && sync !== page.sync)
+      if (sync && page.sync && sync !== page.sync)
         throw new ReadError(
           "Saved collection changed during loading; retry the read",
         );
-      sync = page.sync;
+      if (page.sync) sync = page.sync;
       scanned += page.items.length;
       for (const item of page.items) {
         if (item.removed || !isTrack(item.uri)) continue;
@@ -503,8 +509,8 @@ export class DataClient {
         seen.add(item.uri);
         rows.push(item);
       }
-      if (rows.length > MAX_ITEMS || scanned > 50000)
-        throw new ReadError("Liked Songs exceeds the supported library size");
+      if (rows.length > MAX_LIKED_ITEMS || scanned > 1000000)
+        throw new ReadError(`Liked Songs exceeds ${MAX_LIKED_ITEMS} tracks or the saved-item scan guard`);
       progress?.(
         `Read ${rows.length} liked songs (${scanned} saved items checked)`,
       );
@@ -525,7 +531,7 @@ export class DataClient {
     };
   }
   async likedWeb(job, progress) {
-    const rows = await this.paged("/me/tracks", job, progress),
+    const rows = await this.paged("/me/tracks", job, progress, MAX_LIKED_ITEMS),
       tracks = trackRows(rows).map((t) => ({ ...t, liked: true }));
     return {
       uri: LIKED_URI,
@@ -564,14 +570,15 @@ export class DataClient {
       processed = new Set(),
       seenTracks = new Set(),
       rows = [];
+    context.pages = []; // Release the response's page references as each page is consumed.
     for (const p of pages) {
       const u = p.page_url || p.pageUrl;
       if (u) scheduled.add(contextPageUrl(u));
     }
     for (let i = 0; i < pages.length; i++) {
       check(job);
-      if (i >= 500)
-        throw new ReadError("Liked Songs context exceeds 500 pages");
+      if (i >= MAX_LIKED_PAGES)
+        throw new ReadError(`Liked Songs context exceeds ${MAX_LIKED_PAGES} pages`);
       let page = pages[i];
       if (page.loading)
         throw new ReadError("Liked Songs page is still loading");
@@ -589,10 +596,10 @@ export class DataClient {
         if (seenTracks.has(item.uri))
           throw new ReadError("Liked Songs repeated a track during loading");
         seenTracks.add(item.uri);
-        rows.push({ uri: item.uri, addedAt: null });
+        rows.push({ uri: item.uri, addedAt: null, metadataTrack: contextTrackMetadata(item) });
       }
-      if (rows.length > MAX_ITEMS)
-        throw new ReadError("Liked Songs exceeds 10,000 tracks");
+      if (rows.length > MAX_LIKED_ITEMS)
+        throw new ReadError(`Liked Songs exceeds ${MAX_LIKED_ITEMS} tracks`);
       progress?.(`Read ${rows.length} liked songs`);
       const next = page.next_page_url || page.nextPageUrl;
       if (next) {
@@ -603,6 +610,7 @@ export class DataClient {
           pages.push({ page_url: url });
         }
       }
+      pages[i] = null;
     }
     const count = context.metadata?.track_count;
     if (/^\d+$/.test(String(count)) && Number(count) !== rows.length)
@@ -621,9 +629,9 @@ export class DataClient {
       return await this.routes(
         "Liked Songs",
         [
+          ["Liked Songs context", () => this.likedContext(hint, job, progress)],
           ["Saved collection", () => this.likedCollection(hint, job, progress)],
           ["Saved tracks API", () => this.likedWeb(job, progress)],
-          ["Liked Songs context", () => this.likedContext(hint, job, progress)],
         ],
         job,
       );
@@ -762,7 +770,7 @@ export class DataClient {
               const artist = await this.native("getArtist", uri);
               const values = nativeGenres(artist);
               if (values.length) return values;
-            } catch (error) {
+           } catch (error) {
               if (status(error) === 429) throw error;
             }
             // Avoid repeating an unavailable Web-API artist request for every track by this artist.
@@ -772,7 +780,7 @@ export class DataClient {
               const { id } = idFromUri(uri, "artist");
               const artist = await this.spotify(`/artists/${id}`);
               return genreTags(artist?.genres || []);
-            } catch (error) {
+           } catch (error) {
               if ([401, 403, 404].includes(status(error)))
                 this.webUnavailable.set(uri, Date.now() + 300000);
               throw error;
@@ -861,7 +869,7 @@ export class DataClient {
         let result;
         try {
           result = await this.lastfm(params, options.key);
-        } catch (error) {
+       } catch (error) {
           if (error.providerCode === 6 || error.providerCode === 7) continue;
           throw error;
         }
@@ -906,7 +914,9 @@ export class DataClient {
             { ...options, deferSave: true },
             job,
           );
-          progress(`Classified ${++completed} of ${tracks.length}`);
+          completed++;
+          if (tracks.length <= 1000 || completed % 100 === 0 || completed === tracks.length)
+            progress(`Classified ${completed} of ${tracks.length}`);
           return value;
         },
         job,

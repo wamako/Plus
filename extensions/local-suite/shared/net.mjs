@@ -156,18 +156,22 @@ export class Cache {
     try {
       value = storage.get(key);
     } catch {}
-    this.entries = value && typeof value === "object" ? value : {};
+    this.entries = new Map(Object.entries(
+      value && typeof value === "object" ? value : {},
+    ));
+    while (this.entries.size > this.maximum)
+      this.entries.delete(this.entries.keys().next().value);
   }
   get(key, now = Date.now()) {
-    const entry = this.entries[key];
+    const entry = this.entries.get(key);
     return entry && entry.until > now ? entry.value : null;
   }
   set(key, value, ttl = 86400000) {
-    this.entries[key] = { value, until: Date.now() + ttl };
-    let keys = Object.keys(this.entries);
-    while (keys.length > this.maximum) delete this.entries[keys.shift()];
+    this.entries.set(key, { value, until: Date.now() + ttl });
+    while (this.entries.size > this.maximum)
+      this.entries.delete(this.entries.keys().next().value);
   }
   save() {
-    this.storage.set(this.key, this.entries);
+    this.storage.set(this.key, Object.fromEntries(this.entries));
   }
 }

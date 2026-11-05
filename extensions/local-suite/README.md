@@ -1,4 +1,4 @@
-# Spotify Plus local Android extensions · 0.1.3
+# Spotify Plus local Android extensions · 0.1.4
 
 Four removable **initial Android adaptations** of the requested Spicetify projects.
 Designed against the API-2 runtime shipped in Spotify Plus R10 for Spotify
@@ -15,19 +15,23 @@ old version is still shown, force-stop and reopen Spotify. Keep the working R10
 APK; no module repatching or app data clearing is required. Local listening
 history, saved keys, and genre presets keep their existing settings keys.
 
-Version 0.1.3 fixes a shared startup dependency introduced in 0.1.2. That version
-constructed a `TextDecoder` with its strict `fatal` option as soon as each bundle
-loaded. Node 18 builds without ICU reject that option, which can prevent every
-page from registering even while the Developer screen lists all four manifests.
-The new build uses the host-provided Node `Buffer` for UTF-8 encoding/decoding and
-validates malformed bytes by round-trip comparison. No optional text-codec
-constructor runs during startup.
+Version **0.1.4** removes the old 10,000-track read guard for Liked Songs and
+supports up to **100,000 liked tracks** across up to 10,000 pages. It tries the
+paged Liked Songs context first and reuses the returned title/artist metadata,
+reducing per-track bridge requests. Processed context pages are released as they
+are consumed; previews render 40 rows at a time. Incomplete counts, repeated pages
+and duplicate liked URIs still stop the read rather than silently truncating it.
 
-Overwrite the four extension folders in your existing selected parent directory,
-press **Refresh**, then force-stop and reopen Spotify. The Developer screen should
-show version **0.1.3**. Keep the R10 APK and app data. A listed manifest confirms
-folder discovery; successful runtime startup is what makes its page appear in
-the Extensions launcher.
+The alternate saved-collection parser now accepts optional sync tokens and full
+protobuf integers, including unknown 64-bit fields and signed timestamps. This
+fixes overly strict validation; it does not guarantee that a changed private
+Spotify response format will be readable. The 0.1.3 no-ICU startup fix remains.
+
+Large previews offer explicit **Copy range** choices of up to 10,000 tracks per
+new private playlist. Each range has its own name suffix, preview and confirmation.
+Saving a range keeps the full loaded preview. Neither loading nor sorting writes
+to Liked Songs. The ordinary playlist/album and per-copy guards stay at 10,000;
+queue append stays capped at 100. Phone memory and Spotify permissions still apply.
 
 Version 0.1.2 adds a dedicated **Load Liked Songs** button to Sort Play and
 Playlist Plus. Use that button for your saved songs, including when the playing
@@ -35,11 +39,12 @@ context points to a generated playlist or some other collection. Liked Songs is
 not loaded through a playlist-ID endpoint. The sorter operates on a preview;
 saving creates a new playlist copy and never changes your likes or their save dates.
 
-The loader reads Spotify's paged saved collection, with the saved-tracks Web API
-and paged Liked Songs context resolver as alternate read routes. It filters out
+The loader reads Spotify's paged Liked Songs context, with its saved collection
+and saved-tracks Web API as alternate read routes. It filters out
 saved albums and removed items, keeps saved timestamps when supplied, and checks
-cursors, snapshots, duplicate entries and incomplete pages. Actual track metadata
-is hydrated through the existing native read path. Reads never call collection
+cursors, snapshots, duplicate entries and incomplete pages. Context metadata is reused when available; missing track metadata
+is hydrated through the existing native read path. Context responses may omit
+saved dates, release dates, ISRC or popularity; those fields remain unknown. Reads never call collection
 write/remove endpoints. Saved URIs with unavailable catalog metadata remain visibly
 labelled in the preview, retain their save dates, sort last for unknown metadata
 fields and skip genre guessing. The collection paging request uses a read-only protobuf
@@ -59,7 +64,7 @@ The 0.1.1 native album reader, artist-ID recovery and genre fixes remain include
 ## Install on your non-root LSPatch setup
 
 1. Keep your working Spotify Plus R10 module. Do not install these files as APKs.
-2. Extract `SpotifyPlus-Local-Extensions-0.1.3.zip` into a normal, accessible
+2. Extract `SpotifyPlus-Local-Extensions-0.1.4.zip` into a normal, accessible
    directory, e.g. `Documents/SpotifyPlusLocal/` on the phone.
 3. The extracted `SpotifyPlus-Local-Extensions` directory must contain four child
    folders: `listening-stats`, `sort-play`, `genres`, and `playlist-plus`. Each child
@@ -109,8 +114,8 @@ Do not select a parent that also contains an older copy with the same extension 
   preserve multi-disc order, duplicate occurrences, release dates and matching
   artist IDs. Truncated/incomplete native playlists fall back to the public API,
   then the older paginated native playlist reader. The public API supports both
-  new `item` and older `track` row formats. All readers enforce a 10,000-item limit
-  and reject incomplete results. If every reader fails, the page shows stages
+  new `item` and older `track` row formats. Ordinary playlist/album readers enforce a 10,000-item limit;
+  Liked Songs has a separate 100,000-track guard. All reject incomplete results. If every reader fails, the page shows stages
   and statuses; it never labels a partial collection as complete. Native bridge
   reads have a 17-second deadline and HTTP reads a 15-second deadline.
 - Podcasts, local-file playlist entries and null/unavailable metadata rows are

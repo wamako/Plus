@@ -80,3 +80,11 @@ Node 18's [non-ICU TextDecoder implementation](https://github.com/nodejs/node/bl
 rejects the `fatal` constructor option. The bundle now uses the Buffer global
 provided by the host and its own UTF-8 round-trip validation; no Node source is
 copied into the bundle.
+
+## Large Liked Songs metadata reference (0.1.4)
+
+ContextTrack metadata keys are grounded in the pinned SDK's
+[Utils.java ContextTrack reader](https://github.com/LeNerd46/SpotifyPlus/blob/615455bf0a7a81cd2d01382a1f1e9e0a699fb082/app/src/main/java/com/lenerd46/spotifyplus/Utils.java).
+Only supplied fields are reused; omitted dates, ratings and identifiers are not
+inferred. The same collection protocol references above establish the optional
+sync-token field and int32 saved timestamp.

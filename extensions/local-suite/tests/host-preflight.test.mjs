@@ -57,10 +57,11 @@ async function until(predicate, label) {
   assert.fail(`Did not render ${label}`);
 }
 
-for (const mode of ["web", "native", "likes", "no-icu", "no-codecs"]) {
+for (const mode of ["web", "native", "likes", "no-icu", "no-codecs", "large-likes"]) {
   const nativeReads = mode !== "web",
-    likedReads = ["likes", "no-icu", "no-codecs"].includes(mode);
-  test(`actual R10 loader: ${mode === "no-icu" ? "Node 18 no-ICU decoder" : mode === "no-codecs" ? "missing optional text codecs" : likedReads ? "dedicated Liked Songs via paged collection" : nativeReads ? "native album/genre reads with public GET 404" : "public read fallback"}, four sandboxes and independent cleanup`, async () => {
+    likedReads = ["likes", "no-icu", "no-codecs", "large-likes"].includes(mode),
+    largeLikes = mode === "large-likes";
+  test(`actual R10 loader: ${largeLikes ? "20,001 context likes and explicit 10,000-track copy range" : mode === "no-icu" ? "Node 18 no-ICU decoder" : mode === "no-codecs" ? "missing optional text codecs" : likedReads ? "dedicated Liked Songs via paged collection" : nativeReads ? "native album/genre reads with public GET 404" : "public read fallback"}, four sandboxes and independent cleanup`, async () => {
     const errors = [],
       values = new Map(),
       http = [],
@@ -166,8 +167,10 @@ for (const mode of ["web", "native", "likes", "no-icu", "no-codecs"]) {
       getProgress() {
         return 1000;
       },
-      getTrack: async (input) =>
-        nativeReads
+      getTrack: async (input) => {
+        metadataReads++;
+        assert.ok(!largeLikes, "context metadata avoids per-track bridge calls");
+        return nativeReads
           ? {
               uri: input,
               title: `Song ${Number(input.split(":").at(-1))}`,
@@ -177,7 +180,8 @@ for (const mode of ["web", "native", "likes", "no-icu", "no-codecs"]) {
               durationMs: 180000,
               explicit: false,
             }
-          : null,
+          : null;
+      },
       closeSurface(script) {
         registry.unmountSurface(script, "sideDrawer");
         return true;
@@ -219,7 +223,7 @@ for (const mode of ["web", "native", "likes", "no-icu", "no-codecs"]) {
           value: undefined,
         });
     const originalFetch = globalThis.fetch;
-    let likedPages = 0;
+    let likedPages = 0, contextPages = 0, metadataReads = 0;
     globalThis.fetch = async (input, options = {}) => {
       const url = new URL(String(input));
       http.push({ url, options });
@@ -270,6 +274,24 @@ for (const mode of ["web", "native", "likes", "no-icu", "no-codecs"]) {
               )
             : collectionResponse([{ uri: uri(2) }, { uri: uri(3) }]);
         return new Response(bytes, { status: 200 });
+      } else if (url.hostname === "spclient.wg.spotify.com" &&
+        (url.pathname.startsWith("/context-resolve/") || url.pathname.startsWith("/large-likes/"))) {
+        assert.equal(options.headers.Authorization, "Bearer secret-token");
+        if (!largeLikes) return new Response(null, { status: 404 });
+        contextPages++;
+        const page = url.pathname.startsWith("/context-resolve/") ? 0 : Number(url.pathname.split("/").at(-1));
+        const start = page * 10000 + 1, end = Math.min(20001, start + 9999);
+        const value = {
+          tracks: Array.from({ length: end - start + 1 }, (_, i) => ({
+            uri: uri(start + i), metadata: {
+              title: `Song ${start + i}`, artist_name: "Artist 1",
+              artist_uri: `spotify:artist:${id(1)}`, album_title: "Liked album",
+              duration: "180000", is_explicit: "false",
+            },
+          })),
+          ...(end < 20001 ? { next_page_url: `/large-likes/${page + 1}` } : {}),
+        };
+        result = page === 0 ? { uri: "spotify:user:self:collection", metadata: { track_count: "20001" }, pages: [value] } : value;
       } else if (url.hostname === "spclient.wg.spotify.com") {
         assert.equal(options.headers.Authorization, "Bearer secret-token");
         assert.ok(url.pathname.startsWith("/metadata/4/track/"));
@@ -309,7 +331,7 @@ for (const mode of ["web", "native", "likes", "no-icu", "no-codecs"]) {
         (n) => n.props?.onPress?.id && text(n).trim() === label,
       );
       assert.ok(node, `Missing button ${label}`);
-      assert.ok(!node.props.disabled, `Disabled button ${label}`);
+      assert.ok(!node.props.disabled && node.props.enabled !== false, `Disabled button ${label}`);
       dispatchReactEvent(node.props.onPress.id, { surfaceId: "sideDrawer" });
       return node.props.onPress.id;
     };
@@ -357,6 +379,38 @@ for (const mode of ["web", "native", "likes", "no-icu", "no-codecs"]) {
       assert.equal(http.length, 0);
       await open("Sort Play");
       press(likedReads ? "Load Liked Songs" : "Load collection");
+      if (largeLikes) {
+        await until(() => text(tree).includes("20001 tracks in preview"), "full large-library preview");
+        assert.equal(contextPages, 3);
+        assert.equal(likedPages, 0);
+        assert.equal(metadataReads, 0);
+        assert.equal(nodes(tree).filter(n => n.props?.onPress?.id && text(n) === "Open track in Spotify").length, 40,
+          "native view tree stays bounded to 40 preview rows");
+        press("Duration");
+        await until(() => nodes(tree).some(n => n.props?.onPress?.id && text(n) === "Duration" && n.props.backgroundColor === "#294c40"), "duration sort selection");
+        press("Copy range 10001-20000");
+        await until(() => nodes(tree).some(n => n.props?.onPress?.id && text(n) === "Copy range 10001-20000" && n.props.backgroundColor === "#294c40"), "selected copy range");
+        press("Preview saving a new copy");
+        await until(() => text(tree).includes("Create “Liked Songs · Plus · 10001-20000” with 10000 tracks?"), "explicit range confirmation");
+        assert.match(text(tree), /10001-20000/);
+        assert.equal(http.filter(c => c.options.method === "POST").length, 0, "reads and range selection never write");
+        press("Confirm this action");
+        await until(() => text(tree).includes("Confirmed 10000 of 10000"), "range copy completion");
+        const writes = http.filter(c => c.options.method === "POST");
+        assert.equal(writes.length, 101);
+        const created = JSON.parse(writes[0].options.body);
+        assert.equal(created.public, false);
+        assert.match(created.name, /10001-20000/);
+        const copied = writes.slice(1).flatMap(c => {
+          assert.equal(c.url.pathname, `/v1/playlists/${id(88)}/items`);
+          const batch = JSON.parse(c.options.body).uris;
+          assert.equal(batch.length, 100);
+          return batch;
+        });
+        assert.deepEqual(copied, Array.from({ length: 10000 }, (_, i) => uri(10001 + i)));
+        assert.equal(http.filter(c => c.url.hostname === "api.spotify.com" && c.options.method !== "POST").length, 0);
+        assert.match(text(tree), /20001 tracks in preview/, "saving a range retains the full read preview");
+      } else {
       await until(
         () => text(tree).includes("3 tracks in preview"),
         "sort preview",
@@ -485,6 +539,7 @@ for (const mode of ["web", "native", "likes", "no-icu", "no-codecs"]) {
       assert.equal(registry.hasMountedSurface("sideDrawer"), false);
       await open("Sort Play");
       assert.match(text(tree), /Sort Play/);
+      }
     } finally {
       for (const script of [...registry.getScripts()])
         runtime.unregisterScript(script.manifest.id);

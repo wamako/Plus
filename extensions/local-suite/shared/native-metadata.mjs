@@ -97,3 +97,27 @@ export function nativeGenres(artist) {
     ...(Array.isArray(raw.genres) ? raw.genres : []),
   ]);
 }
+
+// Context resolver metadata uses the same keys as R10's ContextTrack reader.
+export function contextTrackMetadata(item) {
+  const md = item?.metadata;
+  if (typeof md?.title !== "string" || !md.title.trim() ||
+      typeof md.artist_name !== "string" || !md.artist_name.trim()) return null;
+  const valid = (uri, kind) =>
+    new RegExp(`^spotify:${kind}:[A-Za-z0-9]{22}$`).test(uri || "") ? uri : "";
+  const duration = /^\d+$/.test(String(md.duration)) ? Number(md.duration) : null;
+  const imageId = String(md.image_large_url || md.image_url || "")
+    .replace(/^spotify:image:/, "");
+  const image = /^[0-9a-f]{40}$/i.test(imageId)
+    ? `https://i.scdn.co/image/${imageId}` : "";
+  const raw = {
+    uri: item.uri,
+    title: md.title,
+    artists: [{ name: md.artist_name, uri: valid(md.artist_uri, "artist") }],
+    durationMs: Number.isFinite(duration) && duration > 0 ? duration : undefined,
+    album: { name: md.album_title || "", uri: valid(md.album_uri, "album"), image },
+  };
+  if (md.is_explicit === "true" || md.is_explicit === "false")
+    raw.explicit = md.is_explicit === "true";
+  return normalizeTrack(raw);
+}

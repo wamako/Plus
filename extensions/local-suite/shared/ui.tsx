@@ -9,7 +9,7 @@ import {
   TextInput,
   Pressable,
 } from "spotifyplus/react";
-import { csv, spotifyUri } from "./model.mjs";
+import { csv, spotifyUri, MAX_ITEMS } from "./model.mjs";
 export const palette = {
   bg: "#101820",
   card: "#1b2732",
@@ -299,17 +299,23 @@ export function Actions({
 }) {
   const task = useTask(),
     [copyName, setCopyName] = useState(`${name} · Plus`),
+    [copyPart, setCopyPart] = useState(0),
     [confirmation, setConfirm] = useState<any>(null),
     [outcome, setResult] = useState<any>(null);
   const confirm = confirmation?.source === tracks ? confirmation : null;
   const result = outcome?.source === tracks ? outcome : null;
   const previous = S.Platform.Storage.get<any>("last-write-v1");
+  const partCount = Math.max(1, Math.ceil(tracks.length / MAX_ITEMS)),
+    part = Math.min(copyPart, partCount - 1),
+    from = part * MAX_ITEMS,
+    to = Math.min(tracks.length, from + MAX_ITEMS);
   function stage(action: string) {
     setConfirm({
       source: tracks,
       action,
-      tracks: [...tracks],
-      name: copyName,
+      tracks: action === "copy" ? tracks.slice(from, to) : [...tracks],
+      name: action === "copy" && partCount > 1
+        ? `${copyName} · ${from + 1}-${to}` : copyName,
       token: `${Date.now()}:${Math.random()}`,
     });
   }
@@ -377,6 +383,27 @@ export function Actions({
         Saving creates a new playlist. Queue actions append to your existing
         queue. Neither action rewrites the source playlist.
       </Label>
+      {partCount > 1 ? (
+        <View>
+          <Label muted>
+            The full library is loaded. Each new playlist copy contains up to
+            {" "}{MAX_ITEMS} tracks; choose the range to save.
+          </Label>
+          {Array.from({ length: partCount }, (_, index) => (
+            <Button
+              key={index}
+              title={`Copy range ${index * MAX_ITEMS + 1}-${Math.min(tracks.length, (index + 1) * MAX_ITEMS)}`}
+              active={part === index}
+              disabled={task.busy || blocked}
+              onPress={() => {
+                setCopyPart(index);
+                setConfirm(null);
+                setResult(null);
+              }}
+            />
+          ))}
+        </View>
+      ) : null}
       <Button
         title="Preview saving a new copy"
         disabled={blocked || task.busy || !tracks.length}

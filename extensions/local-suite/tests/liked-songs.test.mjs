@@ -154,7 +154,7 @@ test("dedicated collection loader reads every page, excludes albums and removed 
         )
       : collectionResponse([{ uri: uri(2), seconds: 1700000010 }]);
   });
-  const data = await client.collection(LIKED_URI, {});
+  const data = await client.likedCollection("self",{},()=>{});
   assert.equal(data.name, "Liked Songs");
   assert.deepEqual(
     data.tracks.map((t) => t.uri),
@@ -203,6 +203,7 @@ test("saved-tracks API pagination loads 101 likes in order rather than stopping 
   const { client, respond } = fixture();
   let pages = 0;
   respond(async (url) => {
+    if(url.includes("/context-resolve/"))throw new RequestError("missing",404);
     if (url.includes("/collection/v2/paging"))
       throw new RequestError("missing", 404);
     const offset = Number(new URL(url).searchParams.get("offset"));
@@ -394,4 +395,39 @@ test("strict Buffer decoding rejects overlong, surrogate and truncated UTF-8 seq
     const message = Buffer.from([0x12, bytes.length, ...bytes, 0x1a, 1, 0x73]);
     assert.throws(() => decodeCollectionPage(message), /UTF-8/);
   }
+});
+
+test('context reader accepts 10,001 liked songs and reuses the returned metadata without per-track requests',async()=>{
+  const {client,api,respond}=fixture();
+  api.Internal.getTrack=async()=>assert.fail('Context metadata should avoid individual track requests');
+  respond(async url=>{
+    assert.ok(url.includes('/context-resolve/'));
+    return {uri:'spotify:user:self:collection',metadata:{track_count:'10001'},pages:[{tracks:Array.from({length:10001},(_,i)=>({uri:uri(i+1),metadata:{title:`Song ${i+1}`,artist_name:'Artist',artist_uri:`spotify:artist:${id(7)}`,album_title:'Album',duration:'180000'}}))}]};
+  });
+  const data=await client.likedContext('self',{},()=>{});
+  assert.equal(data.tracks.length,10001);assert.equal(data.tracks.at(-1).uri,uri(10001));assert.equal(data.tracks[0].title,'Song 1');assert.equal(data.tracks[0].artists[0].uri,`spotify:artist:${id(7)}`);
+});
+
+test('collection pages can omit optional sync tokens while retaining cursor traversal',async()=>{
+  const {client,respond}=fixture();let page=0;
+  respond(async url=>{assert.ok(url.includes('/collection/v2/paging'));page++;return page===1?collectionResponse([{uri:uri(1)}],'next',''):collectionResponse([{uri:uri(2)}],'','');});
+  const result=await client.likedCollection('self',{},()=>{});
+  assert.equal(result.tracks.length,2);assert.equal(page,2);
+});
+test('protobuf signed timestamps and unknown uint64 fields do not corrupt a valid page',()=>{
+  const u64=Buffer.from([255,255,255,255,255,255,255,255,255,1]);
+  const content=Buffer.concat([Buffer.from([10,36]),Buffer.from(uri(1)),Buffer.from([16]),u64,Buffer.from([24,1])]);
+  const page=Buffer.concat([Buffer.from([10,content.length]),content,Buffer.from([72]),u64,Buffer.from([26,1,115])]);
+  const result=decodeCollectionPage(page);
+  assert.equal(result.items[0].addedAt,null);assert.equal(result.items[0].removed,true);assert.equal(result.sync,'s');
+});
+test('context pages above the old 500-page guard are consumed exactly once',async()=>{
+  const {client,respond}=fixture();let reads=0;
+  respond(async url=>{reads++;const index=url.includes('/context-resolve/')?0:Number(new URL(url).searchParams.get('page'));return index===0?{pages:[{page_url:'hm://large-context?page=0',tracks:[{uri:uri(1),metadata:{title:'Song',artist_name:'Artist'}}],next_page_url:'hm://large-context?page=1'}]}:{tracks:[{uri:uri(index+1),metadata:{title:'Song',artist_name:'Artist'}}],...(index<500?{next_page_url:`hm://large-context?page=${index+1}`}:{})};});
+  const data=await client.likedContext('self',{},()=>{});assert.equal(data.tracks.length,501);assert.equal(reads,501);
+});
+test('new large-library guard rejects more than 100,000 likes before metadata enrichment',async()=>{
+  const {client,api,respond}=fixture();api.Internal.getTrack=async()=>assert.fail('Oversized reads must not start metadata requests');
+  respond(async()=>({pages:[{tracks:Array.from({length:100001},(_,i)=>({uri:uri(i+1)}))}]}));
+  await assert.rejects(client.likedContext('self',{},()=>{}),/100000/);
 });

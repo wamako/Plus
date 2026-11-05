@@ -1,5 +1,7 @@
 // Read-only collection-v2 protocol fields, grounded in collection2v2.proto.
 export const LIKED_URI = "spotify:collection:tracks";
+export const MAX_LIKED_ITEMS = 100000;
+export const MAX_LIKED_PAGES = 10000;
 // The R10 host provides Node's Buffer. Avoid eager optional text-codec
 // constructors: Node 18 builds without ICU reject TextDecoder's fatal option.
 export function validUsername(value) {
@@ -72,28 +74,30 @@ function fields(input) {
   let offset = 0;
   const result = [];
   function read() {
-    let value = 0,
-      multiplier = 1;
+    let value = 0n;
     for (let i = 0; i < 10; i++) {
       if (offset >= bytes.length)
         throw new Error("Truncated collection response.");
       const byte = bytes[offset++];
-      value += (byte & 127) * multiplier;
-      if (!Number.isSafeInteger(value))
-        throw new Error("Collection integer exceeds safe range.");
+      if (i === 9 && byte > 1) throw new Error("Invalid collection varint.");
+      value |= BigInt(byte & 127) << BigInt(i * 7);
       if (!(byte & 128)) return value;
-      multiplier *= 128;
     }
     throw new Error("Invalid collection varint.");
   }
   while (offset < bytes.length) {
-    const tag = read(),
+    const rawTag = read();
+    if (rawTag > 0xffffffffn) throw new Error("Invalid collection field.");
+    const tag = Number(rawTag),
       number = Math.floor(tag / 8),
       wire = tag % 8;
     if (!number) throw new Error("Invalid collection field.");
     if (wire === 0) result.push({ number, value: read() });
     else if (wire === 2) {
-      const length = read();
+      const rawLength = read();
+      if (rawLength > BigInt(bytes.length - offset))
+        throw new Error("Truncated collection field.");
+      const length = Number(rawLength);
       if (length > bytes.length - offset)
         throw new Error("Truncated collection field.");
       result.push({ number, value: bytes.subarray(offset, offset + length) });
@@ -126,14 +130,15 @@ export function decodeCollectionPage(bytes) {
       for (const f of fields(field.value)) {
         if (f.number === 1) item.uri = text(f);
         if (f.number === 2) {
-          if (typeof f.value !== "number")
+          if (typeof f.value !== "bigint")
             throw new Error("Invalid saved timestamp.");
-          item.addedAt = f.value * 1000;
+          const seconds = Number(BigInt.asIntN(32, f.value));
+          item.addedAt = seconds > 0 ? seconds * 1000 : null;
         }
         if (f.number === 3) {
-          if (typeof f.value !== "number")
+          if (typeof f.value !== "bigint")
             throw new Error("Invalid removal flag.");
-          item.removed = f.value !== 0;
+          item.removed = f.value !== 0n;
         }
       }
       if (!item.uri) throw new Error("Collection item omitted its URI.");
@@ -141,7 +146,10 @@ export function decodeCollectionPage(bytes) {
     } else if (field.number === 2) out.next = text(field);
     else if (field.number === 3) out.sync = text(field);
   }
-  if (!out.sync) throw new Error("Collection response omitted the sync token.");
+  // Sync tokens are optional in proto3. Recognized rows/cursor fields still
+  // identify a valid page; an empty/unknown message must not become an empty library.
+  if (!out.items.length && !out.next && !out.sync)
+    throw new Error("Collection response contained no recognized data.");
   if (out.next.length > 16384 || out.sync.length > 16384)
     throw new Error("Invalid collection cursor.");
   return out;

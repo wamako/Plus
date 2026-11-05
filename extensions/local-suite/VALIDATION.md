@@ -1,8 +1,8 @@
-# Validation record · 0.1.3
+# Validation record · 0.1.4
 
 Validated in the build workspace on 2026-11-05.
 
-- **67 core/regression tests passed**: link validation, both playlist schemas, stable sorting,
+- **72 core/regression tests passed**: link validation, both playlist schemas, stable sorting,
   unknown values, deduplication, genre matching, shuffle, CSV escaping, listening
   qualification, pauses/seeks/buffering, retention, cancellation, cache bounds,
   network allowlist and token separation, timeout/rate-limit behavior, pagination,
@@ -19,7 +19,7 @@ Validated in the build workspace on 2026-11-05.
   error classification, plus retained saved URIs when catalog metadata is unavailable.
 - **TypeScript check passed** against the exact pinned R10 SDK declarations.
 - **Four API-2 bundles built** using the SDK's official transformed extension builder.
-- **Five actual host-loader/React-renderer integration tests passed**: all four bundles
+- **Six actual host-loader/React-renderer integration tests passed**: all four bundles
   loaded as unprivileged user extensions with unique registrations; no HTTP on
   install; local tracking opt-in; collection preview; stale confirmation
   invalidation; confirmed new private copy and ordered queue append through mocked
@@ -31,6 +31,18 @@ Validated in the build workspace on 2026-11-05.
   Web API GET. Spotify writes remain mocked, permission-dependent Web API calls. A third scenario clicks **Load Liked Songs** in both Sort Play
   and Playlist Plus, supplies two binary saved-collection pages for each, and
   verifies the full liked preview and genre filtering without playlist/Web GETs.
+- Large-library regression cases reproduce the old 10,001-track error, then
+  verify a complete 10,001-track context read with zero per-track bridge calls,
+  traversal of 501 context pages, and rejection above the new 100,000-track guard.
+  Collection parser cases cover optional sync tokens, signed timestamps and
+  skipped unknown uint64 fields. The cache keeps its existing persisted format
+  while using bounded Map storage for large classifications.
+- A sixth actual-loader profile reads **20,001 mocked context tracks across three
+  pages**, sorts them, renders only 40 preview rows, selects range 10,001–20,000,
+  checks its explicit confirmation, and verifies a new private playlist plus
+  exactly 100 ordered write batches of 100 tracks. Reading/sorting/range selection
+  makes no write request; saving retains the full 20,001-track preview. This is a
+  host-renderer test with mocked Spotify responses, not a live account test.
 - **Startup regression reproduced before the fix**: the 0.1.2 bundle failed in the
   actual pinned loader when the injected decoder rejected the `fatal` option
   with `ERR_NO_ICU`, before its page could register. The corrected build registers

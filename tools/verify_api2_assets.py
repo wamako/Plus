@@ -3,8 +3,33 @@
 import io,json,struct,sys,zipfile
 from verify_module_apk import validate_dex
 
+def needed_libraries(data):
+    """Read ELF64 DT_NEEDED through program headers, including stripped binaries."""
+    assert data[:6] == b'\x7fELF\x02\x01', 'Expected little-endian ELF64'
+    offset=struct.unpack_from('<Q',data,32)[0]
+    size,count=struct.unpack_from('<HH',data,54)
+    segments=[struct.unpack_from('<IIQQQQQQ',data,offset+i*size) for i in range(count)]
+    dynamic=next(p for p in segments if p[0]==2)
+    entries=[struct.unpack_from('<qQ',data,i) for i in range(dynamic[2],dynamic[2]+dynamic[5],16)]
+    strings=next(value for tag,value in entries if tag==5)
+    segment=next(p for p in segments if p[0]==1 and p[3]<=strings<p[3]+p[5])
+    base=segment[2]+strings-segment[3]
+    return [data[base+value:data.index(b'\0',base+value)].decode() for tag,value in entries if tag==1]
+
+def validate_load_order(binaries, order):
+    loaded=set()
+    for name in order:
+        for dependency in needed_libraries(binaries[name]):
+            if dependency in binaries:
+                assert dependency in loaded, f'{name} requires {dependency} before loading'
+        loaded.add(name)
+
 def verify(path):
     with zipfile.ZipFile(path) as apk:
+        order=json.loads(apk.read('assets/api2-native-load-order.json'))
+        assert set(order)=={'libc++_shared.so','libnode.so','libnative-lib.so'}, 'Incomplete native bootstrap'
+        binaries={name:apk.read('lib/arm64-v8a/'+name) for name in order}
+        validate_load_order(binaries,order)
         for name in ['lib/arm64-v8a/libnode.so','lib/arm64-v8a/libnative-lib.so','assets/nodejs/addons/arm64-v8a/spotifyplus_bridge.node']:
             data=apk.read(name)
             assert data[:5]==b'\x7fELF\x02' and struct.unpack_from('<H',data,18)[0]==183, f'Invalid ARM64 runtime binary: {name}'

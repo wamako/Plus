@@ -29,7 +29,7 @@ public final class SideDrawerHook extends SpotifyHook {
     }
     public static void openRegistered(String script){
         Entry entry=entries.values().stream().filter(e->e.script.equals(script)).findFirst().orElse(null);
-        if(entry==null){com.lenerd46.spotifyplus.features.FeatureSheets.toast(com.lenerd46.spotifyplus.api2.Api2Runtime.isEnabled()?"Extensions are starting. Please wait a moment and try again.":"Extensions could not start. Restart Spotify and try again.");return;}
+        if(entry==null){if(com.lenerd46.spotifyplus.api2.Api2Runtime.isEnabled())com.lenerd46.spotifyplus.features.FeatureSheets.toast("Extensions are starting. Please wait a moment and try again.");else com.lenerd46.spotifyplus.api2.Api2Runtime.showFailure();return;}
         open(entry.script,entry.id);
     }
     public static void showExtensions(){

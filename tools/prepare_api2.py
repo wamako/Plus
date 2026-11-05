@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """Build the pinned API-2 runtime; retain the legacy module and verified 9.1.94 hooks."""
-import argparse, hashlib, json, pathlib, shutil, subprocess, tarfile, tempfile, urllib.request, zipfile
+import argparse, hashlib, json, re, pathlib, shutil, subprocess, tarfile, tempfile, urllib.request, zipfile
 ROOT = pathlib.Path(__file__).resolve().parents[1]
 UPSTREAM = '615455bf0a7a81cd2d01382a1f1e9e0a699fb082'
 RUNTIME_URL = 'https://github.com/LeNerd46/SpotifyPlus/releases/download/v0.10-preview-1/spotifyplus-0.10.0-preview-1.apk'
@@ -78,7 +78,7 @@ def main():
     targets=generated/'com/lenerd/spotifyplus/module/scripting/UITargets.java'
     replace(targets,'"9.1.82.2160".equals(spotifyVersion)','"9.1.94.1929".equals(spotifyVersion)')
     manager=generated/'com/lenerd/spotifyplus/module/scripting/ScriptManager.java'
-    replace(manager,'                extractAndLoad(Utils.MODULE_APK_PATH, outDir, "libnative-lib.so");\n                extractAndLoad(Utils.MODULE_APK_PATH, outDir, "libnode.so");','                extractAndLoad(Utils.MODULE_APK_PATH, outDir, "libnode.so");\n                extractAndLoad(Utils.MODULE_APK_PATH, outDir, "libnative-lib.so");')
+    replace(manager,'                extractAndLoad(Utils.MODULE_APK_PATH, outDir, "libnative-lib.so");\n                extractAndLoad(Utils.MODULE_APK_PATH, outDir, "libnode.so");','                extractAndLoad(Utils.MODULE_APK_PATH, outDir, "libc++_shared.so");\n                extractAndLoad(Utils.MODULE_APK_PATH, outDir, "libnode.so");\n                extractAndLoad(Utils.MODULE_APK_PATH, outDir, "libnative-lib.so");')
     replace(manager,'        Log.i("SpotifyPlus", "Message from node: " + json);','        // Bridge messages can contain session data; do not log their payloads.')
     replace(manager,
         '            ScriptViewHost.preloadNativeLibraries(activity.getApplicationContext());\n            SpotifyNativeBridge bridge = new SpotifyNativeBridge(activity.getClassLoader(), marketplaceScripts, optimizedDirectory, activity);\n            initializeNativeBridge(bridge, new String[]{"node", hostFile.getAbsolutePath(), hostConfig.toString()});',
@@ -129,6 +129,8 @@ def main():
     assets=ROOT/'app/api2-assets'
     if assets.exists():shutil.rmtree(assets)
     shutil.copytree(source/'app/src/main/assets/nodejs',assets/'nodejs')
+    load_order=re.findall(r'extractAndLoad\(Utils.MODULE_APK_PATH, outDir, "([^"\n]+)"\)',manager.read_text())
+    (assets/'api2-native-load-order.json').write_text(json.dumps(load_order))
     for name in ['marketplace','settings']:
         destination=assets/'nodejs/elevated'/name
         destination.mkdir(parents=True,exist_ok=True)

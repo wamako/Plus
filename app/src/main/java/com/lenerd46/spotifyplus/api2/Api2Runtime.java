@@ -21,16 +21,21 @@ public final class Api2Runtime {
     private static final AtomicBoolean starting=new AtomicBoolean();
     private static final Handler main=new Handler(Looper.getMainLooper());
     private static String token="";
+    private static volatile String stage="initializing", failure="";
     private Api2Runtime(){}
     public static boolean isEnabled(){return enabled;}
     public static void startFailed(Throwable error){
         started=false;enabled=false;
+        Throwable cause=error;
+        for(int i=0;i<8 && cause.getCause()!=null && cause.getCause()!=cause;i++)cause=cause.getCause();
+        failure="Stage: "+stage+"\n"+cause.getClass().getSimpleName()+": "+String.valueOf(cause.getMessage());
         Log.e("SpotifyPlus:API2","Native extension host failed",error);
         com.lenerd46.spotifyplus.features.FeatureSheets.toast("Extensions could not start. The native Spotify Plus features remain available.");
     }
     public static void initialize(Context context,ClassLoader loader,DexKitBridge dex,String modulePath){
         if(Build.VERSION.SDK_INT<30||!java.util.Arrays.asList(Build.SUPPORTED_ABIS).contains("arm64-v8a"))return;
         try{
+            stage="hook initialization";
             Utils.MODULE_APK_PATH=modulePath;Utils.bridge=dex;Utils.spotifyVersion=context.getPackageManager().getPackageInfo("com.spotify.music",0).versionName;
             Utils.platformData=new PlatformData(Utils.spotifyVersion,"android",Build.VERSION.RELEASE,Build.VERSION.SDK_INT);
             new ServicesHook().init(loader,dex);new PlayerHook().init(loader,dex);
@@ -41,14 +46,31 @@ public final class Api2Runtime {
                 Activity activity=(Activity)p.thisObject;com.lenerd.spotifyplus.module.SpotifyHook.currentActivity=activity;
                 if(enabled && starting.compareAndSet(false,true))new Thread(()->start(activity),"SpotifyPlus-API2-Start").start();
             }});
-        }catch(Throwable e){enabled=false;Log.e("SpotifyPlus:API2","Could not initialize extension host",e);}
+        }catch(Throwable e){startFailed(e);}
     }
     private static void start(Activity activity){
         try{
+            stage="bundled extension assets";
             seedLyrics(activity);
             Utils.token=References.accessToken;Utils.clientToken=References.clientToken;
-            new ScriptManager(activity).start();if(enabled){started=true;main.post(Api2Runtime::refresh);}
+            stage="native libraries";
+            ScriptManager manager=new ScriptManager(activity);
+            stage="extension host";
+            manager.start();if(enabled){started=true;main.post(Api2Runtime::refresh);}
         }catch(Throwable e){starting.set(false);startFailed(e);}
+    }
+    public static void showFailure(){
+        com.lenerd46.spotifyplus.features.FeatureSheets.show("Extension startup",root->{
+            Activity a=References.currentActivity;
+            String report="Spotify Plus "+com.lenerd46.spotifyplus.BuildConfig.VERSION_NAME+"\nSpotify "+Utils.spotifyVersion+"\nAndroid "+Build.VERSION.RELEASE+" (API "+Build.VERSION.SDK_INT+")\n"+(failure.isEmpty()?"The extension host has not initialized.":failure);
+            root.addView(com.lenerd46.spotifyplus.features.FeatureSheets.text(a,"Extensions did not start. Copy these details if restarting Spotify does not resolve it.",16));
+            root.addView(com.lenerd46.spotifyplus.features.FeatureSheets.text(a,report,14));
+            root.addView(com.lenerd46.spotifyplus.features.FeatureSheets.button(a,"Copy startup details",()->{
+                android.content.ClipboardManager clipboard=(android.content.ClipboardManager)a.getSystemService(Context.CLIPBOARD_SERVICE);
+                clipboard.setPrimaryClip(ClipData.newPlainText("Spotify Plus startup",report));
+                com.lenerd46.spotifyplus.features.FeatureSheets.toast("Startup details copied");
+            }));
+        });
     }
     private static void seedLyrics(Context context)throws IOException{
         SharedPreferences prefs=context.getSharedPreferences("SpotifyPlusAPI2",Context.MODE_PRIVATE);

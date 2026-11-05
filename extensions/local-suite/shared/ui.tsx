@@ -1,3 +1,4 @@
+import { storedText, writeTextSetting, apiKeyIssue, usernameIssue } from "./settings.mjs";
 import { likedInput } from "./liked-songs.mjs";
 import React, { useEffect, useRef, useState } from "react";
 import { SpotifyPlus as S } from "spotifyplus";
@@ -257,6 +258,7 @@ export function Results({ tracks }: { tracks: any[] }) {
           {t.metadataUnavailable ? (
             <Label muted>{t.metadataStatus || "Metadata unavailable"}. Saved URI retained: {t.uri}</Label>
           ) : null}
+          {t.genreStatus ? <Label muted>{t.genreStatus}</Label> : null}
           {t.genreSource ? (
             <Label muted>
               {t.genres.length ? t.genres.join(" · ") : "Unknown genre"} —{" "}
@@ -486,26 +488,71 @@ export function Actions({
     </View>
   );
 }
+export function useTextSetting(
+  storageKey: string,
+  label: string,
+  validate: (value: string) => string,
+  emptySaved = `${label} removed from this extension.`,
+) {
+  const [value, setValue] = useState(() => storedText(S.Platform.Storage, storageKey)),
+    [status, setStatus] = useState("");
+  const draft = useRef(value), saved = useRef(value);
+  const change = (next: string) => {
+    if (typeof next !== "string") return;
+    // The native input event can precede the next React commit. Save must read
+    // this ref, including when its button still has the previous render's callback.
+    draft.current = next;
+    setValue(next);
+    setStatus("Unsaved changes.");
+  };
+  function persist(next: string, success: string) {
+    try {
+      writeTextSetting(S.Platform.Storage, storageKey, next);
+      draft.current = next;
+      saved.current = next;
+      setValue(next);
+      setStatus(success);
+      return true;
+    } catch {
+      setStatus(`Could not save ${label}. Reopen Spotify and try again; no saved confirmation was received.`);
+      return false;
+    }
+  }
+  return {
+    value, change, status,
+    get savedValue() { return saved.current; },
+    get draftValue() { return draft.current; },
+    save: () => {
+      const next = draft.current.trim(), issue = validate(next);
+      if (issue) { setStatus(issue); return false; }
+      return persist(next, next ? `${label} saved in this extension.` : emptySaved);
+    },
+    clear: () => persist("", `${label} removed from this extension.`),
+  };
+}
 export function useGenreSettings() {
-  const [key, setKey] = useState(
-    () => S.Platform.Storage.get<string>("lastfm-key") || "",
-  );
+  const key = useTextSetting("lastfm-key", "Last.fm API key", apiKeyIssue);
+  const [optionStatus, setOptionStatus] = useState("");
   const [musicbrainz, setMusicBrainz] = useState(
     () => S.Platform.Storage.get<boolean>("musicbrainz-enabled") === true,
   );
   return {
-    key,
-    setKey,
+    key: key.value,
+    get apiKey() { return key.savedValue; },
+    setKey: key.change,
+    status: key.status,
     musicbrainz,
+    optionStatus,
     setMusicBrainz: (value: boolean) => {
-      setMusicBrainz(value);
-      S.Platform.Storage.set("musicbrainz-enabled", value);
+      try {
+        S.Platform.Storage.set("musicbrainz-enabled", value);
+        if (S.Platform.Storage.get("musicbrainz-enabled") !== value) throw new Error("Save not verified");
+        setMusicBrainz(value);
+        setOptionStatus("MusicBrainz option saved in this extension.");
+      } catch { setOptionStatus("Could not save MusicBrainz option. Reopen Spotify and try again."); }
     },
-    save: () => S.Platform.Storage.set("lastfm-key", key.trim()),
-    clear: () => {
-      setKey("");
-      S.Platform.Storage.remove("lastfm-key");
-    },
+    save: key.save,
+    clear: key.clear,
   };
 }
 export function GenreSettings({
@@ -534,6 +581,8 @@ export function GenreSettings({
       </Label>
       <Button title="Save key" onPress={settings.save} />
       <Button title="Remove saved key" onPress={settings.clear} />
+      {settings.status ? <Label muted>{settings.status}</Label> : null}
+      {settings.optionStatus ? <Label muted>{settings.optionStatus}</Label> : null}
     </View>
   );
 }
@@ -576,10 +625,14 @@ export function register(
 }
 
 export function useLikedSource() {
-  const [username, setUsername] = useState(
-    () => S.Platform.Storage.get<string>("liked-username") || "",
-  );
-  return { username, setUsername };
+  const setting = useTextSetting("liked-username", "Spotify username", usernameIssue, "Automatic account lookup saved in this extension.");
+  return {
+    username: setting.value,
+    get savedUsername() { return setting.savedValue; },
+    setUsername: setting.change,
+    save: setting.save,
+    status: setting.status,
+  };
 }
 export function LikedSongsSource({
   settings,
@@ -611,14 +664,14 @@ export function LikedSongsSource({
           />
           <Label muted>
             Use your Spotify account username, not your display name. Leave
-            blank to detect the current account.
+            blank to detect the current account. Save this option separately in
+            each extension.
           </Label>
           <Button
             title="Save username option"
-            onPress={() =>
-              S.Platform.Storage.set("liked-username", settings.username.trim())
-            }
+            onPress={settings.save}
           />
+          {settings.status ? <Label muted>{settings.status}</Label> : null}
         </View>
       ) : null}
     </View>

@@ -61,7 +61,7 @@ function App() {
     task.run(
       (job, progress) =>
         client.collection(input, job, progress, {
-          username: liked.username.trim(),
+          username: liked.savedUsername,
         }),
       setData,
     );

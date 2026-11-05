@@ -105,3 +105,12 @@ Optional MusicBrainz genre requests follow the official
 [search](https://musicbrainz.org/doc/MusicBrainz_API/Search) documentation.
 MusicBrainz is credited in results; no dataset or upstream code is bundled.
 Its data is supplied at runtime under MusicBrainz's published terms and availability.
+
+## Text settings and provider recovery (0.1.6)
+
+The pinned SDK's `ui/renderer.ts` normalizes native `onChangeText` payloads to
+strings. The extension now captures those strings synchronously before the next
+React commit and uses the existing `Platform.Storage` set/get/remove API with
+read-back and user-visible feedback. No SDK or Android host code was changed.
+Last.fm failure handling uses status/provider codes already returned by its API;
+no key, token, raw error payload or additional provider data is bundled.

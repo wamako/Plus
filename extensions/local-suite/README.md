@@ -1,4 +1,4 @@
-# Spotify Plus local Android extensions · 0.1.5
+# Spotify Plus local Android extensions · 0.1.6
 
 Four removable **initial Android adaptations** of the requested Spicetify projects.
 Designed against the API-2 runtime shipped in Spotify Plus R10 for Spotify
@@ -14,6 +14,33 @@ IDs elsewhere under that parent. Press **Refresh** in the Developer page. If the
 old version is still shown, force-stop and reopen Spotify. Keep the working R10
 APK; no module repatching or app data clearing is required. Local listening
 history, saved keys, and genre presets keep their existing settings keys.
+
+Version **0.1.6** fixes settings saves that could capture the previous text when
+a native input event and Save happened before the next React render. Save now
+reads the latest input, validates the field, writes it, reads it back, and displays
+an explicit success or failure message. API keys remain masked and never appear
+in feedback. The saved settings are restored when the extension is reloaded.
+A Last.fm key must be the 32-character API key itself. A blank Spotify username
+option removes the override and saves automatic account lookup.
+
+**Save settings inside each extension where you use them.** Sort Play, Playlist
+Plus, What’s That Genre?, and Listening Stats have separate private settings.
+Press **Save key**, **Save username option**, or **Save provider settings** and
+wait for its saved confirmation. Lookup/load actions use the last confirmed
+saved values, including when they follow Save immediately. A failed write or
+read-back is reported rather than silently acknowledged. Saving confirms local
+storage, not whether Last.fm accepts the key.
+
+Last.fm HTTP 503 and other lookup failures no longer abort genre classification.
+The extension retains your key, shows a warning and tries the remaining enabled
+genre providers. It suppresses repeated requests to the failing provider for one
+minute instead of sending one per song. Changing the saved key bypasses that
+in-memory suppression. A 503 does not cause the key to be cleared. Authentication
+errors remain visible; rate limits and cancellation still stop work. Missing
+results stay Unknown, and temporary provider warnings are not saved with successful
+genre cache entries. Last.fm rankings in Listening Stats cannot be replaced with
+another provider's rankings: that page reports the service error and keeps its
+settings and existing results available for a later manual retry.
 
 Version **0.1.5** fixes a real-fetch compatibility defect: native Node fetch can
 reject the previously bundled AbortSignal before sending any request. The reader
@@ -98,7 +125,7 @@ The 0.1.1 native album reader, artist-ID recovery and genre fixes remain include
 ## Install on your non-root LSPatch setup
 
 1. Keep your working Spotify Plus R10 module. Do not install these files as APKs.
-2. Extract `SpotifyPlus-Local-Extensions-0.1.5.zip` into a normal, accessible
+2. Extract `SpotifyPlus-Local-Extensions-0.1.6.zip` into a normal, accessible
    directory, e.g. `Documents/SpotifyPlusLocal/` on the phone.
 3. The extracted `SpotifyPlus-Local-Extensions` directory must contain four child
    folders: `listening-stats`, `sort-play`, `genres`, and `playlist-plus`. Each child

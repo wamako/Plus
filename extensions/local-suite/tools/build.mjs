@@ -22,7 +22,7 @@ for (const [folder, id, name] of apps) {
     id,
     name,
     author: "wamako",
-    version: "0.1.5",
+    version: "0.1.6",
     api: 2,
     main: "index.js",
     description: `Independent Android adaptation: ${name}. For Spotify Plus R10 API 2.`,

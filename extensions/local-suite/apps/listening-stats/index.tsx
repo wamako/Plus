@@ -15,6 +15,7 @@ import {
   useTask,
   Status,
   palette,
+  useTextSetting,
 } from "../../shared/ui";
 const client = new DataClient(S);
 const tracker = new ListeningTracker(
@@ -75,15 +76,11 @@ function App() {
     [range, setRange] = useState("month"),
     [kind, setKind] = useState("tracks"),
     [provider, setProvider] = useState("local"),
-    [username, setUsername] = useState(
-      () => S.Platform.Storage.get<string>("provider-user") || "",
-    ),
-    [key, setKey] = useState(
-      () => S.Platform.Storage.get<string>("lastfm-key") || "",
-    ),
     [remote, setRemote] = useState<any[] | null>(null),
     [tick, setTick] = useState(0),
     task = useTask();
+  const userSetting = useTextSetting("provider-user", "Provider username", value => value && value.length <= 256 && !/[\x00-\x1f]/.test(value) ? "" : "Enter your public provider username."),
+    keySetting = useTextSetting("lastfm-key", "Last.fm API key", value => !value || /^[0-9a-f]{32}$/i.test(value) ? "" : "Paste only your 32-character Last.fm API key, then save.");
   useEffect(() => {
     const id = setInterval(() => setTick((n) => n + 1), 10000);
     return () => clearInterval(id);
@@ -219,15 +216,15 @@ function App() {
         <View>
           <Field
             label={`Your public ${provider === "lastfm" ? "Last.fm" : "Stats.fm"} username`}
-            value={username}
-            onChange={(v) => update(() => setUsername(v))}
+            value={userSetting.value}
+            onChange={(v) => update(() => userSetting.change(v))}
           />
           {provider === "lastfm" ? (
             <Field
               label="Your Last.fm API key"
               secret
-              value={key}
-              onChange={(v) => update(() => setKey(v))}
+              value={keySetting.value}
+              onChange={(v) => update(() => keySetting.change(v))}
             />
           ) : null}
           <Label muted>
@@ -239,17 +236,18 @@ function App() {
           <Button
             title="Save provider settings"
             onPress={() => {
-              S.Platform.Storage.set("provider-user", username.trim());
-              S.Platform.Storage.set("lastfm-key", key.trim());
-              task.setStatus("Provider settings saved.");
+              const userSaved = userSetting.save(), keySaved = keySetting.save();
+              task.setStatus(userSaved && keySaved ? "Provider settings saved in this extension." : "Check the setting feedback below.");
             }}
           />
+          {userSetting.status ? <Label muted>{userSetting.status}</Label> : null}
+          {keySetting.status ? <Label muted>{keySetting.status}</Label> : null}
           <Button
             title="Fetch rankings"
             disabled={task.busy}
             onPress={() =>
               task.run(
-                () => client.top(provider, username, key, range, kind),
+                () => client.top(provider, userSetting.savedValue, keySetting.savedValue, range, kind),
                 setRemote,
               )
             }
@@ -257,10 +255,8 @@ function App() {
           <Button
             title="Remove saved provider settings"
             onPress={() => {
-              S.Platform.Storage.remove("provider-user");
-              S.Platform.Storage.remove("lastfm-key");
-              setUsername("");
-              setKey("");
+              userSetting.clear();
+              keySetting.clear();
               setRemote(null);
             }}
           />

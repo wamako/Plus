@@ -53,6 +53,7 @@ export class DataClient {
     this.webUnavailable = new Map();
     this.inflight = new Map();
     this.accountReads = new WeakMap();
+    this.lastfmGenreFailure = null;
   }
   async spotify(path, method = "GET", body) {
     if (!/^\/[A-Za-z0-9/?=&%._-]+$/.test(path))
@@ -836,9 +837,15 @@ export class DataClient {
       api_key: key.trim(),
       format: "json",
     });
-    const value = await this.request(
-      `https://ws.audioscrobbler.com/2.0/?${query}`,
-    );
+    let value;
+    try {
+      value = await this.request(`https://ws.audioscrobbler.com/2.0/?${query}`);
+    } catch (error) {
+      const code = status(error);
+      if (code >= 500)
+        throw new RequestError(`Last.fm is temporarily unavailable (HTTP ${code}). Your saved API key was kept; try again later.`, code);
+      throw error;
+    }
     if (value?.error) {
       const error = new Error(
         `Last.fm rejected this request (code ${Number(value.error) || 0}). Check your API key and username.`,
@@ -863,7 +870,8 @@ export class DataClient {
     if (cached) return { ...track, ...cached };
     let tags = [],
       source = "Unknown",
-      failure = null;
+      failure = null,
+      lastfmWarning = "";
     const spotify = async () => {
       try {
         tags = await this.artistGenres(track, job);
@@ -876,6 +884,11 @@ export class DataClient {
     };
     const lastfm = async () => {
       if (!options.key) return;
+      const recent = this.lastfmGenreFailure;
+      if (recent?.key === options.key && recent.until > Date.now()) {
+        lastfmWarning = recent.warning;
+        return;
+      }
       const artist = track.artists[0]?.name || track.artist;
       for (const params of [
         {
@@ -901,8 +914,19 @@ export class DataClient {
         try {
           result = await this.lastfm(params, options.key);
         } catch (error) {
+          check(job);
           if (error.providerCode === 6 || error.providerCode === 7) continue;
-          throw error;
+          if (status(error) === 429 || error.providerCode === 29)
+            throw new RequestError("Last.fm rate limit (HTTP 429). Wait before retrying.", 429);
+          const code = status(error), providerCode = Number(error.providerCode) || 0;
+          const temporary = code >= 500 || (!code && !providerCode) || [11, 16].includes(providerCode);
+          lastfmWarning = temporary
+            ? `Last.fm temporarily unavailable${code ? ` (HTTP ${code})` : ""}. Your saved API key was kept.`
+            : `Last.fm rejected the request${providerCode ? ` (code ${providerCode})` : code ? ` (HTTP ${code})` : ""}. Check the saved key and provider settings.`;
+          // Do not send a failing request once per song in a large library.
+          // A changed key bypasses this in-memory cooldown; nothing is removed.
+          this.lastfmGenreFailure = { key: options.key, warning: lastfmWarning, until: Date.now() + 60000 };
+          return;
         }
         tags = genreTags(result?.toptags?.tag || []);
         if (tags.length) {
@@ -939,13 +963,13 @@ export class DataClient {
       genres: tags,
       genreSource: source,
       genreStatus: tags.length
-        ? ""
-        : failure
+        ? lastfmWarning ? `${lastfmWarning} Results use ${source}.` : ""
+        : [lastfmWarning, failure
           ? `Genre lookup unavailable (${reason(failure)}). Try MusicBrainz fallback or your own Last.fm key for title/artist tag lookup.`
-          : "No genre labels were supplied by the provider.",
+          : "No genre labels were supplied by the other enabled providers."].filter(Boolean).join(" "),
     };
     // Negative/failed results are deliberately not cached across retries.
-    if (tags.length) this.cache.set(key, value, 7 * 86400000);
+    if (tags.length) this.cache.set(key, { ...value, genreStatus: "" }, 7 * 86400000);
     if (!options.deferSave) this.cache.save();
     return { ...track, ...value };
   }

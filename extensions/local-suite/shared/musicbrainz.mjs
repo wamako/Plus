@@ -21,7 +21,7 @@ export class MusicBrainz {
       check(job);
       this.next = this.clock.now() + 1100;
       const data = await this.request(`https://musicbrainz.org/ws/2/${path}`, {
-        headers: { Accept: "application/json", "User-Agent": "SpotifyPlusLocalExtensions/0.1.5 (https://github.com/wamako/Plus)" },
+        headers: { Accept: "application/json", "User-Agent": "SpotifyPlusLocalExtensions/0.1.6 (https://github.com/wamako/Plus)" },
       });
       check(job);
       return data;

@@ -62,11 +62,11 @@ function App() {
     setShuffle(null);
     task.run(async (job, progress) => {
       const collection = await client.collection(input, job, progress, {
-        username: liked.username.trim(),
+        username: liked.savedUsername,
       });
       const tracks = await client.classify(
         collection.tracks,
-        { key: settings.key, lastfmFirst: true, musicbrainz: settings.musicbrainz },
+        { key: settings.apiKey, lastfmFirst: true, musicbrainz: settings.musicbrainz },
         job,
         progress,
       );
@@ -115,6 +115,9 @@ function App() {
               saved tracks have unavailable metadata; their URIs remain in the
               preview.
             </Label>
+          ) : null}
+          {data.tracks.find((t: any) => t.genreStatus)?.genreStatus ? (
+            <Label muted>{data.tracks.find((t: any) => t.genreStatus).genreStatus}</Label>
           ) : null}
           <Label muted>
             {data.source}.{" "}

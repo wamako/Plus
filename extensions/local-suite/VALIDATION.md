@@ -1,8 +1,8 @@
-# Validation record · 0.1.5
+# Validation record · 0.1.6
 
 Validated in the build workspace on 2026-11-05.
 
-- **87 core/regression tests passed**: link validation, both playlist schemas, stable sorting,
+- **98 core/regression tests passed**: link validation, both playlist schemas, stable sorting,
   unknown values, deduplication, genre matching, shuffle, CSV escaping, listening
   qualification, pauses/seeks/buffering, retention, cancellation, cache bounds,
   network allowlist and token separation, timeout/rate-limit behavior, pagination,
@@ -19,7 +19,7 @@ Validated in the build workspace on 2026-11-05.
   error classification, plus retained saved URIs when catalog metadata is unavailable.
 - **TypeScript check passed** against the exact pinned R10 SDK declarations.
 - **Four API-2 bundles built** using the SDK's official transformed extension builder.
-- **Seven actual host-loader/React-renderer integration tests passed**: all four bundles
+- **Eight actual host-loader/React-renderer integration tests passed**: all four bundles
   loaded as unprivileged user extensions with unique registrations; no HTTP on
   install; local tracking opt-in; collection preview; stale confirmation
   invalidation; confirmed new private copy and ordered queue append through mocked
@@ -60,6 +60,21 @@ Validated in the build workspace on 2026-11-05.
   MusicBrainz identity/URL checks, ambiguous matches, spacing, caching, no default
   provider traffic and token separation. Native visibility is explicitly described
   as Spotify's default rather than promising a private playlist.
+- Settings regression **reproduced on 0.1.5 before the fix**: a native text event
+  followed immediately by the existing Save button stored the previous empty
+  username. The eighth actual-host profile now verifies same-frame username/key
+  saves, explicit feedback, extension unload/reload persistence, blank automatic
+  account lookup, simulated storage exceptions, silently dropped writes, invalid
+  key handling without overwriting the saved value, and separate extension storage.
+  It also saves Listening Stats provider fields through the real native text-event
+  path and checks retained credentials after a mocked ranking HTTP 503.
+- New core cases cover storage read-back, malformed legacy values, key/account
+  validation, Last.fm 503 fallback to Spotify or enabled MusicBrainz, retained
+  Unknown rows, a bounded failure count across 100 tracks, changed-key recovery,
+  authentication feedback, preserved rate-limit/cancellation behavior, direct
+  ranking errors and exclusion of temporary warnings from successful cache entries.
+  The host profile confirms successful Playlist Plus classification during a
+  mocked Last.fm 503 and verifies that the saved keys are not cleared or printed.
 - **Startup regression reproduced before the fix**: the 0.1.2 bundle failed in the
   actual pinned loader when the injected decoder rejected the `fatal` option
   with `ERR_NO_ICU`, before its page could register. The corrected build registers

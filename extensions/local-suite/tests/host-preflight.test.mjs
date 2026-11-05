@@ -57,17 +57,17 @@ async function until(predicate, label) {
   assert.fail(`Did not render ${label}`);
 }
 
-for (const mode of ["web", "native", "likes", "no-icu", "no-codecs", "large-likes", "recovery"]) {
+for (const mode of ["web", "native", "likes", "no-icu", "no-codecs", "large-likes", "recovery", "settings"]) {
   const nativeReads = mode !== "web",
     likedReads = ["likes", "no-icu", "no-codecs", "large-likes", "recovery"].includes(mode),
-    largeLikes = mode === "large-likes", recovery = mode === "recovery";
-  test(`actual R10 loader: ${recovery ? "metadata failures, awaited native save and opt-in MusicBrainz with real fetch" : largeLikes ? "20,001 context likes and explicit 10,000-track copy range" : mode === "no-icu" ? "Node 18 no-ICU decoder" : mode === "no-codecs" ? "missing optional text codecs" : likedReads ? "dedicated Liked Songs via paged collection" : nativeReads ? "native album/genre reads with public GET 404" : "public read fallback"}, four sandboxes and independent cleanup`, async () => {
+    largeLikes = mode === "large-likes", recovery = mode === "recovery", settingsMode = mode === "settings";
+  test(`actual R10 loader: ${settingsMode ? "native text input, verified settings persistence and Last.fm 503 recovery" : recovery ? "metadata failures, awaited native save and opt-in MusicBrainz with real fetch" : largeLikes ? "20,001 context likes and explicit 10,000-track copy range" : mode === "no-icu" ? "Node 18 no-ICU decoder" : mode === "no-codecs" ? "missing optional text codecs" : likedReads ? "dedicated Liked Songs via paged collection" : nativeReads ? "native album/genre reads with public GET 404" : "public read fallback"}, four sandboxes and independent cleanup`, async () => {
     const errors = [],
       values = new Map(),
       http = [],
       native = [],
       worklets = new Set();
-    let tree;
+    let tree, failSettingsWrite = false, ignoreSettingsWrite = false;
     const logger = {
       child() {
         return this;
@@ -94,8 +94,11 @@ for (const mode of ["web", "native", "likes", "no-icu", "no-codecs", "large-like
       },
       session: { accessToken: "secret-token" },
       storageGet: (script, key) => values.get(`${script}:${key}`) ?? null,
-      storageSet: (script, key, value) =>
-        values.set(`${script}:${key}`, structuredClone(value)),
+      storageSet: (script, key, value) => {
+        const setting = ["lastfm-key", "liked-username"].includes(key);
+        if (setting && failSettingsWrite) throw new Error("Simulated settings storage failure");
+        if (!(setting && ignoreSettingsWrite)) values.set(`${script}:${key}`, structuredClone(value));
+      },
       storageRemove: (script, key) => values.delete(`${script}:${key}`),
       registerSideDrawer() {},
       registerContextMenu() {},
@@ -314,6 +317,8 @@ for (const mode of ["web", "native", "likes", "no-icu", "no-codecs", "large-like
         };
       } else {
         assert.equal(options.headers?.Authorization, undefined);
+        if (url.hostname === "ws.audioscrobbler.com" && settingsMode)
+          return new Response(null, { status: 503 });
         if (url.hostname === "musicbrainz.org")
           result = url.searchParams.has("query")
             ? {count:1,artists:[{id:"01234567-0123-4567-89ab-0123456789ab",name:"Artist 1",score:100}]}
@@ -351,6 +356,13 @@ for (const mode of ["web", "native", "likes", "no-icu", "no-codecs", "large-like
       dispatchReactEvent(node.props.onPress.id, { surfaceId: "sideDrawer" });
       return node.props.onPress.id;
     };
+    const input = label => {
+      const field = nodes(tree).find(n => n.children?.some(c => text(c) === label) && n.children?.some(c => c.props?.onChangeText?.id));
+      const node = field?.children.find(c => c.props?.onChangeText?.id);
+      assert.ok(node, `Missing input ${label}`);
+      return node;
+    };
+    const enter = (label, value) => dispatchReactEvent(input(label).props.onChangeText.id, { surfaceId: "sideDrawer", text: value });
     async function open(name) {
       registry.unmountAllSurfaces("sideDrawer");
       tree = null;
@@ -394,8 +406,78 @@ for (const mode of ["web", "native", "likes", "no-icu", "no-codecs", "large-like
       );
       assert.equal(http.length, 0);
       await open("Sort Play");
-      press(likedReads ? "Load Liked Songs" : "Load collection");
-      if (recovery) {
+      if (!settingsMode) press(likedReads ? "Load Liked Songs" : "Load collection");
+      if (settingsMode) {
+        const usernameLabel = "Spotify username (only if automatic account lookup fails)",
+          keyLabel = "Optional: your Last.fm API key (for tag fallback)",
+          keyA = "0123456789abcdef0123456789abcdef",
+          keyB = "abcdef0123456789abcdef0123456789";
+        press("Liked Songs account options");
+        await until(() => text(tree).includes(usernameLabel), "account options input");
+        enter(usernameLabel, "self-account");
+        press("Save username option"); // Same frame: the newest native text must be saved.
+        assert.equal(values.get("com.wamako.sortplay:liked-username"), "self-account");
+        await until(() => text(tree).includes("Spotify username saved"), "verified username save feedback");
+        runtime.unregisterScript("com.wamako.sortplay");
+        loader.loadScript(path.join(extensionRoot, "sort-play"), "user");
+        await open("Sort Play");
+        press("Liked Songs account options");
+        await until(() => text(tree).includes(usernameLabel), "reloaded account options");
+        assert.equal(input(usernameLabel).props.text, "self-account");
+        failSettingsWrite = true;
+        enter(usernameLabel, "changed-account"); press("Save username option");
+        await until(() => text(tree).includes("Could not save Spotify username"), "storage error feedback");
+        assert.equal(values.get("com.wamako.sortplay:liked-username"), "self-account");
+        failSettingsWrite = false;
+        enter(usernameLabel, ""); press("Save username option");
+        await until(() => text(tree).includes("Automatic account lookup saved"), "saved automatic account option");
+        assert.equal(values.get("com.wamako.sortplay:liked-username"), undefined);
+        await open("What’s That Genre?");
+        enter(keyLabel, keyA); press("Save key");
+        assert.equal(values.get("com.wamako.genres:lastfm-key"), keyA);
+        await until(() => text(tree).includes("Last.fm API key saved"), "verified key save feedback");
+        assert.ok(!text(tree).includes(keyA), "key is never printed in feedback");
+        runtime.unregisterScript("com.wamako.genres");
+        loader.loadScript(path.join(extensionRoot, "genres"), "user");
+        await open("What’s That Genre?");
+        assert.equal(input(keyLabel).props.text, keyA);
+        ignoreSettingsWrite = true;
+        enter(keyLabel, keyB); press("Save key");
+        await until(() => text(tree).includes("Could not save Last.fm API key"), "failed read-back feedback");
+        assert.equal(values.get("com.wamako.genres:lastfm-key"), keyA);
+        ignoreSettingsWrite = false;
+        enter(keyLabel, "invalid-key"); press("Save key");
+        await until(() => text(tree).includes("32-character"), "key validation feedback");
+        assert.equal(values.get("com.wamako.genres:lastfm-key"), keyA);
+        await open("Playlist Plus");
+        assert.equal(input(keyLabel).props.text, "", "each extension has separate private settings");
+        enter(keyLabel, keyB); press("Save key");
+        await until(() => text(tree).includes("Last.fm API key saved"), "playlist key save");
+        press("Load and classify genres");
+        await until(() => text(tree).includes("hip hop · 3 (100%)"), "503 fallback classification");
+        assert.match(text(tree), /Last.fm.*503/);
+        assert.equal(values.get("com.wamako.playlistplus:lastfm-key"), keyB);
+        assert.equal(values.get("com.wamako.genres:lastfm-key"), keyA);
+        assert.ok(!text(tree).includes(keyB));
+        const failedReads = http.filter(c => c.url.hostname === "ws.audioscrobbler.com");
+        assert.ok(failedReads.length >= 1 && failedReads.length <= 2, "temporary outage suppresses per-track repeat failures");
+        await open("What’s That Genre?");
+        press("Remove saved key");
+        await until(() => text(tree).includes("Last.fm API key removed"), "key removal feedback");
+        assert.equal(values.get("com.wamako.genres:lastfm-key"), undefined);
+        await open("Listening Stats");
+        press("Last.fm");
+        await until(() => text(tree).includes("Your public Last.fm username"), "stats provider fields");
+        enter("Your public Last.fm username", "stats-account");
+        enter("Your Last.fm API key", keyA);
+        press("Save provider settings");
+        assert.equal(values.get("com.wamako.listeningstats:provider-user"), "stats-account");
+        assert.equal(values.get("com.wamako.listeningstats:lastfm-key"), keyA);
+        await until(() => text(tree).includes("Provider settings saved in this extension"), "stats verified save");
+        press("Fetch rankings");
+        await until(() => text(tree).includes("Last.fm is temporarily unavailable (HTTP 503)"), "stats service outage feedback");
+        assert.equal(values.get("com.wamako.listeningstats:lastfm-key"), keyA);
+      } else if (recovery) {
         await until(() => text(tree).includes("3 tracks in preview"), "complete recovered membership");
         assert.match(text(tree), /1 saved tracks have unavailable metadata/);
         assert.match(text(tree), /Recovered Song 3/);

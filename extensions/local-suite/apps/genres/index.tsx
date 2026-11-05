@@ -32,7 +32,7 @@ function App() {
       async (job) =>
         client.genres(
           await client.track(spotifyUri(input, "track"), job),
-          { key: settings.key, musicbrainz: settings.musicbrainz },
+          { key: settings.apiKey, musicbrainz: settings.musicbrainz },
           job,
         ),
       setTrack,

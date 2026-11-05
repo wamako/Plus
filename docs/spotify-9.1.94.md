@@ -1,6 +1,6 @@
 # Spotify 9.1.94.1929 compatibility preview
 
-Module version: `0.10.0-api2.9.1.94.7` (version code 24), arm64 API-2 preview.
+Module version: `0.10.0-api2.9.1.94.8` (version code 25), arm64 API-2 preview.
 
 The first preview APK is withdrawn. The supplied framework log shows Android rejecting its `classes17.dex` before either Xposed entry point loads: the file is 5,767,168 bytes while its header requires 6,984,980. Inspection of the distributed APK confirms that truncated entry; it is a partial duplicate of `classes15.dex`. APK signing verification did not detect this DEX-level problem. Revision 2 is a clean CI rebuild, with DEX integrity and entry-point checks required before artifact upload. This addresses the observed loading blocker; device feature testing is still required.
 
@@ -92,3 +92,7 @@ Device verification under LSPatch is still required for glass appearance, artwor
 ## Revision 7: extension startup under LSPatch
 
 Both libnode.so and libnative-lib.so declare libc++_shared.so as a required ELF dependency. R6 attempted to load Node before C++, and loaded C++ only later through the renderer. Load C++ first, then Node, then JNI. This removes reliance on the host app's library search path. Failed extension launchers now expose a copyable startup stage and root exception instead of a generic restart toast. The device's exact original failure has not been captured; validate R7 on-device and use those details for any remaining blocker.
+
+## Revision 8: Android 17 writable native files
+
+The R7 device diagnostic identifies `UnsatisfiedLinkError: Attempt to load writable file` for extracted libc++_shared.so. Extract bootstrap and renderer libraries, Node add-ons and bundled runtime files using a shared atomic writer. Open a new temporary file, mark it read-only before writing through the open descriptor, sync and close it, then atomically replace the cache path. Recreate prior writable caches directly from module assets without requiring Spotify data to be cleared. This preserves the R7 dependency order and startup diagnostics. Test sealing during writes, replacement of read-only files and failure atomicity.

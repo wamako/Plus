@@ -9,7 +9,7 @@ import {
   decodeCollectionPage,
   contextPageUrl,
 } from "./liked-songs.mjs";
-import { Cache, makeHttp, mapLimit, RequestError, failureReason } from "./net.mjs";
+import { Cache, makeHttp, mapLimit, RequestError, failureReason, nativePlaylistFailure } from "./net.mjs";
 import {
   MAX_ITEMS,
   clean,
@@ -1089,7 +1089,7 @@ export class DataClient {
         ]);
       } catch (error) {
         if (error instanceof RequestError) throw error;
-        throw new RequestError(`Native playlist service: ${reason(error)}.`, status(error), true);
+        throw nativePlaylistFailure(error) || new RequestError(`Native playlist service: ${reason(error)}.`, status(error), true);
       } finally { clearTimeout(timer); }
     };
     try {
@@ -1111,9 +1111,10 @@ export class DataClient {
       this.api.Platform.Storage.set("last-write-v1", { ...journal });
       return journal;
     } catch (error) {
+      const step = journal.uri ? "Adding tracks to the new copy" : "Creating the new copy";
       journal.phase = error.unknown ? "unknown" : "stopped";
       this.api.Platform.Storage.set("last-write-v1", { ...journal });
-      throw new Error(`${error.message} Confirmed ${journal.completed}/${uris.length}.${journal.uri ? ` New copy: ${journal.uri}.` : ""} Inspect Spotify before repeating this action.`);
+      throw new Error(`${step}: ${error.message} Confirmed ${journal.completed}/${uris.length}.${journal.uri ? ` New copy: ${journal.uri}.` : ""} Inspect Spotify before repeating this action.`);
     }
   }
   async createCopy(

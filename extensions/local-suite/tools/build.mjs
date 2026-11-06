@@ -22,10 +22,10 @@ for (const [folder, id, name] of apps) {
     id,
     name,
     author: "wamako",
-    version: "0.1.6",
+    version: "0.1.7",
     api: 2,
     main: "index.js",
-    description: `Independent Android adaptation: ${name}. For Spotify Plus R10 API 2.`,
+    description: `Independent Android adaptation: ${name}. For Spotify Plus R12 API 2.`,
   };
   await fs.mkdir(out, { recursive: true });
   await bundleExtension({

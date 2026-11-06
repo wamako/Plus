@@ -36,6 +36,7 @@ def verify(path):
             if entry.endswith('.dex') and '/' not in entry:
                 host_classes.update(validate_dex(entry,apk.read(entry)))
         validate_storage_classes(host_classes)
+        assert "Lcom/lenerd46/spotifyplus/api2/NativePlaylistWriter;" in host_classes, "Missing 9.1.94 playlist writer"
         order=json.loads(apk.read('assets/api2-native-load-order.json'))
         assert set(order)=={'libc++_shared.so','libnode.so','libnative-lib.so'}, 'Incomplete native bootstrap'
         binaries={name:apk.read('lib/arm64-v8a/'+name) for name in order}

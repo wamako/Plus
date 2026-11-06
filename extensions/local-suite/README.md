@@ -1,28 +1,42 @@
-# Spotify Plus local Android extensions · 0.1.6
+# Spotify Plus local Android extensions · 0.1.7
 
-Four removable **initial Android adaptations** of the requested Spicetify projects.
-Designed against the API-2 runtime shipped in Spotify Plus R10 for Spotify
-9.1.94.1929 / arm64. These are not the original desktop extensions and do not
-implement every feature of those projects. Use the R11 module for persistent extension storage.
-No extension is published to a marketplace.
+Four removable Android adaptations for Spotify 9.1.94.1929 / arm64 / API 2.
+Use **Spotify Plus R12** as the LSPatch module. No extension is published to a marketplace.
 
-## Required host: R11
+## R12 native playlist copies
 
-R10 omitted the API-2 native storage handler. That host could discover and run
-extensions but could not persist their keys, usernames, caches or write journals.
-R11 restores the handler. Keep these **0.1.6 JavaScript bundles** and use R11 as
-the module when repatching Spotify 9.1.94.1929 in LSPatch. Save settings again
-after R11 is active; settings that were never written cannot be recovered.
+R12 fixes the stale protobuf builder methods and creation-origin enum used by
+native playlist creation and track insertion. Those names changed in Spotify
+9.1.94. The writer now uses stable schema fields, resolves the native client by
+its type, validates request and response schemas before dispatch, and waits for
+each server acknowledgment. It creates a separate playlist and appends ordered
+batches of up to 100 tracks. Your original Liked Songs or playlist is never
+edited by this copy action.
 
-This package revision changes documentation only. All four scripts and manifests
-are byte-for-byte unchanged from the original 0.1.6 ZIP.
+Use **Preview native Spotify copy** in Sort Play or Playlist Plus, then explicitly
+confirm it. Spotify's Web API may still return 404 with the mobile session; the
+native path does not use that API. Native copies use Spotify's default visibility.
+Check the new playlist's visibility in Spotify.
+
+Version **0.1.7** distinguishes preparation failures (no request sent for that
+step), explicit server rejections, and uncertain RPC/acknowledgment failures. It
+names creation versus track insertion and retains the new copy URI and confirmed
+track count. No uncertain write is retried or switched to another transport.
+Existing unknown journals from older versions remain blocked: inspect Spotify
+before explicitly clearing them. Zero confirmed tracks does not prove that no
+empty playlist was created.
+
+Repatch Spotify with R12, replace all four local extension folders with this
+package, then Refresh the local extensions folder and restart Spotify. Existing
+extension IDs and settings keys are preserved. R12 retains R11's persistent
+storage repair. Settings that failed to save under R10 must be saved again.
 
 ## Update from earlier versions
 
 Replace the four old extension folders with the four folders in this ZIP, in the
 same selected parent directory. Do not leave a second copy with the same extension
 IDs elsewhere under that parent. Press **Refresh** in the Developer page. If the
-old version is still shown, force-stop and reopen Spotify. When updating from R10, activate the R11 module in LSPatch and repatch Spotify
+old version is still shown, force-stop and reopen Spotify. When updating from R10, activate the R12 module in LSPatch and repatch Spotify
 first. A JavaScript folder refresh cannot add its missing native storage handler.
 Keep your app data. Local listening
 history, saved keys, and genre presets keep their existing settings keys.
@@ -136,8 +150,8 @@ The 0.1.1 native album reader, artist-ID recovery and genre fixes remain include
 
 ## Install on your non-root LSPatch setup
 
-1. Use Spotify Plus **R11** for persistent storage. If updating from R10, repatch
-   Spotify with the R11 module in LSPatch first. These extension files are not APKs.
+1. Use Spotify Plus **R12** for persistent storage. If updating from R10, repatch
+   Spotify with the R12 module in LSPatch first. These extension files are not APKs.
 2. Extract `SpotifyPlus-Local-Extensions-0.1.6.zip` into a normal, accessible
    directory, e.g. `Documents/SpotifyPlusLocal/` on the phone.
 3. The extracted `SpotifyPlus-Local-Extensions` directory must contain four child

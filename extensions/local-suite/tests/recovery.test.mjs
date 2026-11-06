@@ -96,6 +96,20 @@ test("native copies require confirmation and cancellation prevents any write",as
   await assert.rejects(client.nativeCopy([track(1)],"Copy","yes","yes",{cancelled:true}),/cancelled/);
   assert.equal(writes.length,0);
 });
+test("R12 pre-dispatch failures stop safely and name the failed creation step",async()=>{
+  const {client,api,values,writes}=fixture(()=>assert.fail("no automatic fallback"));
+  api.request=async(operation,args)=>{writes.push({operation,args});throw new Error("SP_PLAYLIST_PREPARE");};
+  await assert.rejects(client.nativeCopy([track(1)],"Copy","yes","yes",{}),/Creating the new copy:.*nothing was sent for this step/);
+  assert.equal(writes.length,1);assert.equal(values.get("last-write-v1").phase,"stopped");
+});
+test("R12 failures distinguish rejected batches from lost RPC and invalid acknowledgments",async()=>{
+  for(const [code,phase] of [["REJECTED_403","stopped"],["RPC","unknown"],["ACK","unknown"]]){
+    const {client,api,values,writes}=fixture(()=>assert.fail("no automatic fallback"));
+    api.request=async(operation,args)=>{writes.push({operation,args});if(operation==="playlists.create")return {uri:copy};if(writes.length===3)throw new Error(`SP_PLAYLIST_${code}`);return null;};
+    await assert.rejects(client.nativeCopy(Array.from({length:201},(_,i)=>track(i+1)),"Copy","yes","yes",{}),e=>e.message.includes("Adding tracks to the new copy:")&&e.message.includes("100/201")&&e.message.includes(copy));
+    assert.equal(writes.length,3);assert.equal(values.get("last-write-v1").phase,phase);assert.equal(values.get("last-write-v1").completed,100);
+  }
+});
 function mbFixture(respond){
   const {storage}=fixture(),cache=new Cache(storage,"test");let now=0;const times=[],calls=[];
   const client=new MusicBrainz(async(url,options)=>{times.push(now);calls.push({url,options});return respond(url,options);},cache,{now:()=>now,wait:async delay=>{now+=delay;}});

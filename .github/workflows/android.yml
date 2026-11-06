@@ -8,6 +8,7 @@ on:
 
 permissions:
   contents: read
+  actions: read
 
 jobs:
   build:
@@ -35,8 +36,26 @@ jobs:
         with:
           node-version: '22'
 
+      # Upstream moved to GitLab without the old release binaries. Keep the
+      # verified R11 runtime/lyrics binary inputs; all host code is rebuilt.
+      - name: Restore verified binary inputs
+        uses: actions/cache@v4
+        id: binary-inputs
+        with:
+          path: .api2-cache/r11
+          key: spotifyplus-r11-176aac1fec257cf18b7f2fc002f5cad2be2f9cc774a69694094e34555abb5df2
+
+      - name: Download retained R11 build inputs
+        if: steps.binary-inputs.outputs.cache-hit != 'true'
+        uses: actions/download-artifact@v4
+        with:
+          name: SpotifyPlus-Debug-APK
+          run-id: 42078701459
+          github-token: ${{ github.token }}
+          path: .api2-cache/r11
+
       - name: Prepare and test pinned API-2 runtime and extensions
-        run: python3 tools/prepare_api2.py
+        run: python3 tools/prepare_api2.py --runtime-apk .api2-cache/r11/app-debug.apk
 
       - name: Test and build installable debug APK
         run: |

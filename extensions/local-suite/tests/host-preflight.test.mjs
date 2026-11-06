@@ -516,7 +516,7 @@ for (const mode of ["web", "native", "likes", "no-icu", "no-codecs", "large-like
         await until(() => nodes(tree).some(n => n.props?.onPress?.id && text(n) === "Duration" && n.props.backgroundColor === "#294c40"), "duration sort selection");
         press("Copy range 10001-20000");
         await until(() => nodes(tree).some(n => n.props?.onPress?.id && text(n) === "Copy range 10001-20000" && n.props.backgroundColor === "#294c40"), "selected copy range");
-        press("Preview saving a new copy");
+        press("Preview Web API copy");
         await until(() => text(tree).includes("Create “Liked Songs · Plus · 10001-20000” with 10000 tracks?"), "explicit range confirmation");
         assert.match(text(tree), /10001-20000/);
         assert.equal(http.filter(c => c.options.method === "POST").length, 0, "reads and range selection never write");
@@ -548,7 +548,7 @@ for (const mode of ["web", "native", "likes", "no-icu", "no-codecs", "large-like
         ).length,
         0,
       );
-      press("Preview saving a new copy");
+      press("Preview Web API copy");
       await until(
         () => text(tree).includes("with 3 tracks?"),
         "copy confirmation",
@@ -558,7 +558,7 @@ for (const mode of ["web", "native", "likes", "no-icu", "no-codecs", "large-like
         () => !text(tree).includes("Confirm this action"),
         "stale confirmation invalidation",
       );
-      press("Preview saving a new copy");
+      press("Preview Web API copy");
       await until(
         () => text(tree).includes("Confirm this action"),
         "replacement confirmation",

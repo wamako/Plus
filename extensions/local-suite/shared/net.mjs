@@ -5,6 +5,19 @@ export class RequestError extends Error {
     this.unknown = unknown;
   }
 }
+// R12 returns only these controlled codes across JNI. Everything else stays
+// redacted and conservatively unknown; never display raw native exceptions.
+export function nativePlaylistFailure(error) {
+  const code = /\bSP_PLAYLIST_(PREPARE(?:_INPUT|_SCHEMA|_CLIENT)?|RPC|ACK|REJECTED_([1-5]\d\d))\b/.exec(String(error?.message || ""));
+  if (!code) return null;
+  if (code[1].startsWith("PREPARE")) {
+    const detail = { PREPARE_INPUT: "invalid copy input", PREPARE_SCHEMA: "playlist protocol unavailable", PREPARE_CLIENT: "native client unavailable; start playback first" }[code[1]] || "request preparation failed";
+    return new RequestError(`Native playlist service: ${detail}; nothing was sent for this step (${code[0]}). Check that the R12 module is active.`);
+  }
+  if (code[1] === "RPC") return new RequestError("Native playlist request failed while waiting for Spotify; this step's outcome is unknown.", 0, true);
+  if (code[1] === "ACK") return new RequestError("Native playlist acknowledgment was incomplete; this step's outcome is unknown.", 0, true);
+  return new RequestError(`Native playlist service rejected this step (HTTP ${code[2]}).`, Number(code[2]));
+}
 // Only controlled categories reach diagnostics; URLs, bodies, keys and native
 // exception text can contain account data and must never be echoed.
 export function failureReason(error) {

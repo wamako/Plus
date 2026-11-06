@@ -22,11 +22,11 @@ run("curl", [
   "=https",
   "--proto-redir",
   "=https",
-  `https://codeload.github.com/LeNerd46/SpotifyPlus/tar.gz/${pin}`,
+  `https://gitlab.com/LeNerd46/spotify-plus/-/archive/${pin}/spotify-plus-${pin}.tar.gz`,
   "--output",
   archive,
 ]);
-const selected = `SpotifyPlus-${pin}/app/src/main/assets/nodejs-src`;
+const selected = `spotify-plus-${pin}/app/src/main/assets/nodejs-src`;
 run("tar", ["-xzf", archive, "-C", temp, selected]);
 const destination = path.join(root, ".sdk");
 await fs.rm(destination, { recursive: true, force: true });

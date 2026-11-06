@@ -1,4 +1,18 @@
-# Validation record · 0.1.6
+# Validation record · 0.1.7 / R12
+
+2026-11-06: production Java writer tested on the JVM with renamed protocol
+fixtures and a native-client/Rx adapter. Tests check exact Unicode request bytes,
+creation origin, root/playlist request fields, duplicate/order preservation,
+validation before dispatch, ambiguous/unavailable clients, explicit rejection,
+lost RPC, malformed and incomplete acknowledgments. Schema names, field numbers,
+ClientBase.callSingle signature and protobuf parseFrom signature were inspected
+in the supplied Spotify 9.1.94.1929 APK. These checks do not execute a live Spotify
+write. JavaScript regressions cover failed create/add stages, retained confirmed
+counts/new-copy URI, and no retry or alternate transport after a failure.
+
+The following records describe earlier regression coverage retained by this build.
+
+## Earlier 0.1.6 validation
 
 Validated in the build workspace on 2026-11-05.
 

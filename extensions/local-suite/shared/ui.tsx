@@ -412,17 +412,17 @@ export function Actions({
         </View>
       ) : null}
       <Button
-        title="Preview saving a new copy"
-        disabled={blocked || task.busy || !tracks.length}
-        onPress={() => stage("copy")}
-      />
-      <Button
         title="Preview native Spotify copy"
         disabled={blocked || task.busy || !tracks.length || (typeof client.api.Playlists?.create !== "function" || typeof client.api.Playlists?.addTracks !== "function")}
         onPress={() => stage("native-copy")}
       />
+      <Button
+        title="Preview Web API copy"
+        disabled={blocked || task.busy || !tracks.length}
+        onPress={() => stage("copy")}
+      />
       <Label muted>
-        Native copy uses Spotify’s own playlist service when Web API saves fail.
+        Native copy requires the R12 module and uses Spotify’s own playlist service when Web API saves fail.
         It creates a separate playlist using Spotify’s default visibility; check
         its visibility in Spotify. Web API copy requests a private playlist.
       </Label>

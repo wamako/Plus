@@ -300,3 +300,29 @@ because it executes each script line separately, splitting the shell conditional
 Moved those commands into one bash file with strict error handling and an explicit
 patched-host boolean. This is a wrapper failure after actual environment proof,
 not a Spotify startup failure/pass. A clean job rerun is still required.
+
+The clean Linux rerun 42309629517 at 167edd9518455f8d4635741c2d548b09740f94da
+completed successfully for the environment and build. KVM was usable, the guest
+booted in about 38 seconds, and actual API 37/x86_64/ARM64 native-bridge/ISA
+checks passed. Environment report ZIP SHA-256:
+cbd74557e053def560f394f4fd35590f165887c9b109a7abb6e3b3f4aa041d35.
+Downloaded JSON confirmed passed:true, result:booted,
+arm64_translation_test:true, native_arm64_test:false,
+patched_host_test_executed:false. All 49 CI checks (no skips), 106 JS regressions,
+loader profiles, TypeScript, Android build and DEX/native checks passed.
+Packaging received HTTP 403 from APKMirror, so actual startup remained skipped.
+
+## Google Drive APK source, 2026-11-06
+
+User supplied a Drive sharing link. Anonymous download reached Google's standard
+large-file confirmation form; following that same-file GET form produced the
+exact original: 153,798,178 bytes, SHA-256 a0a6fbe6b87249bd3de88f16b342cce233f94513d41a0f6f2a06558ba51a9304.
+Added bounded public Drive sharing/export/confirmation support to the CI input
+downloader. The provider form must retain the original file ID and use the
+fixed HTTPS Google download endpoint and known fields; duplicates, other files,
+external destinations and login/permission flows are refused. No Drive link,
+file ID, session UUID, cookies or APK bytes are committed/published. All existing
+checksum, package and device checks remain. Local tests: 52 total, one prepared
+Java fixture skipped, workflow lint/whitespace checks passed. CI still needs the
+repository secret changed to the Drive link; the connector cannot edit secrets.
+Local anonymous access/checksum does not establish CI access or app startup.

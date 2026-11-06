@@ -20,6 +20,7 @@ import urllib.error
 import zipfile
 
 from verify_lspatched_package import JAR_SHA, manifest, verify
+from google_drive_input import download_url as drive_download_url, drive_file_id, confirmation_url as drive_confirmation_url
 
 ORIGINAL_SHA = "a0a6fbe6b87249bd3de88f16b342cce233f94513d41a0f6f2a06558ba51a9304"
 PATCHER_URL = "https://github.com/JingMatrix/LSPatch/releases/download/v1.2/lspatch-v1.2-487-release.jar"
@@ -102,6 +103,9 @@ def download(url, path, expected, diagnostics=None):
     if not url.startswith("https://"):
         raise ValueError("An HTTPS test-input URL is required")
     try:
+        expected_drive_id = drive_file_id(url) if expected == ORIGINAL_SHA else None
+        if expected_drive_id:
+            url = drive_download_url(url)
         opener = urllib.request.build_opener(HTTPSRedirects(),
                     urllib.request.HTTPCookieProcessor(http.cookiejar.CookieJar()))
         # At most one download page and one file request. Cookies are limited to
@@ -118,7 +122,9 @@ def download(url, path, expected, diagnostics=None):
                 prefix = source.read(512).lstrip().lower()
             if not prefix.startswith((b"<!doctype html", b"<html")):
                 break
-            link = apkmirror_file_link(final_url, path.read_text(encoding="utf-8", errors="replace"))
+            html = path.read_text(encoding="utf-8", errors="replace")
+            link = (drive_confirmation_url(final_url, html, expected_drive_id) if expected_drive_id else
+                    apkmirror_file_link(final_url, html))
             if not link:
                 break
             url = link

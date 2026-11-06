@@ -9,6 +9,7 @@ import zipfile
 from unittest.mock import patch, Mock
 
 from prepare_lspatch_smoke import download, describe_input, apkmirror_file_link, HTTPSRedirects
+from google_drive_input import download_url as drive_download_url, confirmation_url as drive_confirmation_url
 from run_lspatch_smoke import Device, log_status, provision, check_environment, NATIVE, TRANSLATED
 from verify_lspatched_package import verify_origin
 from check_android37_acceleration import assess
@@ -256,6 +257,55 @@ class DeviceGuards(unittest.TestCase):
 
 
 class InputTests(unittest.TestCase):
+    def drive_form(self, *, file_id="fixtureFile123", action="https://drive.usercontent.google.com/download", method="get", extra=""):
+        return ('<html><form id="download-form" action="' + action + '" method="' + method + '">'
+                '<input type="hidden" name="id" value="' + file_id + '">'
+                '<input type="hidden" name="export" value="download">'
+                '<input type="hidden" name="confirm" value="t">'
+                '<input type="hidden" name="uuid" value="fixture-session-uuid">' + extra + '</form></html>')
+
+    def test_drive_sharing_link_becomes_same_file_download_without_viewer(self):
+        self.assertEqual(drive_download_url("https://drive.google.com/file/d/fixtureFile123/view?usp=sharing"),
+                         "https://drive.usercontent.google.com/uc?id=fixtureFile123&export=download")
+        self.assertIn("resourcekey=fixture-key", drive_download_url("https://drive.google.com/file/d/fixtureFile123/view?resourcekey=fixture-key"))
+        self.assertEqual(drive_download_url("https://example.invalid/file.apk"), "https://example.invalid/file.apk")
+
+    def test_drive_confirmation_rejects_external_forms_file_substitution_and_duplicates(self):
+        page = "https://drive.usercontent.google.com/uc?id=fixtureFile123&export=download"
+        for html in (self.drive_form(action="https://advert.invalid/download"),
+                     self.drive_form(file_id="differentFile456"), self.drive_form(method="post"),
+                     self.drive_form(extra='<input type="hidden" name="id" value="fixtureFile123">'),
+                     self.drive_form() + self.drive_form(),
+                     self.drive_form(extra='<input type="hidden" name="password" value="private">')):
+            with self.subTest(html=html), self.assertRaises(ValueError):
+                drive_confirmation_url(page, html, "fixtureFile123")
+        self.assertIsNone(drive_confirmation_url("https://advert.invalid/", self.drive_form(), "fixtureFile123"))
+        self.assertIsNone(drive_confirmation_url(page, "<html>Sign in to continue</html>", "fixtureFile123"))
+
+    def test_drive_download_confirmation_preserves_hash_guard_and_is_bounded(self):
+        import io
+        payload = b"fixture original APK"
+        expected = hashlib.sha256(payload).hexdigest()
+        page_url = "https://drive.usercontent.google.com/uc?id=fixtureFile123&export=download"
+        html = self.drive_form().encode()
+        for final in (payload, b"wrong APK", html):
+            with self.subTest(final=final), tempfile.TemporaryDirectory() as temp:
+                first, second = io.BytesIO(html), io.BytesIO(final)
+                first.url, second.url = page_url, "https://drive.usercontent.google.com/download"
+                opener = Mock()
+                opener.open.side_effect = [first, second]
+                target = pathlib.Path(temp) / "input.apk"
+                with patch("prepare_lspatch_smoke.urllib.request.build_opener", return_value=opener), \
+                        patch("prepare_lspatch_smoke.ORIGINAL_SHA", expected):
+                    if final == payload:
+                        download("https://drive.google.com/file/d/fixtureFile123/view", target, expected)
+                        self.assertEqual(target.read_bytes(), payload)
+                    else:
+                        with self.assertRaisesRegex(ValueError, "SHA-256"):
+                            download("https://drive.google.com/file/d/fixtureFile123/view", target, expected)
+                        self.assertFalse(target.exists())
+                self.assertEqual(opener.open.call_count, 2)
+
     def test_http_failure_reports_status_without_secret_or_page_content(self):
         import urllib.error
         import json

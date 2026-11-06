@@ -6,6 +6,13 @@ subscription or additional runner label is required. `ANDROID37_RUNNER_LABEL`
 is no longer used. The existing `RUN_LSPATCH_SMOKE` flag and `SPOTIFY_APK_URL`
 secret still control the actual patched-Spotify test.
 
+The Linux environment job passed in
+[CI run 42309629517](https://github.com/wamako/Plus/actions/runs/42309629517): real
+API 37 guest boot, ARM64 bridge/ABI/ISA checks, and explicit translated/native
+scope. The build and all 49 checks passed at
+`167edd9518455f8d4635741c2d548b09740f94da`. Spotify startup was skipped there
+because the then-configured APKMirror source returned HTTP 403.
+
 The guest OS runs x86_64; Spotify and Plus native code run as **ARM64 through
 Google's native bridge**. This is explicitly translated compatibility coverage,
 not native ARM64 execution or a Samsung firmware test. A passing emulator boot
@@ -74,6 +81,21 @@ fresh cookie session and at most one page-to-file request, with no ad/script
 following or insecure redirects. The downloaded APK must still match the exact
 pinned hash. Expired links and provider HTTP denials are not bypassed; use a
 working direct HTTPS APK source if that provider refuses CI downloads.
+
+Public Google Drive sharing links (`https://drive.google.com/file/d/FILE_ID/view`)
+are also supported. The downloader requests the same file's public export and
+follows at most one large-file confirmation form. It accepts only Google's
+HTTPS download destination, GET method, the original file ID and known download
+fields. Sign-in pages, permission walls, other files/destinations, duplicate
+fields and ambiguous forms are refused; permissions are never changed. The
+exact original APK checksum remains mandatory. The sharing URL belongs in
+`SPOTIFY_APK_URL`, not in a public workflow or repository file. No Drive login
+or API key is needed for an anonymously downloadable file.
+
+The user-supplied Drive source was downloaded locally and matched the pinned
+153,798,178-byte original APK exactly. This establishes file identity and local
+download access, not CI access or actual Spotify startup. After updating the
+secret, CI must verify the source again and run the gated startup test.
 
 `input.json` reports only fixed file categories, byte counts/hashes and recognized
 Spotify version fields, or an HTTP status for failed requests. URLs, temporary

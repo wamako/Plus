@@ -50,6 +50,20 @@ as unsupported and very slow. Each boot is bounded to 15 minutes; the job is
 bounded to 45 minutes. The guest must still prove API 37 and ARM64. No API/ABI
 substitution occurs. Reports identify `software` versus `hardware` execution.
 
+The first real hosted trial still selected HVF and exited immediately with
+`HV_UNSUPPORTED`; no Android guest booted, although the wrapper waited for its
+15-minute deadline. The capability check now queries the actual ARM64 QEMU
+binary with `-accel help`. Software mode is eligible only if **tcg** is explicitly
+listed. It also passes `-qemu -accel tcg -cpu max` to select that backend rather
+than assuming the launcher honors `-accel off` on ARM. This override still needs
+a real successful guest test; backend presence alone is not a boot result.
+
+The independent **android17-runner-capabilities** job needs no APK or VM. Its
+**Android17-ARM64-Runner-Capabilities** artifact records only recognized backend
+names, probe status and capabilities-only scope. It does not claim runtime
+success and cannot provision a physical Mac. That hardware must already exist
+before it can be registered as a self-hosted GitHub runner.
+
 Only the optional environment-only software experiment can continue after an
 emulator failure. It writes `software_boot_failed` and `passed:false`; the
 patched-host job is then skipped. A requested Spotify startup failure always

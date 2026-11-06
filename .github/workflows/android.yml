@@ -118,6 +118,13 @@ jobs:
           name: SpotifyPlus-Release-APK
           path: app/build/outputs/apk/release/app-release.apk
 
+  android17-runner-capabilities:
+    # No APK/source secret, private runner or VM is needed for this native probe.
+    uses: ./.github/workflows/s24-validation.yml
+    with:
+      probe_only: true
+      try_software: true
+
   android17-environment:
     needs: [build, lspatch-packaging]
     # A custom self-hosted machine must never execute untrusted fork-PR code.
@@ -193,7 +200,7 @@ jobs:
       SPOTIFY_APK_URL: ${{ secrets.SPOTIFY_APK_URL }}
 
   validation-scope:
-    needs: [build, android17-environment, lspatch-packaging, lspatch-android17]
+    needs: [build, android17-runner-capabilities, android17-environment, lspatch-packaging, lspatch-android17]
     if: always()
     runs-on: ubuntu-latest
     steps:

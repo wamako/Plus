@@ -4,12 +4,12 @@ import json
 import os
 import pathlib
 
-def classify(mode, outcome, environment):
+def classify(mode, outcome, environment, probe_only=False):
     guest = (environment.get("passed") is True and
              environment.get("test_kind") == "android37_arm64_environment_only" and
              environment.get("environment", {}).get("api") == 37 and
              environment.get("environment", {}).get("abi") == "arm64-v8a")
-    result = ("booted" if guest else "software_boot_failed" if mode == "software" and outcome == "failure"
+    result = ("capabilities_only" if probe_only else "booted" if guest else "software_boot_failed" if mode == "software" and outcome == "failure"
               else "unsupported_runner" if mode == "unavailable" else "setup_failed")
     return {"test_kind": "android37_boot_result", "emulation_mode": mode, "result": result,
             "passed": True if guest else False if outcome in ("success", "failure") else None,
@@ -21,7 +21,8 @@ def main():
     directory.mkdir(exist_ok=True)
     path = directory / "environment.json"
     environment = json.loads(path.read_text()) if path.exists() else {}
-    report = classify(os.environ.get("BOOT_MODE", "unavailable"), os.environ.get("BOOT_RESULT", "skipped"), environment)
+    report = classify(os.environ.get("BOOT_MODE", "unavailable"), os.environ.get("BOOT_RESULT", "skipped"), environment,
+                      os.environ.get("PROBE_ONLY") == "true")
     (directory / "boot-result.json").write_text(json.dumps(report, indent=2) + "\n")
     with open(os.environ["GITHUB_OUTPUT"], "a") as out:
         out.write("environment_result=" + report["result"] + "\n")

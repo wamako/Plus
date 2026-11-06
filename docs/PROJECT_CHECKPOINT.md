@@ -238,3 +238,13 @@ environment attempts after successful package validation to avoid repeat slow
 boots with invalid inputs. Do not relax the original checksum guard without
 validating a replacement input. The first software trial's actual guest result
 still needs to be read; starting an emulator step is not proof of a boot.
+
+That software trial completed: native QEMU exited immediately with
+HV_UNSUPPORTED/failed to initialize HVF despite -accel off and the TCG opt-in;
+the wrapper waited until its boot deadline. No Android guest or patched Spotify
+started. The source diagnostic at 93122088/run 42298224828 confirmed the user's
+URL returns **html_page_not_apk**. The build passed, but packaging correctly
+failed and later guest/startup jobs were skipped. Settings presence is correct;
+the source must supply actual original APK bytes. Added an independent native
+QEMU-backend probe and a guarded explicit TCG selection; actual backend results
+must be read before claiming whether the hosted software route is possible.

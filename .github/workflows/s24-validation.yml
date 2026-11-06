@@ -6,6 +6,9 @@ name: LSPatch Android 17 ARM64 validation
 on:
   workflow_call:
     inputs:
+      probe_only:
+        type: boolean
+        default: false
       try_software:
         type: boolean
         default: false
@@ -69,7 +72,7 @@ jobs:
           exit 1
 
       - name: Require the exact API 37 ARM64 image
-        if: steps.acceleration.outputs.boot_mode != 'unavailable'
+        if: steps.acceleration.outputs.boot_mode != 'unavailable' && !inputs.probe_only
         run: python3 tools/check_android37_image.py
 
       - name: Download prepared and verified Plus module from caller
@@ -102,7 +105,7 @@ jobs:
 
       - name: Boot Android 17 ARM64 and run requested checks
         id: boot
-        if: steps.acceleration.outputs.boot_mode != 'unavailable'
+        if: steps.acceleration.outputs.boot_mode != 'unavailable' && !inputs.probe_only
         # Only the optional environment-only experiment may be inconclusive.
         # A requested patched-app startup failure always fails its job.
         continue-on-error: ${{ steps.acceleration.outputs.boot_mode == 'software' && !inputs.run_patched_host }}
@@ -122,6 +125,7 @@ jobs:
           emulator-options: >-
             -no-window -gpu swiftshader_indirect -no-snapshot -noaudio -no-boot-anim -wipe-data
             -accel ${{ steps.acceleration.outputs.boot_mode == 'software' && 'off' || 'on' }}
+            ${{ steps.acceleration.outputs.boot_mode == 'software' && '-qemu -accel tcg -cpu max' || '' }}
           script: |
             python3 tools/run_lspatch_smoke.py --check-environment --report "$RUNNER_TEMP/smoke-reports/environment.json"
             if [ "${{ inputs.run_patched_host }}" = true ]; then
@@ -134,6 +138,7 @@ jobs:
         env:
           BOOT_MODE: ${{ steps.acceleration.outputs.boot_mode }}
           BOOT_RESULT: ${{ steps.boot.outcome }}
+          PROBE_ONLY: ${{ inputs.probe_only }}
         run: python3 tools/report_android37_scope.py
 
       # APKs, raw logcat, private source URLs and app data are never artifacts.
@@ -141,7 +146,7 @@ jobs:
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: ${{ inputs.run_patched_host && 'LSPatch-Android17-ARM64-Reports' || 'Android17-ARM64-Environment-Report' }}
+          name: ${{ inputs.probe_only && 'Android17-ARM64-Runner-Capabilities' || inputs.run_patched_host && 'LSPatch-Android17-ARM64-Reports' || 'Android17-ARM64-Environment-Report' }}
           path: ${{ runner.temp }}/smoke-reports/*.json
           if-no-files-found: ignore
           retention-days: 14

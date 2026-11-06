@@ -34,6 +34,11 @@ class ImageInventoryTests(unittest.TestCase):
 
 
 class BootScopeTests(unittest.TestCase):
+    def test_capabilities_only_never_claims_a_guest_boot(self):
+        report = classify("software", "skipped", {}, probe_only=True)
+        self.assertEqual(report["result"], "capabilities_only")
+        self.assertIsNone(report["passed"])
+        self.assertFalse(report["emulator_boot_attempted"])
     def test_optional_software_failure_is_never_a_runtime_pass(self):
         report = classify("software", "failure", {})
         self.assertEqual(report["result"], "software_boot_failed")
@@ -56,13 +61,18 @@ class BootScopeTests(unittest.TestCase):
 
 class AccelerationTests(unittest.TestCase):
     def test_explicit_hosted_software_trial_does_not_claim_acceleration_or_boot(self):
-        report = assess(0, "github-hosted", try_software=True)
+        report = assess(0, "github-hosted", try_software=True, tcg_available=True)
         self.assertEqual(report["boot_mode"], "software")
         self.assertEqual(report["result"], "software_trial_requested")
         self.assertFalse(report["accelerator_usable"])
         self.assertFalse(report["emulator_boot_executed"])
         self.assertFalse(report["patched_host_test_executed"])
         self.assertIsNone(report["passed"])
+
+    def test_missing_tcg_backend_prevents_a_known_bad_software_launch(self):
+        report = assess(0, "github-hosted", try_software=True, tcg_available=False)
+        self.assertEqual(report["boot_mode"], "unavailable")
+        self.assertFalse(report["software_backend_available"])
 
     def test_software_trial_does_not_mask_a_failed_physical_runner(self):
         self.assertEqual(assess(1, "self-hosted", try_software=True)["boot_mode"], "unavailable")

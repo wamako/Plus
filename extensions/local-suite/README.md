@@ -22,8 +22,8 @@ Version **0.1.7** distinguishes preparation failures (no request sent for that
 step), explicit server rejections, and uncertain RPC/acknowledgment failures. It
 names creation versus track insertion and retains the new copy URI and confirmed
 track count. No uncertain write is retried or switched to another transport.
-Existing unknown journals from older versions remain blocked: inspect Spotify
-before explicitly clearing them. Zero confirmed tracks does not prove that no
+Existing unknown journals from older versions remain visible: inspect Spotify
+before explicitly starting another copy. Zero confirmed tracks does not prove that no
 empty playlist was created.
 
 Repatch Spotify with R12, replace all four local extension folders with this

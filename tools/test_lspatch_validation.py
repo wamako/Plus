@@ -1,6 +1,8 @@
 """Check failure behavior of the device harness and bounded nested-APK reader."""
 import hashlib
+import os
 import pathlib
+import subprocess
 import tempfile
 import unittest
 import zipfile
@@ -42,6 +44,29 @@ class ImageInventoryTests(unittest.TestCase):
 
 
 class BootScopeTests(unittest.TestCase):
+    def test_single_shell_entry_runs_startup_only_after_successful_guest_check(self):
+        script = pathlib.Path(__file__).with_name("run_android37_validation.sh")
+        for requested, fail_guest, expected in (("false", False, 1), ("true", False, 2), ("true", True, 1)):
+            with self.subTest(requested=requested, fail_guest=fail_guest), tempfile.TemporaryDirectory() as temp:
+                root = pathlib.Path(temp)
+                fake = root / "python3"
+                fake.write_text('#!/bin/sh\nprintf "%s\\n" "$*" >> "$CALL_LOG"\n'
+                                'case "$*" in *--check-environment*) test "$FAIL_GUEST" != true || exit 17 ;; esac\n')
+                fake.chmod(0o755)
+                log = root / "calls"
+                env = {**os.environ, "PATH": str(root) + os.pathsep + os.environ["PATH"],
+                       "CALL_LOG": str(log), "FAIL_GUEST": str(fail_guest).lower(),
+                       "RUNNER_TEMP": temp, "DEVICE_PROFILE": TRANSLATED,
+                       "SPOTIFYPLUS_RUN_PATCHED_HOST": requested}
+                result = subprocess.run(["bash", str(script)], env=env, capture_output=True, text=True)
+                self.assertEqual(result.returncode, 17 if fail_guest else 0)
+                lines = log.read_text().splitlines()
+                self.assertEqual(len(lines), expected)
+                self.assertIn("--check-environment", lines[0])
+                if expected == 2:
+                    self.assertIn("--apk", lines[1])
+                    self.assertIn("--extension", lines[1])
+
     def test_linux_guest_requires_all_translation_evidence_and_never_claims_native_arm(self):
         details = {"api": 37, "abi": "x86_64", "app_abi": "arm64-v8a", "emulator": True,
                    "profile": TRANSLATED, "arm_translation": True,

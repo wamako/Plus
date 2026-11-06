@@ -27,6 +27,7 @@ jobs:
     env:
       SPOTIFYPLUS_EMULATION_MODE: kvm-arm64-translation
       DEVICE_PROFILE: linux-x86_64-arm64-translation
+      SPOTIFYPLUS_RUN_PATCHED_HOST: ${{ inputs.run_patched_host }}
     outputs:
       environment_result: ${{ steps.scope.outputs.environment_result }}
     steps:
@@ -89,11 +90,9 @@ jobs:
           ram-size: 3072M
           disk-size: 4096M
           emulator-options: -no-window -gpu swiftshader_indirect -no-snapshot -noaudio -no-boot-anim -wipe-data -accel on -cores 2
-          script: |
-            python3 tools/run_lspatch_smoke.py --device-profile "$DEVICE_PROFILE" --check-environment --report "$RUNNER_TEMP/smoke-reports/environment.json"
-            if [ "${{ inputs.run_patched_host }}" = true ]; then
-              python3 tools/run_lspatch_smoke.py --device-profile "$DEVICE_PROFILE" --apk "$RUNNER_TEMP/lspatch-smoke/spotify-lspatched.apk" --extension "$RUNNER_TEMP/shuffle-extension/shuffle-plus" --report "$RUNNER_TEMP/smoke-reports/startup.json" --timeout 360
-            fi
+          # This action executes script lines individually. Run one shell file
+          # so the optional startup conditional stays in the same shell.
+          script: bash tools/run_android37_validation.sh
       - name: Record actual guest and translation evidence
         id: scope
         if: always()

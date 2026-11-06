@@ -292,3 +292,11 @@ patched-app test still need a successful CI run. App/extension executable source
 and delivered R13/Shuffle+ artifact identities remain unchanged.
 Local harness tests: 48 total, one prepared Java fixture skipped. Linux runtime
 results are pending the new CI run; do not infer boot/startup from configuration.
+
+First Linux CI run 42308987557 at 4b986376 successfully booted the official
+API 37 x86_64 guest in about 42 seconds; its environment harness passed the
+ARM64 bridge/ABI/ISA checks. KVM probe succeeded. The emulator action then failed
+because it executes each script line separately, splitting the shell conditional.
+Moved those commands into one bash file with strict error handling and an explicit
+patched-host boolean. This is a wrapper failure after actual environment proof,
+not a Spotify startup failure/pass. A clean job rerun is still required.

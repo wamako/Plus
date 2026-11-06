@@ -68,9 +68,13 @@ framework/manager dependency. This fixture does not change phone installation.
 The harness requires production log evidence: Plus entry, `Host ready`, and
 `Loaded script com.wamako.shuffleplus`. Known Java/native/linker/host/loader
 failures are rejected. The same process must remain alive for 15 seconds after
-readiness. LSPatch/Node/JNI/addon mappings and read-only extracted code are
+readiness. Integrated LSPatch bootstrap and Node/JNI/addon mappings/read-only code are
 checked, then the test repeats after a force-stop to exercise existing caches.
 It does not click Shuffle+ controls or submit queue/playlist mutations.
+
+LSPatch's library is loaded from inside the APK, so Linux maps may name only
+`base.apk`. The framework is checked by its actual integrated-bootstrap and
+module-entry logs; only the extracted Node/JNI/addon files require named mappings.
 
 Only structured checks/hashes are uploaded, for 14 days. Raw logcat, UI dumps,
 original/patched APKs, app data, URLs and credentials stay out of artifacts.

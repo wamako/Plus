@@ -17,6 +17,7 @@ import time
 PACKAGE = "com.spotify.music"
 EXTENSION = "com.wamako.shuffleplus"
 MARKERS = {
+    "integrated_loader_entered": "Bootstrap loader from embedment",
     "module_entered": "[SpotifyPlus] Loading SpotifyPlus v",
     "node_host_ready": "Host ready",
     "shuffle_extension_loaded": "Loaded script com.wamako.shuffleplus from ",
@@ -31,7 +32,10 @@ ERRORS = {
     "extension_failed": "Failed to load script at ",
     "plugin_failed": "Failed to load APK file ",
 }
-LIBRARIES = ("liblspatch.so", "libnode.so", "libnative-lib.so", "spotifyplus_bridge.node")
+# LSPatch loads its SO directly from the APK. Linux maps can name only base.apk,
+# not the ZIP member. Its real bootstrap + Xposed module entry are checked above.
+# These three Plus runtime binaries are extracted files and have named mappings.
+LIBRARIES = ("libnode.so", "libnative-lib.so", "spotifyplus_bridge.node")
 
 def log_status(log):
     return ({name: marker in log for name, marker in MARKERS.items()},
@@ -128,7 +132,7 @@ def inspect_native_code(device, pid):
         maps = device.shell("cat", "/proc/" + pid + "/maps")
         loaded = {name: name in maps for name in LIBRARIES}
         if not all(loaded.values()):
-            raise RuntimeError("Expected LSPatch/Node/JNI/addon mapping is missing")
+            raise RuntimeError("Expected Node/JNI/addon mapping is missing")
         paths = ["/data/user/0/com.spotify.music/code_cache/spotifyplus-libs/" + name
                  for name in ("libc++_shared.so", "libnode.so", "libnative-lib.so")]
         paths.append("/data/user/0/com.spotify.music/files/nodejs/spotifyplus_bridge.node")
@@ -147,7 +151,7 @@ def main():
     parser.add_argument("--timeout", type=int, default=180)
     args = parser.parse_args()
     report = {"test_kind": "logged_out_lspatch_startup", "passed": False,
-              "api": 37, "abi": "arm64-v8a", "launches": [],
+              "required_api": 37, "required_abi": "arm64-v8a", "launches": [],
               "playback_test_executed": False, "account_test_executed": False,
               "shuffle_ui_test_executed": False,
               "limitation": "Generic AVD; Samsung firmware, authenticated playback, queue ordering and extension UI interaction require separate acceptance tests."}

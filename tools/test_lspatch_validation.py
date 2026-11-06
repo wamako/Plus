@@ -20,7 +20,8 @@ class LogTests(unittest.TestCase):
         self.assertEqual(errors, [])
 
     def test_ready_markers_do_not_hide_native_startup_failure(self):
-        flags, errors = log_status("[SpotifyPlus] Loading SpotifyPlus v0.10.0\nHost ready\n"
+        flags, errors = log_status("Bootstrap loader from embedment\n"
+                                   "[SpotifyPlus] Loading SpotifyPlus v0.10.0\nHost ready\n"
                                    "Loaded script com.wamako.shuffleplus from /test\n"
                                    "UnsatisfiedLinkError: Attempt to load writable file")
         self.assertTrue(all(flags.values()))
@@ -33,6 +34,27 @@ class LogTests(unittest.TestCase):
 
 
 class DeviceGuards(unittest.TestCase):
+    def test_apk_backed_framework_mapping_does_not_require_a_member_filename(self):
+        from unittest.mock import Mock
+        from run_lspatch_smoke import inspect_native_code
+        device = Mock()
+        device.shell.side_effect = ["/data/app/example/base.apk\nlibnode.so\nlibnative-lib.so\nspotifyplus_bridge.node",
+                                    "444", "444", "444", "444"]
+        result = inspect_native_code(device, "123")
+        self.assertTrue(all(result["mapped"].values()))
+        self.assertTrue(result["extracted_native_code_read_only"])
+        self.assertEqual(device.root.call_args_list, [unittest.mock.call(True), unittest.mock.call(False)])
+
+    def test_writable_code_fails_and_adb_is_unrooted_after_inspection(self):
+        from unittest.mock import Mock
+        from run_lspatch_smoke import inspect_native_code
+        device = Mock()
+        device.shell.side_effect = ["libnode.so\nlibnative-lib.so\nspotifyplus_bridge.node",
+                                    "444", "644", "444", "444"]
+        with self.assertRaisesRegex(RuntimeError, "writable"):
+            inspect_native_code(device, "123")
+        self.assertEqual(device.root.call_args_list, [unittest.mock.call(True), unittest.mock.call(False)])
+
     def test_physical_or_multiple_devices_are_refused_before_mutation(self):
         for listing in ("List of devices attached\nphone123\tdevice\n",
                         "List of devices attached\nemulator-5554\tdevice\nemulator-5556\tdevice\n"):

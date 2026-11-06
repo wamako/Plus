@@ -126,8 +126,52 @@ jobs:
       runner_label: ${{ vars.ANDROID37_RUNNER_LABEL || 'macos-15' }}
       try_software: ${{ (vars.RUN_LSPATCH_SMOKE == 'true' && (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository)) || (github.event_name == 'workflow_dispatch' && inputs.run_lspatch_smoke) }}
 
+  lspatch-packaging:
+    needs: build
+    if: >-
+      (github.event_name == 'workflow_dispatch' && inputs.run_lspatch_smoke) ||
+      (vars.RUN_LSPATCH_SMOKE == 'true' &&
+       (github.event_name == 'push' ||
+        (github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository)))
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          java-version: '21'
+          distribution: temurin
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - uses: actions/download-artifact@v4
+        with:
+          name: SpotifyPlus-Debug-APK
+          path: ${{ runner.temp }}/plus-module
+      - name: Install APK inspection dependency
+        run: python3 -m pip install androguard==4.1.4
+      - name: Validate configured Spotify source, patch and verify signature
+        env:
+          SPOTIFY_APK_URL: ${{ secrets.SPOTIFY_APK_URL }}
+        run: >-
+          python3 tools/prepare_lspatch_smoke.py
+          --module "$RUNNER_TEMP/plus-module/app-debug.apk"
+          --work "$RUNNER_TEMP/lspatch-package"
+          --report "$RUNNER_TEMP/package-reports/package.json"
+      - name: Upload only the packaging report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: LSPatch-Package-Report
+          path: ${{ runner.temp }}/package-reports/package.json
+          if-no-files-found: ignore
+          retention-days: 14
+      - name: Remove private test inputs
+        if: always()
+        run: rm -rf "$RUNNER_TEMP/lspatch-package" "$RUNNER_TEMP/plus-module"
+
   lspatch-android17:
-    needs: [build, android17-environment]
+    needs: [build, android17-environment, lspatch-packaging]
     # Never expose the input URL to fork PR code. The explicit repository variable
     # enables trusted same-repository PR runs; manual runs have their own checkbox.
     if: >-
@@ -145,13 +189,14 @@ jobs:
       SPOTIFY_APK_URL: ${{ secrets.SPOTIFY_APK_URL }}
 
   validation-scope:
-    needs: [build, android17-environment, lspatch-android17]
+    needs: [build, android17-environment, lspatch-packaging, lspatch-android17]
     if: always()
     runs-on: ubuntu-latest
     steps:
       - name: Record separate build and device outcomes
         env:
           BUILD_RESULT: ${{ needs.build.result }}
+          PACKAGE_RESULT: ${{ needs.lspatch-packaging.result }}
           DEVICE_RESULT: ${{ needs.lspatch-android17.result }}
           ENVIRONMENT_RESULT: ${{ needs.android17-environment.result }}
           BOOT_RESULT: ${{ needs.android17-environment.outputs.environment_result }}
@@ -159,6 +204,7 @@ jobs:
           APK_SOURCE_CONFIGURED: ${{ secrets.SPOTIFY_APK_URL != '' }}
         run: |
           printf 'Build/regression checks: **%s**\n\nPatched-host device job: **%s**\n\n' "$BUILD_RESULT" "$DEVICE_RESULT" >> "$GITHUB_STEP_SUMMARY"
+          printf 'Configured Spotify source and LSPatch package verification: **%s**\n\n' "$PACKAGE_RESULT" >> "$GITHUB_STEP_SUMMARY"
           printf 'Android 17 ARM64 emulator environment: **%s** (separate from Spotify startup)\n\n' "$ENVIRONMENT_RESULT" >> "$GITHUB_STEP_SUMMARY"
           printf 'Actual emulator boot result: **%s**\n\n' "$BOOT_RESULT" >> "$GITHUB_STEP_SUMMARY"
           printf 'Patched tests enabled: **%s**; APK source configured: **%s**\n\n' "$PATCHED_TESTS_ENABLED" "$APK_SOURCE_CONFIGURED" >> "$GITHUB_STEP_SUMMARY"

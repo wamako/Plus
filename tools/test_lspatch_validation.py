@@ -11,6 +11,26 @@ from run_lspatch_smoke import Device, log_status, provision
 from verify_lspatched_package import verify_origin
 from check_android37_acceleration import assess
 from report_android37_scope import classify
+from check_android37_image import inspect as inspect_image, PACKAGE as IMAGE_PACKAGE
+
+
+class ImageInventoryTests(unittest.TestCase):
+    def fixture(self, path=IMAGE_PACKAGE, abi="arm64-v8a", channel="channel-0"):
+        return f'<repo><remotePackage path="{path}"><type-details><api-level>37.0</api-level><abi>{abi}</abi></type-details><channelRef ref="{channel}"/></remotePackage></repo>'
+
+    def test_exact_stable_package_is_inventory_evidence_only(self):
+        report = inspect_image(self.fixture())
+        self.assertTrue(report["listed"])
+        self.assertFalse(report["runtime_test_executed"])
+
+    def test_no_minor_version_or_architecture_substitution(self):
+        for text in (self.fixture(path=IMAGE_PACKAGE.replace("37.0", "37.2")), self.fixture(abi="x86_64")):
+            with self.assertRaises(ValueError):
+                inspect_image(text)
+
+    def test_preview_channel_is_refused(self):
+        with self.assertRaises(ValueError):
+            inspect_image(self.fixture(channel="channel-3"))
 
 
 class BootScopeTests(unittest.TestCase):

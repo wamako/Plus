@@ -219,3 +219,11 @@ Actual requested startup checks remain strict. Configuration-presence booleans
 are reported by CI; settings cannot be inspected directly through the connector.
 Software compatibility and any resulting patched-app test must be verified in
 CI; do not infer success from the new execution plan or capability probe.
+
+The first software trial at 029fe4a8 reached the new execution plan, confirming
+the user's enable flag, but failed an obsolete SDK CLI text-format check before
+booting. Replaced that check with stable-image/API/ABI/channel validation of
+Google's XML inventory and verified it against the actual inventory. Also
+separated the enabled lspatch-packaging job so the user's configured APK source,
+embedded bytes and signature can be checked without waiting for a guest boot.
+Only JSON reports are uploaded. R13 app/extension executable source is unchanged.

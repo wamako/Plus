@@ -16,7 +16,7 @@ a different module or running the stock package-name instrumentation test.
 | --- | --- |
 | Existing build job | Pinned runtime preparation, JVM/native protocol fixtures, JS/TypeScript/host-loader regressions, Android build and packaged DEX/native checks |
 | Android 17 environment job | Host virtualization capability; on supported runners, official emulator boot and observed API 37/arm64-v8a. Unsupported hosts explicitly report no boot. Does not install Spotify. |
-| LSPatch package verifier | Original/module embedded unchanged, expected manifest/target SDK, matching loader/ARM64 framework, framework/API/Vector versions and cryptographic APK v2 signature |
+| Independent LSPatch packaging job | Validates the configured private APK source and exact hash, original/module embedded unchanged, manifest/target SDK, matching loader/ARM64 framework, framework/API/Vector versions and APK v2 signature. Does not require a running emulator. |
 | Device startup job | Actual patched Spotify installation, two starts, Plus entry, Node ready, Shuffle+ production loader, mapped native libraries/addon and read-only extracted code |
 | Separate acceptance needed | Samsung firmware, login/account authorization, extension UI interaction, audible playback, real queue order/history, timers and visual alignment |
 
@@ -95,6 +95,17 @@ Until the secret and enable flag are set, no patched-Spotify startup result can
 be claimed. The separate **Android17-ARM64-Environment-Report** artifact records
 only the host/emulator environment check. An unsuccessful software trial is
 not a device or Spotify pass.
+
+The **lspatch-packaging** job runs after the build independently of the emulator
+outcome when testing is enabled. Its **LSPatch-Package-Report** artifact verifies
+the configured source/package even if the software boot cannot complete. No
+original/patched Spotify APK is uploaded. Real startup still requires both a
+successful package check and a proven guest boot.
+
+Google's command-line tools now forward `sdkmanager` to the newer Android CLI,
+whose `--list` table format changed. The exact-image preflight parses Google's
+structured XML inventory with `tools/check_android37_image.py`; it does not infer
+image absence from a CLI display format.
 
 Build preparation retains the checksum-verified R11 Node/Lyrics donor from the
 Actions artifact/cache (`API2_PLAYLIST_R12.md`). It fails instead of replacing

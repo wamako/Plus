@@ -70,13 +70,7 @@ jobs:
 
       - name: Require the exact API 37 ARM64 image
         if: steps.acceleration.outputs.boot_mode != 'unavailable'
-        shell: bash
-        run: |
-          sdkmanager --list > "$RUNNER_TEMP/sdk-packages.txt"
-          if ! grep -F 'system-images;android-37.0;google_apis;arm64-v8a' "$RUNNER_TEMP/sdk-packages.txt"; then
-            echo '::error::API 37 google_apis ARM64 image is unavailable. No lower API or x86 fallback was tested.'
-            exit 1
-          fi
+        run: python3 tools/check_android37_image.py
 
       - name: Download prepared and verified Plus module from caller
         if: inputs.run_patched_host && steps.acceleration.outputs.boot_mode != 'unavailable'

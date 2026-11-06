@@ -66,3 +66,16 @@ Reference/attribution and phone instructions are in
 `extensions/local-suite/SHUFFLE_PLUS.md`. No external extension implementation
 was copied. Source preparation, all local extension checks, Android build, and
 actual packaged adapter/DEX/native assets are required in CI before delivery.
+
+## Delivered build
+
+Workflow 42263057174 passed at executable revision
+`5687f27d2956a5c224dcf55611fd1bea0bd902cf` (11 Python/JVM checks, 106 JS tests,
+nine host profiles, TypeScript, Android unit/build and packaged checks). APK
+SHA-256: `97efb28001c7e05b052c29a4d63ed6186d5b12fccf8ff1ed9bd4d37d5aaaafe7`.
+The CI-tested Shuffle+ ZIP SHA-256 is
+`a775322a3e9d9fefaf51a1ce2b12f0a07971a418d56b3542fed033edbff1ce45`.
+The downloaded APK was checked again for the R13 manifest, actual SDK requestApi
+routing, unchanged Node/Lyrics bytes and adapter classes. The verifier now also
+requires the packaged SDK namespace/operations, so Java-only packaging cannot
+silently omit the matching JavaScript API. Live phone acceptance remains pending.

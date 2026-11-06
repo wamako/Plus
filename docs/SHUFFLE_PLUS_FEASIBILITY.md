@@ -1,5 +1,7 @@
 # Shuffle+ for Spotify Plus R12: feasibility
 
+Subsequent approved implementation: see [R13 delivery](API2_SHUFFLE_R13.md).
+
 Investigated 2026-11-06 in response to the user's request to assess conversion.
 **The core feature can be ported, but the desktop script is not a drop-in API-2
 extension and full native playback still needs an adapter.** This document is a

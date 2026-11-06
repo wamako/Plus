@@ -39,6 +39,9 @@ def verify(path):
         assert "Lcom/lenerd46/spotifyplus/api2/NativePlaylistWriter;" in host_classes, "Missing 9.1.94 playlist writer"
         for name in ["ShuffleEngine", "ShuffleProtocol", "ShufflePlusBridge"]:
             assert "Lcom/lenerd46/spotifyplus/api2/"+name+";" in host_classes, "Missing Shuffle+ native adapter: "+name
+        sdk=apk.read('assets/nodejs/loader/script-api.js')
+        for name in [b'ShufflePlus:', b'shuffleplus.capabilities', b'shuffleplus.queue', b'shuffleplus.prepare', b'shuffleplus.apply']:
+            assert name in sdk, 'Missing packaged Shuffle+ SDK routing: '+name.decode()
         order=json.loads(apk.read('assets/api2-native-load-order.json'))
         assert set(order)=={'libc++_shared.so','libnode.so','libnative-lib.so'}, 'Incomplete native bootstrap'
         binaries={name:apk.read('lib/arm64-v8a/'+name) for name in order}

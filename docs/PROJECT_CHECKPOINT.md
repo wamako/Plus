@@ -12,15 +12,28 @@ limitations when a later repair supersedes them.
 - Non-rooted Samsung **SM-S928U**, Android **17 / API 37**, **arm64-v8a**.
 - LSPatch **1.2 (487)**, Xposed API **102**, Vector
   **canary-3106 (7306), e00c5c5038bbcc14e0b382ab893301d6993e6989**.
-- Current delivered module: **R12**, version
-  `0.10.0-api2.9.1.94.12`, module version code **29**.
-- Current delivered local extension suite: **0.1.7**, API **2**.
-- User reports the result is looking good so far and will test further. **Do not
-  claim the R12 live playlist save or all features have passed device acceptance.**
-- User is testing R12 now. A request to investigate another extension is not a
-  request to replace that tested baseline or upgrade Spotify/the entire runtime.
+- Current delivered module: **R13**, version
+  `0.10.0-api2.9.1.94.13`, module version code **30**.
+- Current delivered local extension suite: **0.1.7**, API **2**, plus separate
+  **Shuffle+ 0.1.0** (`com.wamako.shuffleplus`).
+- User reported R12 was looking good so far and would test further. **Do not
+  claim R12 or the new R13 passed full physical device acceptance.**
+- The user explicitly approved building Shuffle+ after feasibility research. R13
+  is the additive update for it; Spotify and the runtime source pin stay unchanged.
 
 ## Delivered artifacts and source
+
+- Current R13 APK: `SpotifyPlus-9.1.94.1929-api2-r13-arm64.apk`, SHA-256
+  `97efb28001c7e05b052c29a4d63ed6186d5b12fccf8ff1ed9bd4d37d5aaaafe7`.
+  Library identity `libfile_0f3bc659ca0c8191b84b3495b8654346`, version **12**.
+- Shuffle+ ZIP: `SpotifyPlus-ShufflePlus-0.1.0.zip`, SHA-256
+  `a775322a3e9d9fefaf51a1ce2b12f0a07971a418d56b3542fed033edbff1ce45`.
+  Library identity `libfile_ef80c890d7208191a3a86fe4bc56a194`, initial version **0**.
+- R13 executable source: `5687f27d2956a5c224dcf55611fd1bea0bd902cf`.
+  Successful workflow **42263057174**, APK artifact **13526306251**, Shuffle+
+  artifact **13525503134**. APK artifact ZIP SHA-256:
+  `a0a1c0debd3355225ffc72f1161644157678fa4df256cb46e719ac30e4dc9908`.
+- The following R12 records describe the previous version, retained in history:
 
 - `SpotifyPlus-9.1.94.1929-api2-r12-arm64.apk`:
   SHA-256 `8eba1eeae1d86861d6dc1c728a0d9ef98a202dcf5d6bdcfcfae5e1fec7771814`.
@@ -148,3 +161,10 @@ The R12 artifact identity keeps version history when the current module is
 replaced. Production JVM/native glue/protocol, 106 JS regressions, TypeScript and
 nine actual host-loader/renderer profiles passed locally. Android CI/package
 verification and live device acceptance must be distinguished from these checks.
+
+R13 delivery completed: Android CI, all packaged class/native checks and local
+manifest/version checks passed. The actual APK contains the asynchronous Shuffle+
+SDK namespace, not the legacy request route. Node and all bundled Beautiful
+Lyrics bytes match R11; the original four 0.1.7 bundles/manifests match the prior
+ZIP. A later documentation/verifier-only commit does not change APK executable
+source. No on-phone R13 result has been reported yet.

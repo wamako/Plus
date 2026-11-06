@@ -134,4 +134,17 @@ User asks whether **Spicetify Shuffle+** can be adapted for this build. Main
 reference is `spicetify/cli/Extensions/shuffle+.js`; rxri's **FeatureShuffle** is
 only an optional reference and is a different, audio-feature-based recommender.
 See `SHUFFLE_PLUS_FEASIBILITY.md` for inspected code, API gaps and implementation
-boundaries. No Shuffle+ extension or new APK has been delivered at this checkpoint.
+boundaries. No Shuffle+ extension or new APK had been delivered at the feasibility checkpoint.
+
+### Approved implementation: R13 / Shuffle+ 0.1.0
+
+The user then explicitly asked to proceed. Implemented a separate local
+`com.wamako.shuffleplus` extension, native queue/Play adapter, bounded single-use
+previews, additive SDK ShufflePlus namespace and uncertainty journal/review flow.
+See `API2_SHUFFLE_R13.md` and `extensions/local-suite/SHUFFLE_PLUS.md` for complete
+behavior and installation. The existing four 0.1.7 scripts/manifests remain
+byte-identical; keep their installed folders. R13 is needed for the new adapter.
+The R12 artifact identity keeps version history when the current module is
+replaced. Production JVM/native glue/protocol, 106 JS regressions, TypeScript and
+nine actual host-loader/renderer profiles passed locally. Android CI/package
+verification and live device acceptance must be distinguished from these checks.

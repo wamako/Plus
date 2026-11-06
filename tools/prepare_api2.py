@@ -118,6 +118,8 @@ def main():
 '''+content[end:]
     manager.write_text(content)
     services=generated/'com/lenerd/spotifyplus/module/scripting/SpotifyServices.java'
+    replace(services, '    public Object execute(String operation, JSONObject args) throws Exception {', '''    public Object execute(String operation, JSONObject args) throws Exception {
+        if (operation.startsWith("shuffleplus.")) return com.lenerd46.spotifyplus.api2.ShufflePlusBridge.execute(loader, operation, args);''')
     replace(services, '    private Object modifyPlaylist(String operation, JSONObject args) throws Exception {', '''    private Object modifyPlaylist(String operation, JSONObject args) throws Exception {
         // 9.1.94 changed the generated builder aliases and creation-origin enum.
         if (operation.equals("playlists.create")) {
@@ -172,6 +174,7 @@ def main():
         "JSON.parse(SpotifyPlus.Platform.Storage.Cache.read(`${user}-${repo}`) as string ?? 'null')",
         "JSON.parse(await SpotifyPlus.Platform.Storage.Cache.read(`${user}-${repo}`) as string ?? 'null')")
     runtime_source=source/'app/src/main/assets/nodejs-src'
+    run(['node',str(ROOT/'extensions/local-suite/tools/patch-shuffle-sdk.mjs'),str(runtime_source)],ROOT)
     if not args.no_js_build:
         run(['npm','ci','--ignore-scripts'],runtime_source)
         run(['npm','run','build'],runtime_source)

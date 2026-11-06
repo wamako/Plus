@@ -2,9 +2,10 @@
 
 The project adapts `wamako/android-ci-template` revision
 `7d1ca34a8d3b25c9a8049dc2c876817190845a83` in
-`.github/workflows/s24-validation.yml`. An environment invocation checks host
-virtualization and, on a capable runner, boots the AVD in parallel with the
-build. The patched-host invocation runs
+`.github/workflows/s24-validation.yml`. After the build and enabled source/package
+checks succeed, an environment invocation checks host virtualization and attempts
+the AVD. Invalid APK inputs are rejected before starting another slow guest.
+The patched-host invocation runs
 **after** preparing the pinned API-2 runtime, compiling the native addon,
 checking local extensions, running regressions and verifying the APK. The device
 job downloads the same-run module and Shuffle+ artifacts rather than rebuilding
@@ -65,7 +66,7 @@ macOS ARM64. Custom-runner jobs reject fork PRs.
 
 ## Enable patched-Spotify testing
 
-The environment job runs without an APK source. Enabling patched testing also
+The environment harness itself needs no APK source. Enabling patched testing also
 enables the bounded hosted software trial; a separate Mac is not required to
 attempt it. The patched-host job is eligible only after a real AVD boot succeeds.
 A successful AVD boot alone is not a Spotify startup pass.
@@ -101,6 +102,14 @@ outcome when testing is enabled. Its **LSPatch-Package-Report** artifact verifie
 the configured source/package even if the software boot cannot complete. No
 original/patched Spotify APK is uploaded. Real startup still requires both a
 successful package check and a proven guest boot.
+
+If the configured URL returns unexpected bytes, **input.json** records only
+byte count, SHA-256 and a fixed type classification. For recognized Spotify APKs
+it includes version/code/target SDK and whether LSPatch is already embedded.
+It distinguishes HTML download pages, other ZIPs, the Plus module and actual
+Spotify APKs without recording page content, ZIP member names, headers or URLs.
+The unexpected download is deleted and never patched. The exact checksum guard
+is retained; a different build is not silently accepted.
 
 Google's command-line tools now forward `sdkmanager` to the newer Android CLI,
 whose `--list` table format changed. The exact-image preflight parses Google's

@@ -227,3 +227,14 @@ Google's XML inventory and verified it against the actual inventory. Also
 separated the enabled lspatch-packaging job so the user's configured APK source,
 embedded bytes and signature can be checked without waiting for a guest boot.
 Only JSON reports are uploaded. R13 app/extension executable source is unchanged.
+
+CI run 42296744677 at 9be4c328 confirmed that the new XML image check passes and
+started the bounded software trial. The independently enabled packaging job
+downloaded the user's source but rejected its SHA-256 before patching. Presence
+of both enable flag and secret was confirmed by the preceding run's summary.
+Added safe input.json classification/known-Spotify version diagnostics to identify
+the wrong input without reading or exposing the secret URL, and moved subsequent
+environment attempts after successful package validation to avoid repeat slow
+boots with invalid inputs. Do not relax the original checksum guard without
+validating a replacement input. The first software trial's actual guest result
+still needs to be read; starting an emulator step is not proof of a boot.

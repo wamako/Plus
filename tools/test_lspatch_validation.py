@@ -6,7 +6,7 @@ import unittest
 import zipfile
 from unittest.mock import patch
 
-from prepare_lspatch_smoke import download
+from prepare_lspatch_smoke import download, describe_input
 from run_lspatch_smoke import Device, log_status, provision
 from verify_lspatched_package import verify_origin
 from check_android37_acceleration import assess
@@ -151,6 +151,37 @@ class DeviceGuards(unittest.TestCase):
 
 
 class InputTests(unittest.TestCase):
+    def test_unexpected_manifest_strings_cannot_leak_into_diagnostics(self):
+        with tempfile.TemporaryDirectory() as temp:
+            path = pathlib.Path(temp) / "input"
+            with zipfile.ZipFile(path, "w") as archive:
+                archive.writestr("AndroidManifest.xml", "fixture")
+            info = {"package": "com.spotify.music", "version": "https://private.invalid/secret",
+                    "version_code": "147600575", "target_sdk": "37"}
+            with patch("prepare_lspatch_smoke.manifest", return_value=info):
+                report = describe_input(path)
+            self.assertEqual(report["version"], "unrecognized")
+            self.assertNotIn("private.invalid", str(report))
+
+    def test_html_diagnostic_never_echoes_page_data(self):
+        with tempfile.TemporaryDirectory() as temp:
+            path = pathlib.Path(temp) / "input"
+            path.write_bytes(b'<!doctype html><html>https://private.invalid/?secret=do-not-log</html>')
+            import json
+            report = describe_input(path)
+            self.assertEqual(report["kind"], "html_page_not_apk")
+            self.assertNotIn("private.invalid", json.dumps(report))
+            self.assertNotIn("do-not-log", json.dumps(report))
+
+    def test_zip_without_manifest_is_not_a_spotify_apk(self):
+        with tempfile.TemporaryDirectory() as temp:
+            path = pathlib.Path(temp) / "input"
+            with zipfile.ZipFile(path, "w") as archive:
+                archive.writestr("private-file-name", "private-data")
+            report = describe_input(path)
+            self.assertEqual(report["kind"], "zip_archive_not_apk")
+            self.assertNotIn("private-file-name", str(report))
+
     def test_download_errors_do_not_expose_a_signed_input_url(self):
         secret_url = "https://example.invalid/input?private=do-not-log"
         with tempfile.TemporaryDirectory() as temp, patch("urllib.request.urlopen", side_effect=OSError(secret_url)):

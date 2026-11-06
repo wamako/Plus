@@ -119,8 +119,12 @@ jobs:
           path: app/build/outputs/apk/release/app-release.apk
 
   android17-environment:
+    needs: [build, lspatch-packaging]
     # A custom self-hosted machine must never execute untrusted fork-PR code.
-    if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository || vars.ANDROID37_RUNNER_LABEL == ''
+    if: >-
+      always() && needs.build.result == 'success' &&
+      (needs.lspatch-packaging.result == 'success' || needs.lspatch-packaging.result == 'skipped') &&
+      (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository || vars.ANDROID37_RUNNER_LABEL == '')
     uses: ./.github/workflows/s24-validation.yml
     with:
       runner_label: ${{ vars.ANDROID37_RUNNER_LABEL || 'macos-15' }}
@@ -163,7 +167,7 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: LSPatch-Package-Report
-          path: ${{ runner.temp }}/package-reports/package.json
+          path: ${{ runner.temp }}/package-reports/*.json
           if-no-files-found: ignore
           retention-days: 14
       - name: Remove private test inputs
@@ -210,5 +214,11 @@ jobs:
           printf 'Patched tests enabled: **%s**; APK source configured: **%s**\n\n' "$PATCHED_TESTS_ENABLED" "$APK_SOURCE_CONFIGURED" >> "$GITHUB_STEP_SUMMARY"
           echo "Patched tests enabled: $PATCHED_TESTS_ENABLED; APK source configured: $APK_SOURCE_CONFIGURED"
           if [ "$DEVICE_RESULT" = skipped ]; then
-            echo 'Patched Spotify startup was not tested. Configure SPOTIFY_APK_URL and enable RUN_LSPATCH_SMOKE, or use the manual device-test checkbox. See docs/LSPATCH_VALIDATION.md.' >> "$GITHUB_STEP_SUMMARY"
+            if [ "$PACKAGE_RESULT" = failure ]; then
+              echo 'Patched Spotify startup was not tested because configured APK source/package verification failed. Inspect the packaging job and its safe input.json diagnostic. See docs/LSPATCH_VALIDATION.md.' >> "$GITHUB_STEP_SUMMARY"
+            elif [ "$BOOT_RESULT" != booted ]; then
+              echo 'Patched Spotify startup was not tested because no valid API 37 ARM64 guest boot was established. See the environment report.' >> "$GITHUB_STEP_SUMMARY"
+            else
+              echo 'Patched Spotify startup was not requested or eligible. See docs/LSPATCH_VALIDATION.md for settings.' >> "$GITHUB_STEP_SUMMARY"
+            fi
           fi

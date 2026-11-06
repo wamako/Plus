@@ -9,6 +9,26 @@ from unittest.mock import patch
 from prepare_lspatch_smoke import download
 from run_lspatch_smoke import Device, log_status, provision
 from verify_lspatched_package import verify_origin
+from check_android37_acceleration import assess
+
+
+class AccelerationTests(unittest.TestCase):
+    def test_hosted_arm_mac_never_claims_a_boot_from_a_framework_probe(self):
+        report = assess(0, "github-hosted")
+        self.assertTrue(report["accelerator_probe_success"])
+        self.assertFalse(report["accelerator_usable"])
+        self.assertEqual(report["result"], "unsupported_runner")
+        self.assertIsNone(report["passed"])
+        self.assertFalse(report["emulator_boot_executed"])
+
+    def test_capable_self_hosted_probe_is_still_not_a_runtime_pass(self):
+        report = assess(0, "self-hosted")
+        self.assertTrue(report["accelerator_usable"])
+        self.assertIsNone(report["passed"])
+        self.assertFalse(report["patched_host_test_executed"])
+
+    def test_failed_self_hosted_probe_is_unsupported(self):
+        self.assertFalse(assess(1, "self-hosted")["accelerator_usable"])
 
 
 class LogTests(unittest.TestCase):

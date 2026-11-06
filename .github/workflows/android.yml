@@ -118,21 +118,32 @@ jobs:
           name: SpotifyPlus-Release-APK
           path: app/build/outputs/apk/release/app-release.apk
 
+  android17-environment:
+    # A custom self-hosted machine must never execute untrusted fork-PR code.
+    if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository || vars.ANDROID37_RUNNER_LABEL == ''
+    uses: ./.github/workflows/s24-validation.yml
+    with:
+      runner_label: ${{ vars.ANDROID37_RUNNER_LABEL || 'macos-15' }}
+
   lspatch-android17:
-    needs: build
+    needs: [build, android17-environment]
     # Never expose the input URL to fork PR code. The explicit repository variable
     # enables trusted same-repository PR runs; manual runs have their own checkbox.
     if: >-
-      (github.event_name == 'workflow_dispatch' && inputs.run_lspatch_smoke) ||
-      (vars.RUN_LSPATCH_SMOKE == 'true' &&
-       (github.event_name == 'push' ||
-        (github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository)))
+      needs.android17-environment.outputs.environment_result == 'booted' &&
+      ((github.event_name == 'workflow_dispatch' && inputs.run_lspatch_smoke) ||
+       (vars.RUN_LSPATCH_SMOKE == 'true' &&
+        (github.event_name == 'push' ||
+         (github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository))))
     uses: ./.github/workflows/s24-validation.yml
+    with:
+      run_patched_host: true
+      runner_label: ${{ vars.ANDROID37_RUNNER_LABEL || 'macos-15' }}
     secrets:
       SPOTIFY_APK_URL: ${{ secrets.SPOTIFY_APK_URL }}
 
   validation-scope:
-    needs: [build, lspatch-android17]
+    needs: [build, android17-environment, lspatch-android17]
     if: always()
     runs-on: ubuntu-latest
     steps:
@@ -140,8 +151,12 @@ jobs:
         env:
           BUILD_RESULT: ${{ needs.build.result }}
           DEVICE_RESULT: ${{ needs.lspatch-android17.result }}
+          ENVIRONMENT_RESULT: ${{ needs.android17-environment.result }}
+          BOOT_RESULT: ${{ needs.android17-environment.outputs.environment_result }}
         run: |
           printf 'Build/regression checks: **%s**\n\nPatched-host device job: **%s**\n\n' "$BUILD_RESULT" "$DEVICE_RESULT" >> "$GITHUB_STEP_SUMMARY"
+          printf 'Android 17 ARM64 emulator environment: **%s** (separate from Spotify startup)\n\n' "$ENVIRONMENT_RESULT" >> "$GITHUB_STEP_SUMMARY"
+          printf 'Actual emulator boot result: **%s**\n\n' "$BOOT_RESULT" >> "$GITHUB_STEP_SUMMARY"
           if [ "$DEVICE_RESULT" = skipped ]; then
-            echo 'Android runtime was not tested. Configure SPOTIFY_APK_URL and enable RUN_LSPATCH_SMOKE, or use the manual device-test checkbox. See docs/LSPATCH_VALIDATION.md.' >> "$GITHUB_STEP_SUMMARY"
+            echo 'Patched Spotify startup was not tested. Configure SPOTIFY_APK_URL and enable RUN_LSPATCH_SMOKE, or use the manual device-test checkbox. See docs/LSPATCH_VALIDATION.md.' >> "$GITHUB_STEP_SUMMARY"
           fi

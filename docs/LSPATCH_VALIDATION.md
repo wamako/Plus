@@ -2,8 +2,10 @@
 
 The project adapts `wamako/android-ci-template` revision
 `7d1ca34a8d3b25c9a8049dc2c876817190845a83` in
-`.github/workflows/s24-validation.yml`. The existing Android build workflow calls
-it **after** preparing the pinned API-2 runtime, compiling the native addon,
+`.github/workflows/s24-validation.yml`. An environment invocation checks host
+virtualization and, on a capable runner, boots the AVD in parallel with the
+build. The patched-host invocation runs
+**after** preparing the pinned API-2 runtime, compiling the native addon,
 checking local extensions, running regressions and verifying the APK. The device
 job downloads the same-run module and Shuffle+ artifacts rather than rebuilding
 a different module or running the stock package-name instrumentation test.
@@ -13,6 +15,7 @@ a different module or running the stock package-name instrumentation test.
 | Check | What it establishes |
 | --- | --- |
 | Existing build job | Pinned runtime preparation, JVM/native protocol fixtures, JS/TypeScript/host-loader regressions, Android build and packaged DEX/native checks |
+| Android 17 environment job | Host virtualization capability; on supported runners, official emulator boot and observed API 37/arm64-v8a. Unsupported hosts explicitly report no boot. Does not install Spotify. |
 | LSPatch package verifier | Original/module embedded unchanged, expected manifest/target SDK, matching loader/ARM64 framework, framework/API/Vector versions and cryptographic APK v2 signature |
 | Device startup job | Actual patched Spotify installation, two starts, Plus entry, Node ready, Shuffle+ production loader, mapped native libraries/addon and read-only extracted code |
 | Separate acceptance needed | Samsung firmware, login/account authorization, extension UI interaction, audible playback, real queue order/history, timers and visual alignment |
@@ -25,11 +28,32 @@ patch options have not been supplied; matching versions is not identical setting
 
 `macos-14` is Intel in the [runner image inventory](https://github.com/actions/runner-images#available-images).
 The adapted job uses standard Apple Silicon `macos-15` and asserts `uname -m`
-is `arm64`. It requires the exact API-37 ARM64 Google APIs image in SDK Manager.
+is `arm64`. Google's SDK inventory publishes the platform/image as **37.0**:
+`system-images;android-37.0;google_apis;arm64-v8a`, not `android-37`. The workflow
+uses that exact stable package and official ARM64 macOS command-line tools 23.0
+(build 16111833), checksum-checked against Google's published inventory. The
+older setup action defaults to tools 16.0 and its old macOS archive naming;
+`tools/setup_android37_sdk.py` installs the current architecture-specific tools.
+References: [platform/tools inventory](https://dl.google.com/android/repository/repository2-4.xml)
+and [system-image inventory](https://dl.google.com/android/repository/sys-img/google_apis/sys-img2-5.xml).
 A missing runner/image, failed boot or absent evidence fails the device job;
 there is no lower-API/x86 fallback. This is a generic AVD, not a Samsung ROM.
 
-## Enable the device job
+GitHub documents **no nested virtualization on its hosted ARM Macs**
+([runner limitations](https://docs.github.com/en/actions/reference/runners/github-hosted-runners#limitations-for-arm64-macos-runners)).
+The default hosted-runner invocation therefore records `unsupported_runner`,
+`passed: null` and no emulator/Spotify execution, rather than claiming a pass.
+`emulator -accel-check` is also recorded; detecting the framework alone does not
+establish that a nested VM can run. For actual boot/startup testing, set the
+**ANDROID37_RUNNER_LABEL** repository variable to a trusted, ephemeral runner
+on a physical Apple Silicon Mac with usable Hypervisor.framework. The setup
+script currently supports macOS ARM64. Custom-runner jobs reject fork PRs.
+
+## Enable patched-Spotify testing
+
+The environment job runs without an APK source. Configure a capable runner as
+above; the patched-host job is eligible only after its real AVD boot succeeds.
+A successful AVD boot alone is not a Spotify startup pass.
 
 1. In [Plus Actions secrets](https://github.com/wamako/Plus/settings/secrets/actions),
    add **SPOTIFY_APK_URL**, an HTTPS download URL accessible to CI for the
@@ -42,14 +66,18 @@ there is no lower-API/x86 fallback. This is a generic AVD, not a Samsung ROM.
    main-push runs. Fork PRs cannot receive this secret.
 3. Push a commit to the project PR, or rerun its build run. Once the workflow
    exists on the default branch, **Run workflow** also offers a
-   **run_lspatch_smoke** checkbox. Manual runs default to build/regressions only.
-4. Inspect **lspatch-android17 / patched-host-startup** and the
+   **run_lspatch_smoke** checkbox. Manual runs default to build/regressions and
+   the environment-only check.
+4. Inspect **lspatch-android17 / android17-validation** and the
    **LSPatch-Android17-ARM64-Reports** artifact. The validation summary explicitly
    reports a skipped device job as **not tested**.
 
 The GitHub connector does not expose secret/variable creation, so those values
 were not configured. A local input file is not a remotely downloadable CI source.
-Until the secret and enable flag are set, no new emulator result can be claimed.
+Until the secret and enable flag are set, no patched-Spotify startup result can
+be claimed. The separate **Android17-ARM64-Environment-Report** artifact records
+only the host/emulator environment check. An unsupported runner still needs
+replacement before any device test can execute.
 
 Build preparation retains the checksum-verified R11 Node/Lyrics donor from the
 Actions artifact/cache (`API2_PLAYLIST_R12.md`). It fails instead of replacing

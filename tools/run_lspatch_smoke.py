@@ -70,13 +70,17 @@ class Device:
         value = self.adb("shell", "pidof com.spotify.music || true").strip()
         return value if re.fullmatch(r"\d+", value) else None
 
-def provision(device, apk, extension):
+def check_environment(device):
     if device.shell("getprop", "ro.kernel.qemu") != "1":
         raise RuntimeError("Only disposable Android emulators may be provisioned")
     if device.shell("getprop", "ro.build.version.sdk") != "37":
         raise RuntimeError("Requires API 37; no automatic API downgrade is allowed")
     if device.shell("getprop", "ro.product.cpu.abi") != "arm64-v8a":
         raise RuntimeError("Requires native arm64-v8a; translated x86 tests are refused")
+    return {"api": 37, "abi": "arm64-v8a", "emulator": True}
+
+def provision(device, apk, extension):
+    check_environment(device)
     if device.shell("pm", "list", "packages", PACKAGE):
         raise RuntimeError("Spotify is already installed; use a fresh AVD without an account")
     manifest = json.loads((extension / "manifest.json").read_text())
@@ -145,26 +149,33 @@ def inspect_native_code(device, pid):
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--apk", type=pathlib.Path, required=True)
-    parser.add_argument("--extension", type=pathlib.Path, required=True)
+    parser.add_argument("--apk", type=pathlib.Path)
+    parser.add_argument("--extension", type=pathlib.Path)
+    parser.add_argument("--check-environment", action="store_true")
     parser.add_argument("--report", type=pathlib.Path, required=True)
     parser.add_argument("--timeout", type=int, default=180)
     args = parser.parse_args()
-    report = {"test_kind": "logged_out_lspatch_startup", "passed": False,
+    if not args.check_environment and (not args.apk or not args.extension):
+        parser.error("Patched-host testing requires --apk and --extension")
+    report = {"test_kind": "android37_arm64_environment_only" if args.check_environment else "logged_out_lspatch_startup", "passed": False,
               "required_api": 37, "required_abi": "arm64-v8a", "launches": [],
               "playback_test_executed": False, "account_test_executed": False,
               "shuffle_ui_test_executed": False,
+              "patched_host_test_executed": False,
               "limitation": "Generic AVD; Samsung firmware, authenticated playback, queue ordering and extension UI interaction require separate acceptance tests."}
     args.report.parent.mkdir(parents=True, exist_ok=True)
     try:
         device = Device()
-        provision(device, args.apk, args.extension)
-        for _ in range(2):
-            result, pid = launch(device, args.timeout)
-            result["native_code"] = inspect_native_code(device, pid)
-            if device.pid() != pid:
-                raise RuntimeError("Spotify exited during native code inspection")
-            report["launches"].append(result)
+        report["environment"] = check_environment(device)
+        if not args.check_environment:
+            provision(device, args.apk, args.extension)
+            report["patched_host_test_executed"] = True
+            for _ in range(2):
+                result, pid = launch(device, args.timeout)
+                result["native_code"] = inspect_native_code(device, pid)
+                if device.pid() != pid:
+                    raise RuntimeError("Spotify exited during native code inspection")
+                report["launches"].append(result)
         report["passed"] = True
     except (RuntimeError, subprocess.SubprocessError) as error:
         # All RuntimeError messages above are fixed categories, not raw output.
@@ -172,7 +183,8 @@ def main():
         raise SystemExit(report["failure"]) from None
     finally:
         args.report.write_text(json.dumps(report, indent=2) + "\n")
-    print("PASS: two non-root app starts, Node/JNI loading, Shuffle+ loader and read-only native code")
+    print("PASS: Android 17 ARM64 emulator environment" if args.check_environment else
+          "PASS: two non-root app starts, Node/JNI loading, Shuffle+ loader and read-only native code")
 
 if __name__ == "__main__":
     main()

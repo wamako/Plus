@@ -192,3 +192,17 @@ These are not configured through the available connector. Skipped/setup-failed
 device jobs must never be described as runtime passes. No authenticated playback,
 real queue order, extension UI clicks or Samsung firmware checks were performed.
 No delivered APK/ZIP executable content was changed by this CI/tooling work.
+
+The official stable SDK platform/image package is **android-37.0**, not
+android-37. The workflow installs official macOS ARM64 SDK tools 23.0/build
+16111833, uses that exact Google APIs image and checks the running guest's API
+integer 37/ARM64. A separate environment-only invocation runs without Spotify
+or credentials; it must not be called a patched-app startup test. Patched-host
+execution remains gated on the original APK source/enable flag.
+
+GitHub's hosted ARM Macs do not support nested virtualization. The default
+environment probe records unsupported_runner/passed:null with no Android boot,
+not a green runtime result. Actual testing also needs ANDROID37_RUNNER_LABEL
+selecting a trusted ephemeral physical ARM Mac with usable HVF. Custom-runner
+jobs exclude fork PRs. The preflight runs `emulator -accel-check` and records
+that result separately from the documented hosted-runner limitation.

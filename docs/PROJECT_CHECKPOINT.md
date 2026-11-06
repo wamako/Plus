@@ -168,3 +168,27 @@ SDK namespace, not the legacy request route. Node and all bundled Beautiful
 Lyrics bytes match R11; the original four 0.1.7 bundles/manifests match the prior
 ZIP. A later documentation/verifier-only commit does not change APK executable
 source. No on-phone R13 result has been reported yet.
+
+### LSPatch packaging and Android CI validation
+
+User supplied `wamako/apkpatch` and updated `wamako/android-ci-template`, then
+authorized adapting the workflow in this project. Exact delivered R13 passed a
+real offline integrated patch using official LSPatch 1.2/487, Xposed API 102 and
+the phone's Vector canary-3106/7306/e00c5c5 commit. Embedded original/module and
+loader/framework checks passed; APK v2 signature verified with zero errors.
+Spotify target 37 was preserved; LSPatch raises min SDK to 28. CLI signature
+bypass 0 was tested; the phone's full patch options are unknown.
+
+`docs/LSPATCH_VALIDATION.md` and its JSON record describe the evidence. The
+adapted reusable workflow runs after existing pinned runtime preparation and
+build/regressions. Its API37 ARM64 AVD harness installs actual patched Spotify,
+loads Shuffle+ through the production loader, checks two starts and native
+read-only code. It uses an ARM host, not macos-14's Intel host. Root ADB is only
+for disposable fixture setup/inspection, with ADB unrooted before launches.
+
+Device execution requires repository secret SPOTIFY_APK_URL and enable variable
+RUN_LSPATCH_SMOKE=true (or the manual checkbox after default-branch availability).
+These are not configured through the available connector. Skipped/setup-failed
+device jobs must never be described as runtime passes. No authenticated playback,
+real queue order, extension UI clicks or Samsung firmware checks were performed.
+No delivered APK/ZIP executable content was changed by this CI/tooling work.

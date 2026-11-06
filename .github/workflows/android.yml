@@ -5,6 +5,11 @@ on:
     branches: [ main ]
   pull_request:
   workflow_dispatch:
+    inputs:
+      run_lspatch_smoke:
+        description: 'Run API 37 ARM64 patched-host startup (requires SPOTIFY_APK_URL secret)'
+        type: boolean
+        default: false
 
 permissions:
   contents: read
@@ -112,3 +117,31 @@ jobs:
         with:
           name: SpotifyPlus-Release-APK
           path: app/build/outputs/apk/release/app-release.apk
+
+  lspatch-android17:
+    needs: build
+    # Never expose the input URL to fork PR code. The explicit repository variable
+    # enables trusted same-repository PR runs; manual runs have their own checkbox.
+    if: >-
+      (github.event_name == 'workflow_dispatch' && inputs.run_lspatch_smoke) ||
+      (vars.RUN_LSPATCH_SMOKE == 'true' &&
+       (github.event_name == 'push' ||
+        (github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository)))
+    uses: ./.github/workflows/s24-validation.yml
+    secrets:
+      SPOTIFY_APK_URL: ${{ secrets.SPOTIFY_APK_URL }}
+
+  validation-scope:
+    needs: [build, lspatch-android17]
+    if: always()
+    runs-on: ubuntu-latest
+    steps:
+      - name: Record separate build and device outcomes
+        env:
+          BUILD_RESULT: ${{ needs.build.result }}
+          DEVICE_RESULT: ${{ needs.lspatch-android17.result }}
+        run: |
+          printf 'Build/regression checks: **%s**\n\nPatched-host device job: **%s**\n\n' "$BUILD_RESULT" "$DEVICE_RESULT" >> "$GITHUB_STEP_SUMMARY"
+          if [ "$DEVICE_RESULT" = skipped ]; then
+            echo 'Android runtime was not tested. Configure SPOTIFY_APK_URL and enable RUN_LSPATCH_SMOKE, or use the manual device-test checkbox. See docs/LSPATCH_VALIDATION.md.' >> "$GITHUB_STEP_SUMMARY"
+          fi

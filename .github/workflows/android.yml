@@ -7,7 +7,7 @@ on:
   workflow_dispatch:
     inputs:
       run_lspatch_smoke:
-        description: 'Run API 37 ARM64 patched-host startup (requires SPOTIFY_APK_URL secret)'
+        description: 'Run API 37 Linux/ARM64-translation patched-host startup (requires SPOTIFY_APK_URL secret)'
         type: boolean
         default: false
 
@@ -118,24 +118,9 @@ jobs:
           name: SpotifyPlus-Release-APK
           path: app/build/outputs/apk/release/app-release.apk
 
-  android17-runner-capabilities:
-    # No APK/source secret, private runner or VM is needed for this native probe.
-    uses: ./.github/workflows/s24-validation.yml
-    with:
-      probe_only: true
-      try_software: true
-
   android17-environment:
-    needs: [build, lspatch-packaging]
-    # A custom self-hosted machine must never execute untrusted fork-PR code.
-    if: >-
-      always() && needs.build.result == 'success' &&
-      (needs.lspatch-packaging.result == 'success' || needs.lspatch-packaging.result == 'skipped') &&
-      (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository || vars.ANDROID37_RUNNER_LABEL == '')
+    # No APK secret is needed: verify the Linux guest even if its source is down.
     uses: ./.github/workflows/s24-validation.yml
-    with:
-      runner_label: ${{ vars.ANDROID37_RUNNER_LABEL || 'macos-15' }}
-      try_software: ${{ (vars.RUN_LSPATCH_SMOKE == 'true' && (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository)) || (github.event_name == 'workflow_dispatch' && inputs.run_lspatch_smoke) }}
 
   lspatch-packaging:
     needs: build
@@ -194,13 +179,11 @@ jobs:
     uses: ./.github/workflows/s24-validation.yml
     with:
       run_patched_host: true
-      try_software: true
-      runner_label: ${{ vars.ANDROID37_RUNNER_LABEL || 'macos-15' }}
     secrets:
       SPOTIFY_APK_URL: ${{ secrets.SPOTIFY_APK_URL }}
 
   validation-scope:
-    needs: [build, android17-runner-capabilities, android17-environment, lspatch-packaging, lspatch-android17]
+    needs: [build, android17-environment, lspatch-packaging, lspatch-android17]
     if: always()
     runs-on: ubuntu-latest
     steps:
@@ -216,7 +199,7 @@ jobs:
         run: |
           printf 'Build/regression checks: **%s**\n\nPatched-host device job: **%s**\n\n' "$BUILD_RESULT" "$DEVICE_RESULT" >> "$GITHUB_STEP_SUMMARY"
           printf 'Configured Spotify source and LSPatch package verification: **%s**\n\n' "$PACKAGE_RESULT" >> "$GITHUB_STEP_SUMMARY"
-          printf 'Android 17 ARM64 emulator environment: **%s** (separate from Spotify startup)\n\n' "$ENVIRONMENT_RESULT" >> "$GITHUB_STEP_SUMMARY"
+          printf 'Android 17 Linux ARM64-translation environment: **%s** (separate from Spotify startup)\n\n' "$ENVIRONMENT_RESULT" >> "$GITHUB_STEP_SUMMARY"
           printf 'Actual emulator boot result: **%s**\n\n' "$BOOT_RESULT" >> "$GITHUB_STEP_SUMMARY"
           printf 'Patched tests enabled: **%s**; APK source configured: **%s**\n\n' "$PATCHED_TESTS_ENABLED" "$APK_SOURCE_CONFIGURED" >> "$GITHUB_STEP_SUMMARY"
           echo "Patched tests enabled: $PATCHED_TESTS_ENABLED; APK source configured: $APK_SOURCE_CONFIGURED"
@@ -224,7 +207,7 @@ jobs:
             if [ "$PACKAGE_RESULT" = failure ]; then
               echo 'Patched Spotify startup was not tested because configured APK source/package verification failed. Inspect the packaging job and its safe input.json diagnostic. See docs/LSPATCH_VALIDATION.md.' >> "$GITHUB_STEP_SUMMARY"
             elif [ "$BOOT_RESULT" != booted ]; then
-              echo 'Patched Spotify startup was not tested because no valid API 37 ARM64 guest boot was established. See the environment report.' >> "$GITHUB_STEP_SUMMARY"
+              echo 'Patched Spotify startup was not tested because no valid API 37 Linux guest/ARM64 translation was established. See the environment report.' >> "$GITHUB_STEP_SUMMARY"
             else
               echo 'Patched Spotify startup was not requested or eligible. See docs/LSPATCH_VALIDATION.md for settings.' >> "$GITHUB_STEP_SUMMARY"
             fi

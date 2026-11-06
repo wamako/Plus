@@ -7,7 +7,7 @@ import zipfile
 from unittest.mock import patch, Mock
 
 from prepare_lspatch_smoke import download, describe_input, apkmirror_file_link, HTTPSRedirects
-from run_lspatch_smoke import Device, log_status, provision
+from run_lspatch_smoke import Device, log_status, provision, check_environment, NATIVE, TRANSLATED
 from verify_lspatched_package import verify_origin
 from check_android37_acceleration import assess
 from report_android37_scope import classify
@@ -15,6 +15,14 @@ from check_android37_image import inspect as inspect_image, PACKAGE as IMAGE_PAC
 
 
 class ImageInventoryTests(unittest.TestCase):
+    def test_linux_x86_image_requires_explicit_selection(self):
+        text = self.fixture(path=IMAGE_PACKAGE.replace("arm64-v8a", "x86_64"), abi="x86_64")
+        report = inspect_image(text, "x86_64")
+        self.assertEqual(report["abi"], "x86_64")
+        self.assertFalse(report["runtime_test_executed"])
+        with self.assertRaises(ValueError):
+            inspect_image(text)
+
     def fixture(self, path=IMAGE_PACKAGE, abi="arm64-v8a", channel="channel-0"):
         return f'<repo><remotePackage path="{path}"><type-details><api-level>37.0</api-level><abi>{abi}</abi></type-details><channelRef ref="{channel}"/></remotePackage></repo>'
 
@@ -34,6 +42,22 @@ class ImageInventoryTests(unittest.TestCase):
 
 
 class BootScopeTests(unittest.TestCase):
+    def test_linux_guest_requires_all_translation_evidence_and_never_claims_native_arm(self):
+        details = {"api": 37, "abi": "x86_64", "app_abi": "arm64-v8a", "emulator": True,
+                   "profile": TRANSLATED, "arm_translation": True,
+                   "native_bridge": "libndk_translation.so", "arm64_instruction_set": "x86_64"}
+        env = {"passed": True, "test_kind": "android37_environment_only", "environment": details}
+        report = classify("kvm-arm64-translation", "success", env, profile=TRANSLATED)
+        self.assertEqual(report["result"], "booted")
+        self.assertTrue(report["arm64_translation_test"])
+        self.assertFalse(report["native_arm64_test"])
+        self.assertNotIn("patched_host_test_executed", report)
+        self.assertFalse(classify("hardware", "success", env, profile=NATIVE)["passed"])
+        for key in details:
+            changed = {**env, "environment": {k: v for k, v in details.items() if k != key}}
+            with self.subTest(missing=key):
+                self.assertFalse(classify("kvm-arm64-translation", "success", changed, profile=TRANSLATED)["passed"])
+
     def test_capabilities_only_never_claims_a_guest_boot(self):
         report = classify("software", "skipped", {}, probe_only=True)
         self.assertEqual(report["result"], "capabilities_only")
@@ -122,6 +146,48 @@ class LogTests(unittest.TestCase):
 
 
 class DeviceGuards(unittest.TestCase):
+    def translation_device(self, **overrides):
+        props = {"ro.kernel.qemu": "1", "ro.build.version.sdk": "37",
+                 "ro.product.cpu.abi": "x86_64", "ro.product.cpu.abilist64": "x86_64,arm64-v8a",
+                 "ro.dalvik.vm.native.bridge": "libndk_translation.so", "ro.dalvik.vm.isa.arm64": "x86_64"}
+        props.update(overrides)
+        device = Mock()
+        device.shell.side_effect = lambda *args, **kwargs: props[args[1]] if args[0] == "getprop" else ""
+        return device
+
+    def test_translation_is_opt_in_and_missing_native_bridge_prevents_install(self):
+        device = self.translation_device()
+        with self.assertRaisesRegex(RuntimeError, "native arm64"):
+            check_environment(device)
+        for prop, value in (("ro.product.cpu.abilist64", "x86_64"),
+                            ("ro.dalvik.vm.native.bridge", "0"), ("ro.dalvik.vm.isa.arm64", "")):
+            device = self.translation_device(**{prop: value})
+            with self.subTest(prop=prop), self.assertRaisesRegex(RuntimeError, "translation"):
+                provision(device, pathlib.Path("unused.apk"), pathlib.Path("unused"), TRANSLATED)
+            device.adb.assert_not_called()
+        self.assertTrue(check_environment(self.translation_device(), TRANSLATED)["arm_translation"])
+
+    def test_install_forces_arm64_and_refuses_wrong_package_abi_before_fixture_writes(self):
+        device = self.translation_device()
+        props_only = device.shell.side_effect
+        device.shell.side_effect = lambda *args, **kwargs: ("primaryCpuAbi=x86_64" if args[0] == "dumpsys" else props_only(*args, **kwargs))
+        with tempfile.TemporaryDirectory() as temp:
+            extension = pathlib.Path(temp)
+            (extension / "manifest.json").write_text('{"id":"com.wamako.shuffleplus","api":2,"main":"index.js"}')
+            (extension / "index.js").write_text("fixture")
+            with self.assertRaisesRegex(RuntimeError, "required ARM64 ABI"):
+                provision(device, pathlib.Path("input.apk"), extension, TRANSLATED)
+        device.adb.assert_called_once_with("install", "--abi", "arm64-v8a", pathlib.Path("input.apk"), timeout=180)
+        device.root.assert_not_called()
+
+    def test_translated_startup_requires_native_bridge_mapping(self):
+        from run_lspatch_smoke import inspect_native_code
+        device = Mock()
+        device.shell.return_value = "libnode.so\nlibnative-lib.so\nspotifyplus_bridge.node"
+        with self.assertRaisesRegex(RuntimeError, "translation library"):
+            inspect_native_code(device, "123", TRANSLATED)
+        self.assertEqual(device.root.call_args_list, [unittest.mock.call(True), unittest.mock.call(False)])
+
     def test_apk_backed_framework_mapping_does_not_require_a_member_filename(self):
         from unittest.mock import Mock
         from run_lspatch_smoke import inspect_native_code
@@ -165,6 +231,19 @@ class DeviceGuards(unittest.TestCase):
 
 
 class InputTests(unittest.TestCase):
+    def test_http_failure_reports_status_without_secret_or_page_content(self):
+        import urllib.error
+        import json
+        url = "https://example.invalid/?private=do-not-log"
+        opener = Mock()
+        opener.open.side_effect = urllib.error.HTTPError(url, 403, "private response", {}, None)
+        with tempfile.TemporaryDirectory() as temp, patch("urllib.request.build_opener", return_value=opener):
+            report = pathlib.Path(temp) / "input.json"
+            with self.assertRaisesRegex(RuntimeError, "HTTP 403") as error:
+                download(url, pathlib.Path(temp) / "input.apk", "0" * 64, report)
+            self.assertEqual(json.loads(report.read_text())["http_status"], 403)
+            self.assertNotIn("private", report.read_text() + str(error.exception))
+
     def test_provider_link_decodes_relative_html_anchor(self):
         url = apkmirror_file_link("https://www.apkmirror.com/apk/test/download/",
             '<html><a href="https://advert.invalid/">ad</a><a id="download-link" '

@@ -269,3 +269,26 @@ the actual configured CI source still must pass the new downloader. Local checks
 42 Python tests, one skipped because the prepared Java StorageHook fixture is
 absent locally; workflow actionlint and whitespace checks passed. No delivered
 APK or extension code changed.
+
+
+## Linux workflow replacement, 2026-11-06
+
+User has no Mac and explicitly requested another usable emulator/device. Replaced
+all default Mac jobs with ubuntu-24.04/KVM and the official Android 37.0 Google
+APIs x86_64 image. The image inventory confirms this exact stable package exists.
+The real guest must advertise ARM64 and Google's libndk_translation bridge/ISA
+mapping. The harness uses an explicit linux-x86_64-arm64-translation profile,
+forces ARM64 install, checks the installed package ABI before fixture writes,
+and requires the bridge mapped in Spotify during startup. Reports distinguish
+translated ARM coverage from native ARM/Samsung acceptance. Original native ARM
+profile remains explicit local-only; ANDROID37_RUNNER_LABEL is no longer used.
+The environment job now runs independently of source/package availability.
+
+The user's refreshed APKMirror secret was retried through the existing packaging
+job. The HTTP download failed before verification; the available output withheld
+status. Added fixed HTTP-status diagnostics without URLs/body/header leakage.
+No challenge, provider denial or checksum is bypassed. The source and actual
+patched-app test still need a successful CI run. App/extension executable source
+and delivered R13/Shuffle+ artifact identities remain unchanged.
+Local harness tests: 48 total, one prepared Java fixture skipped. Linux runtime
+results are pending the new CI run; do not infer boot/startup from configuration.

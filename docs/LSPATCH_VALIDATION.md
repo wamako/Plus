@@ -1,168 +1,117 @@
-# Android 17 / LSPatch validation
+# Android 17 / LSPatch validation on Linux
 
-The project adapts `wamako/android-ci-template` revision
-`7d1ca34a8d3b25c9a8049dc2c876817190845a83` in
-`.github/workflows/s24-validation.yml`. After the build and enabled source/package
-checks succeed, an environment invocation checks host virtualization and attempts
-the AVD. Invalid APK inputs are rejected before starting another slow guest.
-The patched-host invocation runs
-**after** preparing the pinned API-2 runtime, compiling the native addon,
-checking local extensions, running regressions and verifying the APK. The device
-job downloads the same-run module and Shuffle+ artifacts rather than rebuilding
-a different module or running the stock package-name instrumentation test.
+The default test host is **ubuntu-24.04**, using KVM and Google's stable
+**Android 37.0 Google APIs x86_64** image. No Mac, self-hosted runner, device
+subscription or additional runner label is required. `ANDROID37_RUNNER_LABEL`
+is no longer used. The existing `RUN_LSPATCH_SMOKE` flag and `SPOTIFY_APK_URL`
+secret still control the actual patched-Spotify test.
 
-## Coverage and limits
+The guest OS runs x86_64; Spotify and Plus native code run as **ARM64 through
+Google's native bridge**. This is explicitly translated compatibility coverage,
+not native ARM64 execution or a Samsung firmware test. A passing emulator boot
+is separate from a passing Spotify startup. No executable app or extension
+source is changed to make this CI profile work.
 
-| Check | What it establishes |
+## Coverage
+
+| Job | Evidence required |
 | --- | --- |
-| Existing build job | Pinned runtime preparation, JVM/native protocol fixtures, JS/TypeScript/host-loader regressions, Android build and packaged DEX/native checks |
-| Android 17 environment job | Host virtualization capability; on supported runners, official emulator boot and observed API 37/arm64-v8a. Unsupported hosts explicitly report no boot. Does not install Spotify. |
-| Independent LSPatch packaging job | Validates the configured private APK source and exact hash, original/module embedded unchanged, manifest/target SDK, matching loader/ARM64 framework, framework/API/Vector versions and APK v2 signature. Does not require a running emulator. |
-| Device startup job | Actual patched Spotify installation, two starts, Plus entry, Node ready, Shuffle+ production loader, mapped native libraries/addon and read-only extracted code |
-| Separate acceptance needed | Samsung firmware, login/account authorization, extension UI interaction, audible playback, real queue order/history, timers and visual alignment |
+| build | Pinned API-2 preparation, JVM/native protocol fixtures, JS/TypeScript/loader regressions, Android build and packaged DEX/native checks |
+| android17-environment | Real Linux/KVM guest boot, API 37, x86_64 guest, advertised ARM64 ABI, `libndk_translation.so` bridge and ARM64-to-x86_64 ISA mapping |
+| lspatch-packaging | Exact original APK hash, unchanged embedded original/module, matching LSPatch loader/framework, manifest/target SDK and APK v2 signature |
+| lspatch-android17 | Actual patched Spotify installed with `--abi arm64-v8a`, confirmed installed ABI, two stable starts, Plus entry, Node readiness, Shuffle+ production loader, native bridge/runtime mappings and read-only extracted code |
+| Separate acceptance | Native ARM/Samsung firmware, account/login, audible playback, real queue order/history, timers, extension UI and visual alignment |
 
-The device job uses API **37**, **arm64-v8a**, integrated LSPatch **1.2 (487)**,
-Xposed API **102**, Vector **canary-3106 (7306)** at
-`e00c5c5038bbcc14e0b382ab893301d6993e6989`. Signature bypass is the CLI default
-**0**, with no target SDK override or injected-Dex/debug flag. The phone's exact
-patch options have not been supplied; matching versions is not identical settings.
+The environment job runs independently of the build/APK download. A bad source
+therefore cannot hide whether Linux can boot the guest. The startup job waits
+for the build, source/package verification and proven guest/translation checks.
+It downloads the same-run Plus module and Shuffle+ artifacts and patches again
+inside its own private temporary directory. Original/patched Spotify APKs are
+never published as workflow artifacts.
 
-`macos-14` is Intel in the [runner image inventory](https://github.com/actions/runner-images#available-images).
-The adapted job uses standard Apple Silicon `macos-15` and asserts `uname -m`
-is `arm64`. Google's SDK inventory publishes the platform/image as **37.0**:
-`system-images;android-37.0;google_apis;arm64-v8a`, not `android-37`. The workflow
-uses that exact stable package and official ARM64 macOS command-line tools 23.0
-(build 16111833), checksum-checked against Google's published inventory. The
-older setup action defaults to tools 16.0 and its old macOS archive naming;
-`tools/setup_android37_sdk.py` installs the current architecture-specific tools.
-References: [platform/tools inventory](https://dl.google.com/android/repository/repository2-4.xml)
-and [system-image inventory](https://dl.google.com/android/repository/sys-img/google_apis/sys-img2-5.xml).
-A missing runner/image, failed boot or absent evidence fails the device job;
-there is no lower-API/x86 fallback. This is a generic AVD, not a Samsung ROM.
+## Why Linux works differently
 
-GitHub documents **no nested virtualization on its hosted ARM Macs**
-([runner limitations](https://docs.github.com/en/actions/reference/runners/github-hosted-runners#limitations-for-arm64-macos-runners)).
-The hardware probe therefore never treats a hosted Mac as a usable hypervisor.
-When patched testing is enabled, the workflow now tries **software CPU emulation**
-on that runner instead: `-accel off` with `ANDROID_I_WANT_MY_TCG=yes`.
-[Google documents this opt-in](https://developer.android.com/studio/run/emulator-commandline)
-as unsupported and very slow. Each boot is bounded to 15 minutes; the job is
-bounded to 45 minutes. The guest must still prove API 37 and ARM64. No API/ABI
-substitution occurs. Reports identify `software` versus `hardware` execution.
+[GitHub supports KVM-accelerated Android emulators on hosted Linux runners](https://github.blog/changelog/2024-04-02-github-actions-hardware-accelerated-android-virtualization-now-available/).
+The workflow grants its runner user access to the disposable VM's `/dev/kvm`
+and requires `emulator -accel-check` to succeed. This uses an x86_64 guest, not
+full-system ARM emulation. The Google APIs image supplies the ARM native bridge;
+[AOSP's published image properties](https://android.googlesource.com/platform/prebuilts/android-emulator-build/system-images/+/refs/heads/main/generic/system-images/android-35/google_apis/x86_64/build.prop)
+illustrate this configuration. The test checks the **actual API 37 guest's**
+properties and refuses to install if ARM64 translation is absent. It neither
+installs a third-party translator nor changes guest properties to pretend support.
 
-The first real hosted trial still selected HVF and exited immediately with
-`HV_UNSUPPORTED`; no Android guest booted, although the wrapper waited for its
-15-minute deadline. The capability check now queries the actual ARM64 QEMU
-binary with `-accel help`. Software mode is eligible only if **tcg** is explicitly
-listed. It also passes `-qemu -accel tcg -cpu max` to select that backend rather
-than assuming the launcher honors `-accel off` on ARM. This override still needs
-a real successful guest test; backend presence alone is not a boot result.
+The exact image package is `system-images;android-37.0;google_apis;x86_64`.
+The structured image check refuses a different API, ABI, minor release or
+preview channel. Official Linux SDK tools 23.0/build 16111833 are downloaded
+with Google's published SHA-1 `e025545c62a8e64c7559119566a569fb1dec5f60`.
+Inventory: [tools](https://dl.google.com/android/repository/repository2-4.xml),
+[images](https://dl.google.com/android/repository/sys-img/google_apis/sys-img2-5.xml).
+Each guest boot has a 10-minute deadline and the job a 30-minute limit.
 
-The independent **android17-runner-capabilities** job needs no APK or VM. Its
-**Android17-ARM64-Runner-Capabilities** artifact records only recognized backend
-names, probe status and capabilities-only scope. It does not claim runtime
-success and cannot provision a physical Mac. That hardware must already exist
-before it can be registered as a self-hosted GitHub runner.
+The former hosted-Mac attempt failed with `HV_UNSUPPORTED`. Its native QEMU
+backend probes were inconclusive. Those historical checks do not establish an
+Android boot; the current Linux workflow replaces that default entirely.
+The original native-ARM harness profile remains available for explicit local
+use, but is not required by any default workflow job.
 
-Only the optional environment-only software experiment can continue after an
-emulator failure. It writes `software_boot_failed` and `passed:false`; the
-patched-host job is then skipped. A requested Spotify startup failure always
-fails its job. `boot-result.json` requires the actual guest report, rather than
-treating an action's success exit code as Android evidence. A boot result never
-establishes Spotify startup; that requires the separate `startup.json` report.
+## Enable actual patched-Spotify startup
 
-If the software trial fails or is too slow, the reliable alternative is a
-trusted, ephemeral runner on a **physical Apple Silicon Mac** with usable
-Hypervisor.framework. Set **ANDROID37_RUNNER_LABEL** to its runner label. Leave
-this variable unset to use the hosted software trial; creating a GitHub label
-does not provision a physical machine. The setup script currently supports
-macOS ARM64. Custom-runner jobs reject fork PRs.
+The user has already enabled the flag and configured the secret. Keep:
 
-## Enable patched-Spotify testing
-
-The environment harness itself needs no APK source. Enabling patched testing also
-enables the bounded hosted software trial; a separate Mac is not required to
-attempt it. The patched-host job is eligible only after a real AVD boot succeeds.
-A successful AVD boot alone is not a Spotify startup pass.
-
-1. In [Plus Actions secrets](https://github.com/wamako/Plus/settings/secrets/actions),
-   add **SPOTIFY_APK_URL**, an HTTPS download URL accessible to CI for the
-   **original monolithic Spotify 9.1.94.1929 APK**, version code `147600575`, SHA-256
+1. **RUN_LSPATCH_SMOKE=true** in [Actions variables](https://github.com/wamako/Plus/settings/variables/actions).
+2. **SPOTIFY_APK_URL** in [Actions secrets](https://github.com/wamako/Plus/settings/secrets/actions):
+   a CI-accessible HTTPS source for the original monolithic Spotify
+   **9.1.94.1929**, code **147600575**, SHA-256
    `a0a6fbe6b87249bd3de88f16b342cce233f94513d41a0f6f2a06558ba51a9304`.
-   A different repack/split APK is rejected. Use a private or time-limited source;
-   do not commit the APK or signed URL.
-   An APKMirror download page is also accepted if its single `download-link`
-   anchor leads to that provider's HTTPS file handler. The downloader follows
-   that one link with a temporary cookie session, then requires the same pinned
-   APK checksum. Ads, scripts, ambiguous anchors and HTTP redirects are refused.
-   Expired links or provider access restrictions still require a renewed source.
-2. In [Plus Actions variables](https://github.com/wamako/Plus/settings/variables/actions),
-   set **RUN_LSPATCH_SMOKE** to **true** to enable trusted same-repository PR and
-   main-push runs. Fork PRs cannot receive this secret.
-3. Push a commit to the project PR, or rerun its build run. Once the workflow
-   exists on the default branch, **Run workflow** also offers a
-   **run_lspatch_smoke** checkbox. Manual runs default to build/regressions and
-   the environment-only check.
-4. Inspect **lspatch-android17 / android17-validation** and the
-   **LSPatch-Android17-ARM64-Reports** artifact. The validation summary explicitly
-   reports a skipped device job as **not tested**.
+3. Push to the project PR or rerun failed jobs after updating the source.
+   Manual workflow dispatch also supports a checkbox once present on the
+   default branch. Fork PRs never receive this source secret.
 
-Configure these values through repository settings; the GitHub connector does
-not expose settings management. CI reports only whether the APK source secret
-is present and whether the enable flag is true, never the URL itself.
-A local input file is not a remotely downloadable CI source.
-Until the secret and enable flag are set, no patched-Spotify startup result can
-be claimed. The separate **Android17-ARM64-Environment-Report** artifact records
-only the host/emulator environment check. An unsuccessful software trial is
-not a device or Spotify pass.
+The connector cannot read/change secret values. Setting presence is reported as
+a boolean only. APKMirror pages are supported when their single `download-link`
+anchor leads to the same provider's HTTPS file handler. Resolution uses a
+fresh cookie session and at most one page-to-file request, with no ad/script
+following or insecure redirects. The downloaded APK must still match the exact
+pinned hash. Expired links and provider HTTP denials are not bypassed; use a
+working direct HTTPS APK source if that provider refuses CI downloads.
 
-The **lspatch-packaging** job runs after the build independently of the emulator
-outcome when testing is enabled. Its **LSPatch-Package-Report** artifact verifies
-the configured source/package even if the software boot cannot complete. No
-original/patched Spotify APK is uploaded. Real startup still requires both a
-successful package check and a proven guest boot.
+`input.json` reports only fixed file categories, byte counts/hashes and recognized
+Spotify version fields, or an HTTP status for failed requests. URLs, temporary
+keys, headers, cookies and response bodies are never logged or uploaded.
+Unexpected inputs are deleted before patching. A different APK/split/repack is
+not silently accepted. The user's new APKMirror secret was retried; its request
+failed before input verification. The Linux run will report any HTTP status
+without exposing the link.
 
-If the configured URL returns unexpected bytes, **input.json** records only
-byte count, SHA-256 and a fixed type classification. For recognized Spotify APKs
-it includes version/code/target SDK and whether LSPatch is already embedded.
-It distinguishes HTML download pages, other ZIPs, the Plus module and actual
-Spotify APKs without recording page content, ZIP member names, headers or URLs.
-The unexpected download is deleted and never patched. The exact checksum guard
-is retained; a different build is not silently accepted.
+The independent environment artifact is **Android17-Linux-Environment-Report**;
+startup results use **LSPatch-Android17-Linux-Reports**; packaging uses
+**LSPatch-Package-Report**. All have 14-day retention. The final workflow summary
+reports build, packaging, actual boot and startup separately. Missing reports,
+skips and setup failures are never app passes.
 
-Google's command-line tools now forward `sdkmanager` to the newer Android CLI,
-whose `--list` table format changed. The exact-image preflight parses Google's
-structured XML inventory with `tools/check_android37_image.py`; it does not infer
-image absence from a CLI display format.
+## Disposable guest procedure
 
-Build preparation retains the checksum-verified R11 Node/Lyrics donor from the
-Actions artifact/cache (`API2_PLAYLIST_R12.md`). It fails instead of replacing
-the pinned runtime if the donor is unavailable.
+The harness refuses physical devices, multiple devices, the wrong API/profile,
+and guests with Spotify already installed. A fresh AVD is wiped for each test.
+The universal host APK is installed explicitly with `--abi arm64-v8a` and
+`dumpsys package` must confirm `primaryCpuAbi=arm64-v8a` before fixture writes.
+This prevents native-x86 Spotify startup from being misreported as ARM64 module
+coverage.
 
-## Emulator procedure
+Root ADB is used only to seed the built Shuffle+ extension into its production
+installed-extension folder, restore ownership/SELinux labels and inspect native
+mappings/file modes. ADB is unrooted before each app start. LSPatch uses its
+integrated mode; no root framework/manager is installed.
 
-The harness refuses physical devices, multiple devices, other API/ABI pairs,
-and AVDs where Spotify is already installed. The action wipes a disposable AVD,
-installs integrated patched Spotify and seeds the built Shuffle+ extension in
-its ordinary installed-extension directory. Root ADB provisions the fixture,
-restores ownership/SELinux labels, and inspects native mappings/modes. **ADB is
-unrooted before each launch**; Plus loads through integrated LSPatch with no root
-framework/manager dependency. This fixture does not change phone installation.
-
-The harness requires production log evidence: Plus entry, `Host ready`, and
-`Loaded script com.wamako.shuffleplus`. Known Java/native/linker/host/loader
-failures are rejected. The same process must remain alive for 15 seconds after
-readiness. Integrated LSPatch bootstrap and Node/JNI/addon mappings/read-only code are
-checked, then the test repeats after a force-stop to exercise existing caches.
-It does not click Shuffle+ controls or submit queue/playlist mutations.
-
-LSPatch's library is loaded from inside the APK, so Linux maps may name only
-`base.apk`. The framework is checked by its actual integrated-bootstrap and
-module-entry logs; only the extracted Node/JNI/addon files require named mappings.
-
-Only structured checks/hashes are uploaded, for 14 days. Raw logcat, UI dumps,
-original/patched APKs, app data, URLs and credentials stay out of artifacts.
-No Spotify login/token or Last.fm key is needed.
+Each of two launches requires integrated bootstrap, Plus entry, `Host ready`
+and `Loaded script com.wamako.shuffleplus` evidence, followed by 15 seconds of
+stable process life. Java/native crashes, link errors, writable code rejection
+and loader failures are rejected. Node/JNI/addon mappings and read-only extracted
+code are inspected; translated runs also require the native bridge mapped in
+the actual Spotify process. LSPatch can map from `base.apk`, so a Linux map need
+not include its ZIP member name. No source playlist/likes or queue is mutated.
+No account credentials are used. Raw logcat, app data and UI dumps remain private
+and are not artifacts.
 
 ## Completed offline test, 2026-11-06
 
@@ -184,8 +133,9 @@ header, bounds, full size, CRC and original SHA are checked directly; all other
 entries retain ZipFile overlap/CRC checks. Corruption tests exercise this reader.
 
 This completed test is **offline packaging**, without an emulator/device launch.
-It does not establish R13/Shuffle+ phone compatibility. The new device harness
-is additional coverage to run once its input is configured. These CI/tooling
+It does not establish R13/Shuffle+ phone compatibility. The Linux device harness
+is additional coverage that requires a downloadable original APK and verified
+guest translation. These CI/tooling
 changes do not change the delivered R13 APK or Shuffle+ 0.1.0 ZIP.
 
 Reproduce offline checks with local inputs and JDK 21:

@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Install official ARM64 macOS SDK tools supporting Android's 37.0 packages."""
+"""Install official SDK tools supporting Android's 37.0 packages."""
 import hashlib
 import os
 import pathlib
@@ -13,20 +13,26 @@ import zipfile
 # Stable command-line tools 23.0, as published in Google's repository inventory.
 URL = "https://dl.google.com/android/repository/commandlinetools-mac_arm64-16111833_latest.zip"
 SHA1 = "ad03dc49bfacfd52c110b14104ea548b8a07e830"
+LINUX_URL = "https://dl.google.com/android/repository/commandlinetools-linux-16111833_latest.zip"
+LINUX_SHA1 = "e025545c62a8e64c7559119566a569fb1dec5f60"
 
 def main():
-    if platform.system() != "Darwin" or platform.machine() != "arm64":
-        raise SystemExit("Requires an Apple Silicon macOS runner")
+    if platform.system() == "Linux" and platform.machine() == "x86_64":
+        url, expected = LINUX_URL, LINUX_SHA1
+    elif platform.system() == "Darwin" and platform.machine() == "arm64":
+        url, expected = URL, SHA1
+    else:
+        raise SystemExit("Requires Linux x86_64 or macOS ARM64 SDK host")
     root = pathlib.Path(os.environ["RUNNER_TEMP"]) / "spotifyplus-android-sdk"
     tools = root / "cmdline-tools/latest"
     if tools.exists():
         raise SystemExit("Use a fresh job SDK directory")
     with tempfile.TemporaryDirectory() as temp:
         archive = pathlib.Path(temp) / "tools.zip"
-        with urllib.request.urlopen(URL, timeout=120) as source, archive.open("wb") as target:
+        with urllib.request.urlopen(url, timeout=120) as source, archive.open("wb") as target:
             shutil.copyfileobj(source, target)
         with archive.open("rb") as stream:
-            if hashlib.file_digest(stream, "sha1").hexdigest() != SHA1:
+            if hashlib.file_digest(stream, "sha1").hexdigest() != expected:
                 raise SystemExit("Official SDK tools checksum mismatch")
         with zipfile.ZipFile(archive) as source:
             for name in source.namelist():
@@ -49,7 +55,7 @@ def main():
     with open(os.environ["GITHUB_PATH"], "a") as out:
         for path in [tools / "bin", root / "platform-tools", root / "emulator"]:
             out.write(str(path) + "\n")
-    print("Installed official ARM64 SDK tools 23.0 for Android 37.0")
+    print("Installed official SDK tools 23.0 for Android 37.0")
 
 if __name__ == "__main__":
     main()

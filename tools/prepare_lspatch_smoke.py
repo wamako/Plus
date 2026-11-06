@@ -16,6 +16,7 @@ import shutil
 import subprocess
 import urllib.request
 import urllib.parse
+import urllib.error
 import zipfile
 
 from verify_lspatched_package import JAR_SHA, manifest, verify
@@ -122,6 +123,15 @@ def download(url, path, expected, diagnostics=None):
                 break
             url = link
             print("Following provider download-page file link; exact APK checksum remains required")
+    except urllib.error.HTTPError as error:
+        path.unlink(missing_ok=True)
+        status = int(error.code)
+        if diagnostics is not None:
+            diagnostics.write_text(json.dumps({"test_kind": "spotify_input_diagnostic",
+                "kind": "http_download_failed", "http_status": status,
+                "runtime_test_executed": False}, indent=2) + "\n")
+        raise RuntimeError("Test input could not be downloaded (HTTP " + str(status) +
+                           "); use a working HTTPS APK source accessible to CI") from None
     except Exception:
         path.unlink(missing_ok=True)
         raise RuntimeError("Test input could not be downloaded; check the configured HTTPS source") from None

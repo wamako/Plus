@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Exercise the actual patched host and Shuffle+ loader on a disposable ARM AVD.
+"""Exercise the patched host and Shuffle+ loader on a disposable Android AVD.
 
 This is a logged-out startup test, not a Spotify playback/account test. Root ADB
 is used only to provision/inspect the disposable AVD; each app launch runs with
@@ -37,6 +37,8 @@ ERRORS = {
 # not the ZIP member. Its real bootstrap + Xposed module entry are checked above.
 # These three Plus runtime binaries are extracted files and have named mappings.
 LIBRARIES = ("libnode.so", "libnative-lib.so", "spotifyplus_bridge.node")
+NATIVE = "native-arm64"
+TRANSLATED = "linux-x86_64-arm64-translation"
 
 def log_status(log):
     return ({name: marker in log for name, marker in MARKERS.items()},
@@ -71,17 +73,32 @@ class Device:
         value = self.adb("shell", "pidof com.spotify.music || true").strip()
         return value if re.fullmatch(r"\d+", value) else None
 
-def check_environment(device):
+def check_environment(device, profile=NATIVE):
     if device.shell("getprop", "ro.kernel.qemu") != "1":
         raise RuntimeError("Only disposable Android emulators may be provisioned")
     if device.shell("getprop", "ro.build.version.sdk") != "37":
         raise RuntimeError("Requires API 37; no automatic API downgrade is allowed")
-    if device.shell("getprop", "ro.product.cpu.abi") != "arm64-v8a":
-        raise RuntimeError("Requires native arm64-v8a; translated x86 tests are refused")
-    return {"api": 37, "abi": "arm64-v8a", "emulator": True}
+    abi = device.shell("getprop", "ro.product.cpu.abi")
+    if profile == NATIVE:
+        if abi != "arm64-v8a":
+            raise RuntimeError("Requires native arm64-v8a for the native profile")
+        return {"api": 37, "abi": abi, "app_abi": "arm64-v8a", "emulator": True,
+                "profile": profile, "arm_translation": False}
+    if profile != TRANSLATED:
+        raise RuntimeError("Unknown emulator test profile")
+    if abi != "x86_64":
+        raise RuntimeError("Linux translation profile requires an x86_64 guest")
+    abis = device.shell("getprop", "ro.product.cpu.abilist64").split(",")
+    bridge = device.shell("getprop", "ro.dalvik.vm.native.bridge")
+    instruction_set = device.shell("getprop", "ro.dalvik.vm.isa.arm64")
+    if "arm64-v8a" not in abis or bridge != "libndk_translation.so" or instruction_set != "x86_64":
+        raise RuntimeError("Google ARM64 translation is not available in this guest")
+    return {"api": 37, "abi": abi, "app_abi": "arm64-v8a", "emulator": True,
+            "profile": profile, "arm_translation": True, "native_bridge": bridge,
+            "arm64_instruction_set": instruction_set}
 
-def provision(device, apk, extension):
-    check_environment(device)
+def provision(device, apk, extension, profile=NATIVE):
+    check_environment(device, profile)
     if device.shell("pm", "list", "packages", PACKAGE):
         raise RuntimeError("Spotify is already installed; use a fresh AVD without an account")
     manifest = json.loads((extension / "manifest.json").read_text())
@@ -89,7 +106,12 @@ def provision(device, apk, extension):
         raise RuntimeError("Expected the built Shuffle+ API-2 extension")
     if any(p.is_symlink() for p in extension.rglob("*")) or not (extension / "index.js").is_file():
         raise RuntimeError("Invalid Shuffle+ input folder")
-    device.adb("install", apk, timeout=180)
+    # Force the original universal APK's ARM64 ABI on the translation profile;
+    # a successful native-x86 Spotify launch would not exercise this module.
+    device.adb("install", "--abi", "arm64-v8a", apk, timeout=180)
+    package_info = device.shell("dumpsys", "package", PACKAGE)
+    if not re.search(r"(?m)^\s*primaryCpuAbi=arm64-v8a(?:\s|$)", package_info):
+        raise RuntimeError("Spotify was not installed with the required ARM64 ABI")
     match = re.fullmatch(r"package:com\.spotify\.music uid:(\d+)",
                          device.shell("pm", "list", "packages", "-U", PACKAGE))
     if not match:
@@ -131,20 +153,23 @@ def launch(device, timeout):
         time.sleep(2)
     raise RuntimeError("Timed out waiting for module, Node host and Shuffle+ loader evidence")
 
-def inspect_native_code(device, pid):
+def inspect_native_code(device, pid, profile=NATIVE):
     device.root(True)
     try:
         maps = device.shell("cat", "/proc/" + pid + "/maps")
         loaded = {name: name in maps for name in LIBRARIES}
         if not all(loaded.values()):
             raise RuntimeError("Expected Node/JNI/addon mapping is missing")
+        if profile == TRANSLATED and "libndk_translation.so" not in maps:
+            raise RuntimeError("ARM64 translation library is not mapped in Spotify")
         paths = ["/data/user/0/com.spotify.music/code_cache/spotifyplus-libs/" + name
                  for name in ("libc++_shared.so", "libnode.so", "libnative-lib.so")]
         paths.append("/data/user/0/com.spotify.music/files/nodejs/spotifyplus_bridge.node")
         modes = [device.shell("stat", "-c", "%a", path) for path in paths]
         if any(not re.fullmatch(r"[0-7]{3,4}", mode) or int(mode, 8) & 0o222 for mode in modes):
             raise RuntimeError("Extracted native code is writable on Android 17")
-        return {"mapped": loaded, "extracted_native_code_read_only": True}
+        return {"mapped": loaded, "extracted_native_code_read_only": True,
+                "arm_translation_verified": profile == TRANSLATED}
     finally:
         device.root(False)
 
@@ -153,14 +178,15 @@ def main():
     parser.add_argument("--apk", type=pathlib.Path)
     parser.add_argument("--extension", type=pathlib.Path)
     parser.add_argument("--check-environment", action="store_true")
+    parser.add_argument("--device-profile", choices=(NATIVE, TRANSLATED), default=NATIVE)
     parser.add_argument("--report", type=pathlib.Path, required=True)
     parser.add_argument("--timeout", type=int, default=180)
     args = parser.parse_args()
     if not args.check_environment and (not args.apk or not args.extension):
         parser.error("Patched-host testing requires --apk and --extension")
-    report = {"test_kind": "android37_arm64_environment_only" if args.check_environment else "logged_out_lspatch_startup", "passed": False,
+    report = {"test_kind": "android37_environment_only" if args.check_environment else "logged_out_lspatch_startup", "passed": False,
               "emulation_mode": os.environ.get("SPOTIFYPLUS_EMULATION_MODE", "unspecified"),
-              "required_api": 37, "required_abi": "arm64-v8a", "launches": [],
+              "device_profile": args.device_profile, "required_api": 37, "required_app_abi": "arm64-v8a", "launches": [],
               "playback_test_executed": False, "account_test_executed": False,
               "shuffle_ui_test_executed": False,
               "patched_host_test_executed": False,
@@ -168,13 +194,14 @@ def main():
     args.report.parent.mkdir(parents=True, exist_ok=True)
     try:
         device = Device()
-        report["environment"] = check_environment(device)
+        report["environment"] = check_environment(device, args.device_profile)
         if not args.check_environment:
-            provision(device, args.apk, args.extension)
+            provision(device, args.apk, args.extension, args.device_profile)
+            report["installed_app_abi"] = "arm64-v8a"
             report["patched_host_test_executed"] = True
             for _ in range(2):
                 result, pid = launch(device, args.timeout)
-                result["native_code"] = inspect_native_code(device, pid)
+                result["native_code"] = inspect_native_code(device, pid, args.device_profile)
                 if device.pid() != pid:
                     raise RuntimeError("Spotify exited during native code inspection")
                 report["launches"].append(result)
@@ -185,7 +212,7 @@ def main():
         raise SystemExit(report["failure"]) from None
     finally:
         args.report.write_text(json.dumps(report, indent=2) + "\n")
-    print("PASS: Android 17 ARM64 emulator environment" if args.check_environment else
+    print("PASS: Android 17 emulator environment (" + args.device_profile + ")" if args.check_environment else
           "PASS: two non-root app starts, Node/JNI loading, Shuffle+ loader and read-only native code")
 
 if __name__ == "__main__":

@@ -23,17 +23,30 @@ def main():
     root = pathlib.Path(os.environ["RUNNER_TEMP"])
     result = subprocess.run([str(pathlib.Path(os.environ["ANDROID_HOME"]) / "emulator/emulator"), "-accel-check"],
                             capture_output=True, text=True, timeout=30)
-    binaries = list((pathlib.Path(os.environ["ANDROID_HOME"]) / "emulator/qemu").glob("*/qemu-system-aarch64-headless"))
+    emulator_root = pathlib.Path(os.environ["ANDROID_HOME"]) / "emulator"
+    binaries = list((emulator_root / "qemu").glob("*/qemu-system-aarch64-headless"))
     backends, backend_code = [], None
+    backend_error = None
     if len(binaries) == 1:
-        probe = subprocess.run([str(binaries[0]), "-accel", "help"], capture_output=True, text=True, timeout=30)
+        # The normal emulator launcher provides this environment for QEMU.
+        # Without it the standalone probe may abort in dyld before parsing args.
+        probe_env = {**os.environ, "ANDROID_EMULATOR_LAUNCHER_DIR": str(emulator_root),
+                     "DYLD_LIBRARY_PATH": str(emulator_root / "lib64") +
+                     (":" + os.environ["DYLD_LIBRARY_PATH"] if os.environ.get("DYLD_LIBRARY_PATH") else "")}
+        probe = subprocess.run([str(binaries[0]), "-accel", "help"], capture_output=True, text=True,
+                               timeout=30, cwd=emulator_root, env=probe_env)
         backend_code = probe.returncode
         text = probe.stdout + "\n" + probe.stderr
         if probe.returncode == 0:
             backends = [name for name in ("tcg", "hvf", "kvm", "whpx") if re.search(r"(?m)^\s*" + name + r"\s*$", text)]
+        elif "Library not loaded" in text:
+            backend_error = "sdk_dynamic_library_unavailable"
+        else:
+            backend_error = "native_probe_could_not_run"
     report = assess(result.returncode, os.environ.get("RUNNER_ENVIRONMENT"),
                     os.environ.get("SPOTIFYPLUS_TRY_SOFTWARE") == "true", "tcg" in backends)
-    report.update({"qemu_backend_probe_exit_code": backend_code, "qemu_accelerators": backends})
+    report.update({"qemu_backend_probe_exit_code": backend_code, "qemu_accelerators": backends,
+                   "qemu_backend_probe_error": backend_error})
     directory = root / "smoke-reports"
     directory.mkdir(exist_ok=True)
     (directory / "acceleration.json").write_text(json.dumps(report, indent=2) + "\n")

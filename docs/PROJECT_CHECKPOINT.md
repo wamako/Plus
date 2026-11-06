@@ -248,3 +248,8 @@ failed and later guest/startup jobs were skipped. Settings presence is correct;
 the source must supply actual original APK bytes. Added an independent native
 QEMU-backend probe and a guarded explicit TCG selection; actual backend results
 must be read before claiming whether the hosted software route is possible.
+
+The first standalone QEMU probe aborted with code -6 before producing accelerator
+help; that is inconclusive, not proof that TCG is missing. Supply the SDK's
+lib64 DYLD path and ANDROID_EMULATOR_LAUNCHER_DIR/cwd, matching the normal launcher,
+and distinguish SDK-loader/probe errors from a valid backend list.

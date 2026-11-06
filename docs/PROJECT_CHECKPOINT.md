@@ -206,3 +206,16 @@ not a green runtime result. Actual testing also needs ANDROID37_RUNNER_LABEL
 selecting a trusted ephemeral physical ARM Mac with usable HVF. Custom-runner
 jobs exclude fork PRs. The preflight runs `emulator -accel-check` and records
 that result separately from the documented hosted-runner limitation.
+
+User subsequently reported enabling patched-Spotify testing and asked us to
+handle runner setup where possible. Added a bounded hosted ARM software-emulation
+trial using Google's documented ANDROID_I_WANT_MY_TCG=yes/-accel off opt-in.
+It is enabled by the existing RUN_LSPATCH_SMOKE flag/manual checkbox, uses the
+same exact Android 37.0 ARM64 image, and reports its mode separately. Each boot
+has a 15-minute deadline; no APK-source secret is needed for the environment
+trial. Only that optional experiment can be inconclusive without failing the
+build; boot-result.json still records failure and prevents patched-host testing.
+Actual requested startup checks remain strict. Configuration-presence booleans
+are reported by CI; settings cannot be inspected directly through the connector.
+Software compatibility and any resulting patched-app test must be verified in
+CI; do not infer success from the new execution plan or capability probe.

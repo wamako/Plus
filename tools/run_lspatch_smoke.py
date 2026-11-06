@@ -8,6 +8,7 @@ No raw logcat, UI dumps, APKs, account data or credentials are written to report
 """
 import argparse
 import json
+import os
 import pathlib
 import re
 import shlex
@@ -111,7 +112,7 @@ def provision(device, apk, extension):
 def launch(device, timeout):
     device.shell("am", "force-stop", PACKAGE)
     device.adb("logcat", "-c")
-    device.shell("am", "start", "-W", "-n", PACKAGE + "/com.spotify.music.MainActivity", timeout=90)
+    device.shell("am", "start", "-W", "-n", PACKAGE + "/com.spotify.music.MainActivity", timeout=timeout)
     deadline, stable_until, pid = time.monotonic() + timeout, None, None
     while time.monotonic() < deadline:
         current = device.pid()
@@ -158,6 +159,7 @@ def main():
     if not args.check_environment and (not args.apk or not args.extension):
         parser.error("Patched-host testing requires --apk and --extension")
     report = {"test_kind": "android37_arm64_environment_only" if args.check_environment else "logged_out_lspatch_startup", "passed": False,
+              "emulation_mode": os.environ.get("SPOTIFYPLUS_EMULATION_MODE", "unspecified"),
               "required_api": 37, "required_abi": "arm64-v8a", "launches": [],
               "playback_test_executed": False, "account_test_executed": False,
               "shuffle_ui_test_executed": False,

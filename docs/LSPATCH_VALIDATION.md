@@ -41,18 +41,33 @@ there is no lower-API/x86 fallback. This is a generic AVD, not a Samsung ROM.
 
 GitHub documents **no nested virtualization on its hosted ARM Macs**
 ([runner limitations](https://docs.github.com/en/actions/reference/runners/github-hosted-runners#limitations-for-arm64-macos-runners)).
-The default hosted-runner invocation therefore records `unsupported_runner`,
-`passed: null` and no emulator/Spotify execution, rather than claiming a pass.
-`emulator -accel-check` is also recorded; detecting the framework alone does not
-establish that a nested VM can run. For actual boot/startup testing, set the
-**ANDROID37_RUNNER_LABEL** repository variable to a trusted, ephemeral runner
-on a physical Apple Silicon Mac with usable Hypervisor.framework. The setup
-script currently supports macOS ARM64. Custom-runner jobs reject fork PRs.
+The hardware probe therefore never treats a hosted Mac as a usable hypervisor.
+When patched testing is enabled, the workflow now tries **software CPU emulation**
+on that runner instead: `-accel off` with `ANDROID_I_WANT_MY_TCG=yes`.
+[Google documents this opt-in](https://developer.android.com/studio/run/emulator-commandline)
+as unsupported and very slow. Each boot is bounded to 15 minutes; the job is
+bounded to 45 minutes. The guest must still prove API 37 and ARM64. No API/ABI
+substitution occurs. Reports identify `software` versus `hardware` execution.
+
+Only the optional environment-only software experiment can continue after an
+emulator failure. It writes `software_boot_failed` and `passed:false`; the
+patched-host job is then skipped. A requested Spotify startup failure always
+fails its job. `boot-result.json` requires the actual guest report, rather than
+treating an action's success exit code as Android evidence. A boot result never
+establishes Spotify startup; that requires the separate `startup.json` report.
+
+If the software trial fails or is too slow, the reliable alternative is a
+trusted, ephemeral runner on a **physical Apple Silicon Mac** with usable
+Hypervisor.framework. Set **ANDROID37_RUNNER_LABEL** to its runner label. Leave
+this variable unset to use the hosted software trial; creating a GitHub label
+does not provision a physical machine. The setup script currently supports
+macOS ARM64. Custom-runner jobs reject fork PRs.
 
 ## Enable patched-Spotify testing
 
-The environment job runs without an APK source. Configure a capable runner as
-above; the patched-host job is eligible only after its real AVD boot succeeds.
+The environment job runs without an APK source. Enabling patched testing also
+enables the bounded hosted software trial; a separate Mac is not required to
+attempt it. The patched-host job is eligible only after a real AVD boot succeeds.
 A successful AVD boot alone is not a Spotify startup pass.
 
 1. In [Plus Actions secrets](https://github.com/wamako/Plus/settings/secrets/actions),
@@ -72,12 +87,14 @@ A successful AVD boot alone is not a Spotify startup pass.
    **LSPatch-Android17-ARM64-Reports** artifact. The validation summary explicitly
    reports a skipped device job as **not tested**.
 
-The GitHub connector does not expose secret/variable creation, so those values
-were not configured. A local input file is not a remotely downloadable CI source.
+Configure these values through repository settings; the GitHub connector does
+not expose settings management. CI reports only whether the APK source secret
+is present and whether the enable flag is true, never the URL itself.
+A local input file is not a remotely downloadable CI source.
 Until the secret and enable flag are set, no patched-Spotify startup result can
 be claimed. The separate **Android17-ARM64-Environment-Report** artifact records
-only the host/emulator environment check. An unsupported runner still needs
-replacement before any device test can execute.
+only the host/emulator environment check. An unsuccessful software trial is
+not a device or Spotify pass.
 
 Build preparation retains the checksum-verified R11 Node/Lyrics donor from the
 Actions artifact/cache (`API2_PLAYLIST_R12.md`). It fails instead of replacing

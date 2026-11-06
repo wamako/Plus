@@ -6,6 +6,9 @@ name: LSPatch Android 17 ARM64 validation
 on:
   workflow_call:
     inputs:
+      try_software:
+        type: boolean
+        default: false
       runner_label:
         type: string
         default: macos-15
@@ -17,7 +20,7 @@ on:
         required: false
     outputs:
       environment_result:
-        description: 'booted, unsupported_runner, or setup_failed; not a Spotify playback result'
+        description: 'booted, software_boot_failed, unsupported_runner, or setup_failed; not a Spotify playback result'
         value: ${{ jobs.android17-validation.outputs.environment_result }}
 
 permissions:
@@ -29,7 +32,7 @@ jobs:
     # macos-14 is Intel. macos-15 is the standard Apple Silicon runner.
     # Assert this below so a runner-label change cannot silently change the test.
     runs-on: ${{ inputs.runner_label }}
-    timeout-minutes: 40
+    timeout-minutes: 45
     outputs:
       environment_result: ${{ steps.scope.outputs.environment_result }}
     steps:
@@ -55,16 +58,18 @@ jobs:
 
       - name: Check whether this runner can accelerate an ARM emulator
         id: acceleration
+        env:
+          SPOTIFYPLUS_TRY_SOFTWARE: ${{ inputs.try_software && 'true' || 'false' }}
         run: python3 tools/check_android37_acceleration.py
 
-      - name: Require accelerator for an explicitly requested patched-host test
-        if: inputs.run_patched_host && steps.acceleration.outputs.supported != 'true'
+      - name: Require an execution plan for a requested patched-host test
+        if: inputs.run_patched_host && steps.acceleration.outputs.boot_mode == 'unavailable'
         run: |
           echo '::error::This runner cannot run the ARM AVD. Configure ANDROID37_RUNNER_LABEL with a capable physical ARM Mac runner.'
           exit 1
 
       - name: Require the exact API 37 ARM64 image
-        if: steps.acceleration.outputs.supported == 'true'
+        if: steps.acceleration.outputs.boot_mode != 'unavailable'
         shell: bash
         run: |
           sdkmanager --list > "$RUNNER_TEMP/sdk-packages.txt"
@@ -74,25 +79,25 @@ jobs:
           fi
 
       - name: Download prepared and verified Plus module from caller
-        if: inputs.run_patched_host && steps.acceleration.outputs.supported == 'true'
+        if: inputs.run_patched_host && steps.acceleration.outputs.boot_mode != 'unavailable'
         uses: actions/download-artifact@v4
         with:
           name: SpotifyPlus-Debug-APK
           path: ${{ runner.temp }}/plus-module
 
       - name: Download the separately built Shuffle+ extension
-        if: inputs.run_patched_host && steps.acceleration.outputs.supported == 'true'
+        if: inputs.run_patched_host && steps.acceleration.outputs.boot_mode != 'unavailable'
         uses: actions/download-artifact@v4
         with:
           name: SpotifyPlus-ShufflePlus-0.1.0
           path: ${{ runner.temp }}/shuffle-extension
 
       - name: Install manifest inspection dependency
-        if: inputs.run_patched_host && steps.acceleration.outputs.supported == 'true'
+        if: inputs.run_patched_host && steps.acceleration.outputs.boot_mode != 'unavailable'
         run: python3 -m pip install androguard==4.1.4
 
       - name: Patch the original Spotify and verify embedded files and signature
-        if: inputs.run_patched_host && steps.acceleration.outputs.supported == 'true'
+        if: inputs.run_patched_host && steps.acceleration.outputs.boot_mode != 'unavailable'
         env:
           SPOTIFY_APK_URL: ${{ secrets.SPOTIFY_APK_URL }}
         run: >-
@@ -103,7 +108,13 @@ jobs:
 
       - name: Boot Android 17 ARM64 and run requested checks
         id: boot
-        if: steps.acceleration.outputs.supported == 'true'
+        if: steps.acceleration.outputs.boot_mode != 'unavailable'
+        # Only the optional environment-only experiment may be inconclusive.
+        # A requested patched-app startup failure always fails its job.
+        continue-on-error: ${{ steps.acceleration.outputs.boot_mode == 'software' && !inputs.run_patched_host }}
+        env:
+          ANDROID_I_WANT_MY_TCG: ${{ steps.acceleration.outputs.boot_mode == 'software' && 'yes' || 'no' }}
+          SPOTIFYPLUS_EMULATION_MODE: ${{ steps.acceleration.outputs.boot_mode }}
         uses: reactivecircus/android-emulator-runner@v2
         with:
           api-level: '37.0'
@@ -112,28 +123,24 @@ jobs:
           avd-name: spotifyplus-api37
           force-avd-creation: true
           disable-animations: true
-          emulator-boot-timeout: 600
-          emulator-options: -no-window -gpu swiftshader_indirect -no-snapshot -noaudio -no-boot-anim -wipe-data
+          emulator-boot-timeout: 900
+          ram-size: 2048M
+          emulator-options: >-
+            -no-window -gpu swiftshader_indirect -no-snapshot -noaudio -no-boot-anim -wipe-data
+            -accel ${{ steps.acceleration.outputs.boot_mode == 'software' && 'off' || 'on' }}
           script: |
             python3 tools/run_lspatch_smoke.py --check-environment --report "$RUNNER_TEMP/smoke-reports/environment.json"
             if [ "${{ inputs.run_patched_host }}" = true ]; then
-              python3 tools/run_lspatch_smoke.py --apk "$RUNNER_TEMP/lspatch-smoke/spotify-lspatched.apk" --extension "$RUNNER_TEMP/shuffle-extension/shuffle-plus" --report "$RUNNER_TEMP/smoke-reports/startup.json"
+              python3 tools/run_lspatch_smoke.py --apk "$RUNNER_TEMP/lspatch-smoke/spotify-lspatched.apk" --extension "$RUNNER_TEMP/shuffle-extension/shuffle-plus" --report "$RUNNER_TEMP/smoke-reports/startup.json" --timeout 360
             fi
 
       - name: Record whether a real emulator boot was tested
         id: scope
         if: always()
         env:
-          ACCELERATION: ${{ steps.acceleration.outputs.supported }}
+          BOOT_MODE: ${{ steps.acceleration.outputs.boot_mode }}
           BOOT_RESULT: ${{ steps.boot.outcome }}
-        run: |
-          if [ "$BOOT_RESULT" = success ]; then
-            echo 'environment_result=booted' >> "$GITHUB_OUTPUT"
-          elif [ "$ACCELERATION" = false ]; then
-            echo 'environment_result=unsupported_runner' >> "$GITHUB_OUTPUT"
-          else
-            echo 'environment_result=setup_failed' >> "$GITHUB_OUTPUT"
-          fi
+        run: python3 tools/report_android37_scope.py
 
       # APKs, raw logcat, private source URLs and app data are never artifacts.
       - name: Upload only structured validation reports
@@ -154,7 +161,7 @@ jobs:
 
           The environment-only invocation boots and checks API/ABI without Spotify. Patched-host testing is separately gated by run_patched_host and requires the APK source secret; environment success alone is not a Spotify startup pass.
 
-          An unsupported host accelerator is recorded as unsupported_runner with no emulator/Spotify runtime pass. GitHub-hosted ARM Macs do not support nested virtualization; ANDROID37_RUNNER_LABEL can select a capable physical ARM Mac runner.
+          Hosted ARM Macs try software CPU emulation (-accel off, ANDROID_I_WANT_MY_TCG=yes), bounded to 15 minutes per boot. This is experimental and slow. Failure is reported as software_boot_failed, never as a runtime pass. Patched-app checks run only after a real API 37 ARM64 boot. A capable physical ARM Mac selected by ANDROID37_RUNNER_LABEL uses hardware acceleration instead.
 
           Inspect this job's result and JSON reports for packaging and startup outcomes. A setup failure or missing report is not a runtime pass.
 

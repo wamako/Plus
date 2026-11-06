@@ -10,9 +10,43 @@ from prepare_lspatch_smoke import download
 from run_lspatch_smoke import Device, log_status, provision
 from verify_lspatched_package import verify_origin
 from check_android37_acceleration import assess
+from report_android37_scope import classify
+
+
+class BootScopeTests(unittest.TestCase):
+    def test_optional_software_failure_is_never_a_runtime_pass(self):
+        report = classify("software", "failure", {})
+        self.assertEqual(report["result"], "software_boot_failed")
+        self.assertFalse(report["passed"])
+        self.assertFalse(report["guest_api_abi_verified"])
+
+    def test_action_success_without_guest_evidence_is_not_a_pass(self):
+        report = classify("software", "success", {})
+        self.assertEqual(report["result"], "setup_failed")
+        self.assertFalse(report["passed"])
+
+    def test_guest_proof_does_not_claim_spotify_started(self):
+        env = {"passed": True, "test_kind": "android37_arm64_environment_only",
+               "environment": {"api": 37, "abi": "arm64-v8a"}}
+        report = classify("software", "success", env)
+        self.assertEqual(report["result"], "booted")
+        self.assertTrue(report["passed"])
+        self.assertNotIn("patched_host_test_executed", report)
 
 
 class AccelerationTests(unittest.TestCase):
+    def test_explicit_hosted_software_trial_does_not_claim_acceleration_or_boot(self):
+        report = assess(0, "github-hosted", try_software=True)
+        self.assertEqual(report["boot_mode"], "software")
+        self.assertEqual(report["result"], "software_trial_requested")
+        self.assertFalse(report["accelerator_usable"])
+        self.assertFalse(report["emulator_boot_executed"])
+        self.assertFalse(report["patched_host_test_executed"])
+        self.assertIsNone(report["passed"])
+
+    def test_software_trial_does_not_mask_a_failed_physical_runner(self):
+        self.assertEqual(assess(1, "self-hosted", try_software=True)["boot_mode"], "unavailable")
+
     def test_hosted_arm_mac_never_claims_a_boot_from_a_framework_probe(self):
         report = assess(0, "github-hosted")
         self.assertTrue(report["accelerator_probe_success"])

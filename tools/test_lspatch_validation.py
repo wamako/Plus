@@ -10,7 +10,7 @@ from unittest.mock import patch, Mock
 
 from prepare_lspatch_smoke import download, describe_input, apkmirror_file_link, HTTPSRedirects
 from google_drive_input import download_url as drive_download_url, confirmation_url as drive_confirmation_url
-from run_lspatch_smoke import Device, log_status, provision, check_environment, NATIVE, TRANSLATED
+from run_lspatch_smoke import Device, log_status, provision, check_environment, NATIVE, TRANSLATED, safe_startup_details, collect_startup_details, launch
 from verify_lspatched_package import verify_origin
 from check_android37_acceleration import assess
 from report_android37_scope import classify
@@ -150,6 +150,42 @@ class AccelerationTests(unittest.TestCase):
 
 
 class LogTests(unittest.TestCase):
+    def test_diagnostics_never_return_raw_logs_urls_paths_or_messages(self):
+        raw = ('UnsatisfiedLinkError: /data/private-name/file.so is for EM_AARCH64 instead of EM_X86_64 '
+               'https://private.invalid/?access_token=private-value\nHost ready')
+        details = safe_startup_details(raw)
+        self.assertTrue(details["native_link_reasons"]["wrong_elf_architecture"])
+        self.assertIn("UnsatisfiedLinkError", details["exception_types"])
+        self.assertTrue(details["process_markers"]["node_host_ready"])
+        for private in ("private.invalid", "private-value", "/data/", "EM_AARCH64"):
+            self.assertNotIn(private, str(details))
+
+    def test_crash_pid_is_correlated_without_publishing_its_log(self):
+        device = Mock()
+        device.adb.side_effect = ["Process: com.spotify.music, PID: 42\nprivate-global-data",
+                                  "ClassNotFoundException: private-message\nFATAL EXCEPTION"]
+        details = {}
+        collect_startup_details(device, None, details)
+        self.assertTrue(details["spotify_java_crash_reported"])
+        self.assertTrue(details["process_observed"])
+        self.assertEqual(details["exception_types"], ["ClassNotFoundException"])
+        self.assertNotIn("private", str(details))
+        device.adb.assert_called_with("logcat", "-d", "--pid=42", timeout=15)
+
+    def test_global_markers_cannot_pass_a_launch_without_a_spotify_process(self):
+        device = Mock()
+        device.pid.return_value = None
+        device.adb.return_value = ("Bootstrap loader from embedment\n[SpotifyPlus] Loading SpotifyPlus v\n"
+                                   "Host ready\nLoaded script com.wamako.shuffleplus from /private")
+        details = {}
+        with patch("run_lspatch_smoke.time.monotonic", side_effect=[0, 0, 31]):
+            with self.assertRaisesRegex(RuntimeError, "running process"):
+                launch(device, 360, details)
+        self.assertTrue(all(details["launch_log_markers"].values()))
+        self.assertFalse(any(details["process_markers"].values()))
+        self.assertFalse(details["process_observed"])
+        self.assertNotIn("/private", str(details))
+
     def test_live_process_or_one_marker_is_not_a_host_pass(self):
         flags, errors = log_status("[SpotifyPlus] Loading SpotifyPlus v0.10.0\n")
         self.assertTrue(flags["module_entered"])

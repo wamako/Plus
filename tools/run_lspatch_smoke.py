@@ -44,6 +44,39 @@ def log_status(log):
     return ({name: marker in log for name, marker in MARKERS.items()},
             [name for name, marker in ERRORS.items() if marker in log])
 
+def safe_startup_details(app_log):
+    """Fixed names/booleans only; never return log lines, paths or messages."""
+    flags, errors = log_status(app_log)
+    exception_types = ("UnsatisfiedLinkError", "SecurityException", "ClassNotFoundException",
+                       "NoClassDefFoundError", "ExceptionInInitializerError", "VerifyError",
+                       "IllegalStateException", "IOException", "NullPointerException")
+    reasons = {"wrong_elf_architecture": "EM_AARCH64" in app_log and "EM_X86_64" in app_log,
+               "library_not_found": "dlopen failed" in app_log and "not found" in app_log,
+               "namespace_access_denied": "not accessible for the namespace" in app_log,
+               "writable_code_rejected": "Attempt to load writable file" in app_log}
+    return {"process_markers": flags, "process_error_categories": errors,
+            "exception_types": [name for name in exception_types if re.search(r"\b" + name + r"\b", app_log)],
+            "native_link_reasons": reasons}
+
+def collect_startup_details(device, pid, details):
+    try:
+        # Read only in memory on this logged-out disposable guest. Nothing raw
+        # from either buffer is printed, persisted or placed in an artifact.
+        log = device.adb("logcat", "-d", timeout=15)
+        java_pids = re.findall(r"Process: com\.spotify\.music, PID: (\d+)", log)
+        started_pids = re.findall(r"Start proc (\d+):com\.spotify\.music/", log)
+        candidate = pid or (java_pids[-1] if java_pids else started_pids[-1] if started_pids else None)
+        app_log = device.adb("logcat", "-d", "--pid=" + candidate, timeout=15) if candidate else ""
+        details.update(safe_startup_details(app_log))
+        details["process_observed"] = candidate is not None
+        details["spotify_java_crash_reported"] = bool(java_pids)
+        details["spotify_native_crash_reported"] = bool(re.search(r">>>\s*com\.spotify\.music\s*<<<", log))
+        # Global markers are diagnostic only and can never satisfy startup.
+        details["launch_log_markers"] = log_status(log)[0]
+        details["diagnostics_collected"] = True
+    except (RuntimeError, subprocess.SubprocessError):
+        details["diagnostics_collected"] = False
+
 class Device:
     def __init__(self):
         lines = subprocess.run(["adb", "devices"], check=True, capture_output=True, text=True).stdout.splitlines()[1:]
@@ -131,27 +164,40 @@ def provision(device, apk, extension, profile=NATIVE):
     finally:
         device.root(False)
 
-def launch(device, timeout):
+def launch(device, timeout, details=None):
+    details = {} if details is None else details
     device.shell("am", "force-stop", PACKAGE)
     device.adb("logcat", "-c")
-    device.shell("am", "start", "-W", "-n", PACKAGE + "/com.spotify.music.MainActivity", timeout=timeout)
-    deadline, stable_until, pid = time.monotonic() + timeout, None, None
-    while time.monotonic() < deadline:
-        current = device.pid()
-        if pid and pid != current:
-            raise RuntimeError("Spotify process exited or restarted during startup")
-        pid = current or pid
-        if pid:
-            flags, errors = log_status(device.adb("logcat", "-d", "--pid=" + pid))
-            if errors:
-                raise RuntimeError("Startup error categories: " + ", ".join(errors))
-            if all(flags.values()):
-                if stable_until is None:
-                    stable_until = time.monotonic() + 15
-                if time.monotonic() >= stable_until:
-                    return {**flags, "stable_after_ready_seconds": 15}, pid
-        time.sleep(2)
-    raise RuntimeError("Timed out waiting for module, Node host and Shuffle+ loader evidence")
+    pid, complete = None, False
+    try:
+        device.shell("am", "start", "-W", "-n", PACKAGE + "/com.spotify.music.MainActivity", timeout=timeout)
+        began, stable_until = time.monotonic(), None
+        deadline = began + timeout
+        while time.monotonic() < deadline:
+            current = device.pid()
+            if pid and pid != current:
+                raise RuntimeError("Spotify process exited or restarted during startup")
+            pid = current or pid
+            if not pid and time.monotonic() - began > 30:
+                raise RuntimeError("Spotify did not keep a running process after launch")
+            if pid:
+                flags, errors = log_status(device.adb("logcat", "-d", "--pid=" + pid))
+                details["last_observed_markers"] = flags
+                if errors:
+                    raise RuntimeError("Startup error categories: " + ", ".join(errors))
+                if time.monotonic() - began > 60 and not (flags["integrated_loader_entered"] and flags["module_entered"]):
+                    raise RuntimeError("Integrated LSPatch or Plus module entry was not observed within 60 seconds")
+                if all(flags.values()):
+                    if stable_until is None:
+                        stable_until = time.monotonic() + 15
+                    if time.monotonic() >= stable_until:
+                        complete = True
+                        return {**flags, "stable_after_ready_seconds": 15}, pid
+            time.sleep(2)
+        raise RuntimeError("Timed out waiting for module, Node host and Shuffle+ loader evidence")
+    finally:
+        if not complete:
+            collect_startup_details(device, pid, details)
 
 def inspect_native_code(device, pid, profile=NATIVE):
     device.root(True)
@@ -186,7 +232,7 @@ def main():
         parser.error("Patched-host testing requires --apk and --extension")
     report = {"test_kind": "android37_environment_only" if args.check_environment else "logged_out_lspatch_startup", "passed": False,
               "emulation_mode": os.environ.get("SPOTIFYPLUS_EMULATION_MODE", "unspecified"),
-              "device_profile": args.device_profile, "required_api": 37, "required_app_abi": "arm64-v8a", "launches": [],
+              "device_profile": args.device_profile, "required_api": 37, "required_app_abi": "arm64-v8a", "launches": [], "startup_attempts": [],
               "playback_test_executed": False, "account_test_executed": False,
               "shuffle_ui_test_executed": False,
               "patched_host_test_executed": False,
@@ -196,11 +242,16 @@ def main():
         device = Device()
         report["environment"] = check_environment(device, args.device_profile)
         if not args.check_environment:
+            report["stage"] = "install_and_provision"
             provision(device, args.apk, args.extension, args.device_profile)
             report["installed_app_abi"] = "arm64-v8a"
             report["patched_host_test_executed"] = True
             for _ in range(2):
-                result, pid = launch(device, args.timeout)
+                report["stage"] = "launch_" + str(len(report["launches"]) + 1)
+                details = {}
+                report["startup_attempts"].append(details)
+                result, pid = launch(device, args.timeout, details)
+                report["stage"] = "inspect_native_code"
                 result["native_code"] = inspect_native_code(device, pid, args.device_profile)
                 if device.pid() != pid:
                     raise RuntimeError("Spotify exited during native code inspection")

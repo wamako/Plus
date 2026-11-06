@@ -176,3 +176,24 @@ java -cp /tmp/plus-verifier:/path/lspatch-v1.2-487-release.jar \
 `--module-sha256` selects a fresh same-run module artifact instead of the
 delivered R13 hash. Embedded bytes must still match that full input, and the
 verifier requires the R13 manifest/version.
+
+## Drive-enabled CI execution
+
+At `f3d42a769a9bc21218d7e7f61822748ff9923260`, run
+[42312473550](https://github.com/wamako/Plus/actions/runs/42312473550) passed all
+52 checks (no skips), the module build, Linux environment and configured-source
+LSPatch packaging/signature checks. The configured source is now usable.
+The first startup job hit a closed SDK archive connection; its targeted retry
+passed setup, booted API 37, installed ARM64 patched Spotify and provisioned
+Shuffle+, then timed out waiting for module/Node/extension readiness. This is a
+failed startup check, not an app/runtime pass. Two successful launches are not
+established.
+
+Failure diagnostics now record only fixed readiness flags, known exception/error
+categories, native-link reason booleans and the test stage. The launch's global
+buffer can be consulted in memory to correlate a terminated Spotify process;
+only that process supplies error categories. Global marker flags are diagnostic
+only and never satisfy startup. No raw logs, messages, URLs or file paths are
+written to reports. A missing process fails after a 30-second grace period;
+missing LSPatch/module entry fails after 60 seconds. Node/extension readiness
+still has the configured deadline. These diagnostics do not change app code.

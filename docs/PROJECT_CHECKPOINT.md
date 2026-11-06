@@ -326,3 +326,30 @@ checksum, package and device checks remain. Local tests: 52 total, one prepared
 Java fixture skipped, workflow lint/whitespace checks passed. CI still needs the
 repository secret changed to the Drive link; the connector cannot edit secrets.
 Local anonymous access/checksum does not establish CI access or app startup.
+
+Drive-enabled CI run 42312473550 at f3d42a769a9bc21218d7e7f61822748ff9923260
+passed all 52 checks (no skips), 106 JS regressions, build, Linux environment
+and actual configured-source LSPatch packaging. Downloaded package-report ZIP
+SHA-256 e934ebca3c22ddbd132fc4b80e463bd5e884eb29d824dfc76a29d89d454a3f1f
+verified; original a0a6... unchanged, exact framework/API/Vector, target37,
+embedded module b928315aec94817c3927668a09348b094f21f960508ca073cc9d213879c9f639,
+v2 signature verified with zero errors. Source-secret delivery is working.
+
+Initial startup job 128219038066 stopped before testing because the emulator
+archive download connection closed. Retried only that job. Retry 128219431936
+passed SDK/package setup, booted API37, installed the ARM64 app and provisioned
+the extension, then timed out waiting for readiness on its first launch.
+Downloaded startup-report ZIP SHA-256 561632088d6fe43c5ce7cd1386817294d0dd45408bc108a961004e419ff5b6ea
+verified. JSON: passed:false, installed_app_abi:arm64-v8a,
+patched_host_test_executed:true, launches:[], failure:readiness timeout.
+No actual ready host or extension result is established; no playback/UI check.
+
+Added fixed-field startup diagnostics (phase, process/launch marker flags,
+Spotify crash presence, known exception/error categories and native-link reason
+booleans), without persisting raw logs, message strings, URLs, paths or tokens.
+Global logs are read only in memory to find a terminated Spotify PID; global
+markers cannot satisfy a process-scoped pass. Missing process fails after 30
+seconds; missing framework/module entry after 60 seconds. Verified exact Host
+ready/Loaded script strings against the pinned upstream host.ts/script-loader.ts.
+Local tests now 55, one prepared Java fixture skipped; Actions lint passes.
+This changes only the harness/docs, not the module or extension executables.

@@ -60,8 +60,7 @@ public final class NativePlaylistWriter {
         Object response = dispatch(prepared);
         try {
             Object result = read(response, "response_");
-            if (result == null || !Boolean.TRUE.equals(read(result, "success_")))
-                throw new IllegalStateException();
+            if (result == null) throw new IllegalStateException();
             String uri = (String) read(result, "uri_");
             if (uri == null || !uri.matches("spotify:playlist:[A-Za-z0-9]{22}"))
                 throw new IllegalStateException();
@@ -102,7 +101,7 @@ public final class NativePlaylistWriter {
         schemaField(status, "statusCode_");
         if (root) {
             Class<?> result = schemaField(responseType, "response_").getType();
-            schemaField(result, "uri_"); schemaField(result, "success_");
+            schemaField(result, "uri_");
         }
         parse(responseType, new byte[0]);
         Class<?> clientType = type("com.spotify.esperanto.esperanto.ClientBase");

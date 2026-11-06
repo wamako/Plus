@@ -69,7 +69,11 @@ public class Harness {
   ok((Integer)field(field(change,"creationInfo_"),"originType_")==1);
   // Independent wire bytes assert ordering, field tags and Unicode lengths.
   ok(java.util.HexFormat.of().formatHex((byte[])c.request.wire.get(2)).equals("0a066372656174652801220a436166c3a920f09f8eb51205737461727472020801"));
-  c.response=hex("0a0308c801");w.addTracks(uri,List.of(track,track));ok(c.calls==2);ok(c.service.equals("spotify.playlist_esperanto.proto.PlaylistService"));ok(field(c.request,"uri_").equals(uri));
+  // Esperanto status + returned URI acknowledge creation. The legacy success
+  // bit is not required by the upstream service and may be absent.
+  c.response=hex("0a0308c80112291227"+java.util.HexFormat.of().formatHex(uri.getBytes(java.nio.charset.StandardCharsets.UTF_8)));
+  ok(w.create("copy").equals(uri));ok(c.calls==2);
+  c.response=hex("0a0308c801");w.addTracks(uri,List.of(track,track));ok(c.calls==3);ok(c.service.equals("spotify.playlist_esperanto.proto.PlaylistService"));ok(field(c.request,"uri_").equals(uri));
   change=field(c.request,"request_");ok(field(change,"operation_").equals("add"));ok(field(change,"after_").equals("end"));ok(field(change,"uris_").equals(List.of(track,track)));
   int count=c.calls;fails(()->w.create(" "),"PREPARE_INPUT");fails(()->w.addTracks(uri,List.of("invalid")),"PREPARE_INPUT");fails(()->w.addTracks(uri,Collections.nCopies(101,track)),"PREPARE_INPUT");ok(c.calls==count);
   fails(()->new NativePlaylistWriter(Harness.class.getClassLoader(),null).create("copy"),"PREPARE_CLIENT");

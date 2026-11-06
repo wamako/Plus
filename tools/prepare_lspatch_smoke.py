@@ -6,6 +6,8 @@ Spotify account, token or API key is used. The original stays in the job temp di
 """
 import argparse
 import hashlib
+import http.cookiejar
+from html.parser import HTMLParser
 import json
 import os
 import pathlib
@@ -13,6 +15,7 @@ import re
 import shutil
 import subprocess
 import urllib.request
+import urllib.parse
 import zipfile
 
 from verify_lspatched_package import JAR_SHA, manifest, verify
@@ -56,16 +59,69 @@ def describe_input(path):
                 pass  # Keep a fixed category; exception text may contain data.
     return report
 
+class DownloadLinkParser(HTMLParser):
+    def __init__(self):
+        super().__init__(convert_charrefs=True)
+        self.links = []
+
+    def handle_starttag(self, tag, attrs):
+        values = dict(attrs)
+        if tag == "a" and values.get("id") == "download-link":
+            self.links.append(values.get("href", ""))
+
+def apkmirror_file_link(page_url, html):
+    """Resolve only the observed provider file anchor, never ads or scripts."""
+    page = urllib.parse.urlsplit(page_url)
+    hosts = {"www.apkmirror.com", "apkmirror.com"}
+    if page.scheme != "https" or page.hostname not in hosts or page.username or page.password or page.port not in (None, 443):
+        return None
+    parser = DownloadLinkParser()
+    parser.feed(html)
+    if not parser.links:
+        return None
+    if len(parser.links) != 1:
+        raise ValueError("Ambiguous provider download link")
+    url = urllib.parse.urljoin(page_url, parser.links[0])
+    target = urllib.parse.urlsplit(url)
+    if (target.scheme != "https" or target.hostname != page.hostname or
+            target.username or target.password or target.port not in (None, 443) or
+            target.path != "/wp-content/themes/APKMirror/download.php" or target.fragment):
+        raise ValueError("Unexpected provider download link")
+    return url
+
+class HTTPSRedirects(urllib.request.HTTPRedirectHandler):
+    def redirect_request(self, req, fp, code, msg, headers, newurl):
+        if urllib.parse.urlsplit(newurl).scheme != "https":
+            raise ValueError("Insecure test-input redirect")
+        return super().redirect_request(req, fp, code, msg, headers, newurl)
+
 def download(url, path, expected, diagnostics=None):
     # Do not include URLs (which may be signed), HTTP headers or response bodies
     # in errors, patcher logs, reports or Actions artifacts.
     if not url.startswith("https://"):
         raise ValueError("An HTTPS test-input URL is required")
     try:
-        with urllib.request.urlopen(url, timeout=120) as response, path.open("wb") as out:
-            if not response.url.startswith("https://"):
-                raise ValueError("Insecure test-input redirect")
-            shutil.copyfileobj(response, out)
+        opener = urllib.request.build_opener(HTTPSRedirects(),
+                    urllib.request.HTTPCookieProcessor(http.cookiejar.CookieJar()))
+        # At most one download page and one file request. Cookies are limited to
+        # this download session and never copied from a browser or logged.
+        for attempt in range(2):
+            with opener.open(url, timeout=120) as response, path.open("wb") as out:
+                if not response.url.startswith("https://"):
+                    raise ValueError("Insecure test-input redirect")
+                final_url = response.url
+                shutil.copyfileobj(response, out)
+            if attempt or expected != ORIGINAL_SHA or path.stat().st_size > 2 * 1024 * 1024:
+                break
+            with path.open("rb") as source:
+                prefix = source.read(512).lstrip().lower()
+            if not prefix.startswith((b"<!doctype html", b"<html")):
+                break
+            link = apkmirror_file_link(final_url, path.read_text(encoding="utf-8", errors="replace"))
+            if not link:
+                break
+            url = link
+            print("Following provider download-page file link; exact APK checksum remains required")
     except Exception:
         path.unlink(missing_ok=True)
         raise RuntimeError("Test input could not be downloaded; check the configured HTTPS source") from None

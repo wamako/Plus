@@ -253,3 +253,19 @@ The first standalone QEMU probe aborted with code -6 before producing accelerato
 help; that is inconclusive, not proof that TCG is missing. Supply the SDK's
 lib64 DYLD path and ANDROID_EMULATOR_LAUNCHER_DIR/cwd, matching the normal launcher,
 and distinguish SDK-loader/probe errors from a valid backend list.
+
+After supplying SDK loader paths the native probe returned code 2, so also
+query through the binary's Android-to-QEMU argument separator. Preserve null
+backend availability if both help forms are inconclusive; do not claim TCG
+was absent merely because a diagnostic command failed.
+
+The user supplied an APKMirror download-page link. Its browser-visible
+`a#download-link` targets the same provider's
+`/wp-content/themes/APKMirror/download.php` handler. Added bounded resolution of
+that single HTTPS file anchor with a temporary cookie session, then the unchanged
+original SHA-256 guard. No temporary URL keys, page content or cookies are logged
+or committed. Browser download attempts did not produce a verified new file;
+the actual configured CI source still must pass the new downloader. Local checks:
+42 Python tests, one skipped because the prepared Java StorageHook fixture is
+absent locally; workflow actionlint and whitespace checks passed. No delivered
+APK or extension code changed.

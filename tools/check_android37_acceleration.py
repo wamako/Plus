@@ -25,7 +25,7 @@ def main():
                             capture_output=True, text=True, timeout=30)
     emulator_root = pathlib.Path(os.environ["ANDROID_HOME"]) / "emulator"
     binaries = list((emulator_root / "qemu").glob("*/qemu-system-aarch64-headless"))
-    backends, backend_code = [], None
+    backends, backend_code, probe_codes = [], None, []
     backend_error = None
     if len(binaries) == 1:
         # The normal emulator launcher provides this environment for QEMU.
@@ -33,20 +33,27 @@ def main():
         probe_env = {**os.environ, "ANDROID_EMULATOR_LAUNCHER_DIR": str(emulator_root),
                      "DYLD_LIBRARY_PATH": str(emulator_root / "lib64") +
                      (":" + os.environ["DYLD_LIBRARY_PATH"] if os.environ.get("DYLD_LIBRARY_PATH") else "")}
-        probe = subprocess.run([str(binaries[0]), "-accel", "help"], capture_output=True, text=True,
-                               timeout=30, cwd=emulator_root, env=probe_env)
-        backend_code = probe.returncode
-        text = probe.stdout + "\n" + probe.stderr
-        if probe.returncode == 0:
-            backends = [name for name in ("tcg", "hvf", "kvm", "whpx") if re.search(r"(?m)^\s*" + name + r"\s*$", text)]
-        elif "Library not loaded" in text:
-            backend_error = "sdk_dynamic_library_unavailable"
-        else:
-            backend_error = "native_probe_could_not_run"
+        # Some SDK binaries parse Android launcher options before QEMU options.
+        for args in (("-accel", "help"), ("-qemu", "-accel", "help")):
+            probe = subprocess.run([str(binaries[0]), *args], capture_output=True, text=True,
+                                   timeout=30, cwd=emulator_root, env=probe_env)
+            backend_code = probe.returncode
+            probe_codes.append(probe.returncode)
+            text = probe.stdout + "\n" + probe.stderr
+            if probe.returncode == 0:
+                backends = [name for name in ("tcg", "hvf", "kvm", "whpx") if re.search(r"(?m)^\s*" + name + r"\s*$", text)]
+                if backends:
+                    backend_error = None
+                    break
+                backend_error = "unrecognized_backend_help"
+            elif "Library not loaded" in text:
+                backend_error = "sdk_dynamic_library_unavailable"
+            else:
+                backend_error = "native_probe_could_not_run"
     report = assess(result.returncode, os.environ.get("RUNNER_ENVIRONMENT"),
-                    os.environ.get("SPOTIFYPLUS_TRY_SOFTWARE") == "true", "tcg" in backends)
+                    os.environ.get("SPOTIFYPLUS_TRY_SOFTWARE") == "true", "tcg" in backends if backends else None)
     report.update({"qemu_backend_probe_exit_code": backend_code, "qemu_accelerators": backends,
-                   "qemu_backend_probe_error": backend_error})
+                   "qemu_backend_probe_error": backend_error, "qemu_probe_attempt_codes": probe_codes})
     directory = root / "smoke-reports"
     directory.mkdir(exist_ok=True)
     (directory / "acceleration.json").write_text(json.dumps(report, indent=2) + "\n")

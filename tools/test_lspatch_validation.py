@@ -4,9 +4,9 @@ import pathlib
 import tempfile
 import unittest
 import zipfile
-from unittest.mock import patch
+from unittest.mock import patch, Mock
 
-from prepare_lspatch_smoke import download, describe_input
+from prepare_lspatch_smoke import download, describe_input, apkmirror_file_link, HTTPSRedirects
 from run_lspatch_smoke import Device, log_status, provision
 from verify_lspatched_package import verify_origin
 from check_android37_acceleration import assess
@@ -60,6 +60,10 @@ class BootScopeTests(unittest.TestCase):
 
 
 class AccelerationTests(unittest.TestCase):
+    def test_inconclusive_backend_probe_does_not_claim_tcg_is_missing(self):
+        report = assess(0, "github-hosted", try_software=True, tcg_available=None)
+        self.assertEqual(report["boot_mode"], "unavailable")
+        self.assertIsNone(report["software_backend_available"])
     def test_explicit_hosted_software_trial_does_not_claim_acceleration_or_boot(self):
         report = assess(0, "github-hosted", try_software=True, tcg_available=True)
         self.assertEqual(report["boot_mode"], "software")
@@ -161,6 +165,51 @@ class DeviceGuards(unittest.TestCase):
 
 
 class InputTests(unittest.TestCase):
+    def test_provider_link_decodes_relative_html_anchor(self):
+        url = apkmirror_file_link("https://www.apkmirror.com/apk/test/download/",
+            '<html><a href="https://advert.invalid/">ad</a><a id="download-link" '
+            'href="/wp-content/themes/APKMirror/download.php?id=1&amp;key=fixture&amp;forcebaseapk=true">file</a></html>')
+        self.assertEqual(url, "https://www.apkmirror.com/wp-content/themes/APKMirror/download.php?id=1&key=fixture&forcebaseapk=true")
+
+    def test_provider_link_refuses_other_destinations_and_ambiguous_anchors(self):
+        base = "https://www.apkmirror.com/apk/test/"
+        for href in ("https://advert.invalid/file", "http://www.apkmirror.com/file",
+                     "/advertisement", "https://user:pass@www.apkmirror.com/wp-content/themes/APKMirror/download.php",
+                     "https://www.apkmirror.com:444/wp-content/themes/APKMirror/download.php"):
+            with self.subTest(href=href), self.assertRaises(ValueError):
+                apkmirror_file_link(base, '<a id="download-link" href="' + href + '">file</a>')
+        with self.assertRaises(ValueError):
+            apkmirror_file_link(base, '<a id="download-link" href="/file">one</a>' * 2)
+        self.assertIsNone(apkmirror_file_link("https://other.invalid/", '<a id="download-link" href="/file">file</a>'))
+
+    def test_http_downgrade_is_rejected_before_request(self):
+        with self.assertRaises(ValueError):
+            HTTPSRedirects().redirect_request(None, None, 302, "", {}, "http://example.invalid/file")
+
+    def test_download_page_is_followed_once_and_final_checksum_required(self):
+        import io
+        payload = b"fixture APK bytes"
+        page = b'<html><a id="download-link" href="/wp-content/themes/APKMirror/download.php?key=fixture">file</a></html>'
+        page_url = "https://www.apkmirror.com/apk/test/download/"
+        for final in (payload, b"wrong APK", page):
+            with self.subTest(final=final), tempfile.TemporaryDirectory() as temp:
+                first, second = io.BytesIO(page), io.BytesIO(final)
+                first.url, second.url = page_url, "https://download.apkmirror.com/file.apk"
+                opener = Mock()
+                opener.open.side_effect = [first, second]
+                target = pathlib.Path(temp) / "input.apk"
+                expected = hashlib.sha256(payload).hexdigest()
+                with patch("prepare_lspatch_smoke.urllib.request.build_opener", return_value=opener), \
+                        patch("prepare_lspatch_smoke.ORIGINAL_SHA", expected):
+                    if final == payload:
+                        download(page_url, target, expected)
+                        self.assertEqual(target.read_bytes(), payload)
+                    else:
+                        with self.assertRaisesRegex(ValueError, "SHA-256"):
+                            download(page_url, target, expected)
+                        self.assertFalse(target.exists())
+                self.assertEqual(opener.open.call_count, 2)
+
     def test_unexpected_manifest_strings_cannot_leak_into_diagnostics(self):
         with tempfile.TemporaryDirectory() as temp:
             path = pathlib.Path(temp) / "input"
@@ -194,7 +243,9 @@ class InputTests(unittest.TestCase):
 
     def test_download_errors_do_not_expose_a_signed_input_url(self):
         secret_url = "https://example.invalid/input?private=do-not-log"
-        with tempfile.TemporaryDirectory() as temp, patch("urllib.request.urlopen", side_effect=OSError(secret_url)):
+        opener = Mock()
+        opener.open.side_effect = OSError(secret_url)
+        with tempfile.TemporaryDirectory() as temp, patch("urllib.request.build_opener", return_value=opener):
             with self.assertRaises(RuntimeError) as result:
                 download(secret_url, pathlib.Path(temp) / "input.apk", "0" * 64)
             self.assertNotIn(secret_url, str(result.exception))

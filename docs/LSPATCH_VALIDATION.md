@@ -91,6 +91,11 @@ A successful AVD boot alone is not a Spotify startup pass.
    `a0a6fbe6b87249bd3de88f16b342cce233f94513d41a0f6f2a06558ba51a9304`.
    A different repack/split APK is rejected. Use a private or time-limited source;
    do not commit the APK or signed URL.
+   An APKMirror download page is also accepted if its single `download-link`
+   anchor leads to that provider's HTTPS file handler. The downloader follows
+   that one link with a temporary cookie session, then requires the same pinned
+   APK checksum. Ads, scripts, ambiguous anchors and HTTP redirects are refused.
+   Expired links or provider access restrictions still require a renewed source.
 2. In [Plus Actions variables](https://github.com/wamako/Plus/settings/variables/actions),
    set **RUN_LSPATCH_SMOKE** to **true** to enable trusted same-repository PR and
    main-push runs. Fork PRs cannot receive this secret.

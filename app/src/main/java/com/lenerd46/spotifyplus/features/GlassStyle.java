@@ -104,7 +104,7 @@ public final class GlassStyle {
         Surface(View view,float radius,int intensity){owner=new WeakReference<>(view);this.radius=radius;this.intensity=Math.max(0,Math.min(100,intensity));}
         public void draw(Canvas c){
             View v=owner.get();
-            if(v!=null&&!capturing&&android.os.SystemClock.uptimeMillis()-captured>1000){
+            if(v!=null&&!capturing&&!GlassBackdrop.isCapturing()&&android.os.SystemClock.uptimeMillis()-captured>250){
                 captured=android.os.SystemClock.uptimeMillis();v.post(()->capture(v));
             }
             Rect b=getBounds();RectF r=new RectF(b.left+.7f,b.top+.7f,b.right-.7f,b.bottom-.7f);
@@ -117,14 +117,12 @@ public final class GlassStyle {
             paint.setStyle(Paint.Style.STROKE);paint.setStrokeWidth(3f);paint.setShader(new LinearGradient(r.left,r.top,r.right,r.bottom,new int[]{0x8fffffff,0x15ffffff,0x55ffffff},null,Shader.TileMode.CLAMP));c.drawRoundRect(r,radius,radius,paint);paint.setShader(null);
         }
         private void capture(View view){
-            if(capturing||!view.isShown()||view.getWidth()==0||view.getHeight()==0)return;
-            capturing=true;float old=view.getAlpha();
+            if(capturing||!view.isShown()||view.getBackground()!=this||view.getWidth()==0||view.getHeight()==0)return;
+            capturing=true;
             try{
-                Bitmap image=Bitmap.createBitmap(Math.max(1,view.getWidth()/16),Math.max(1,view.getHeight()/16),Bitmap.Config.ARGB_8888);
-                Canvas canvas=new Canvas(image);int[] root=new int[2],target=new int[2];view.getRootView().getLocationOnScreen(root);view.getLocationOnScreen(target);
-                canvas.scale(1f/16,1f/16);canvas.translate(root[0]-target[0],root[1]-target[1]);
-                view.setAlpha(0f);view.getRootView().draw(canvas);backdrop=image;
-            }catch(Throwable ignored){}finally{view.setAlpha(old);capturing=false;}
+                Bitmap image=GlassBackdrop.capture(view);
+                if(image!=null){Bitmap old=backdrop;backdrop=image;if(old!=null)old.recycle();}
+            }finally{capturing=false;}
             invalidateSelf();
         }
         public void setAlpha(int a){alpha=a;invalidateSelf();}public int getOpacity(){return PixelFormat.TRANSLUCENT;}public void setColorFilter(ColorFilter filter){paint.setColorFilter(filter);invalidateSelf();}

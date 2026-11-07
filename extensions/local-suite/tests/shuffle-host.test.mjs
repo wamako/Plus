@@ -17,7 +17,7 @@ const text=node=>node?.type==='TEXT_INSTANCE'?node.text:(node?.children||[]).map
 const nodes=node=>[node,...(node?.children||[]).flatMap(nodes)];
 const delay=()=>new Promise(r=>setTimeout(r,5));
 test('Shuffle+ bundle through real pinned loader: no writes on preview, native actions, stale/lost outcomes and unload',async()=>{
- let tree,fail=null,failPrepare=null,prepareHold=null,context=album;const values=new Map(),calls=[],errors=[];
+ let navigates=false;const links=[];let tree,fail=null,failPrepare=null,prepareHold=null,context=album;const values=new Map(),calls=[],errors=[];
  const logger={child(){return this},info(){},warn(){},error(...args){errors.push(args)}};
  const registry=new ScriptRegistry(logger,()=>{});
  const runtime={registry,ui:{forExtension(){return {}}},platformData:{clientVersion:'9.1.94.1929',osName:'Android',osVersion:'17',sdkVersion:37},session:{accessToken:'token'},
@@ -27,7 +27,7 @@ test('Shuffle+ bundle through real pinned loader: no writes on preview, native a
   callApiSync(op){if(op==='player.state')return {contextUri:context,trackUri:uri(1)};throw new Error(op)},
   requestApi:async(op,args)=>{
    calls.push({op,args});
-   if(op==='shuffleplus.capabilities')return {version:1,host:15,route:"native-play-command",playerReady:true,limit:10000};
+   if(op==='shuffleplus.capabilities')return {version:1,host:16,route:"native-play-command",playerReady:true,limit:10000};
    if(op==='shuffleplus.queue')return {mode:'queue',ticket,count:3,tracks:[1,1,2].map(n=>({uri:uri(n),title:'Song '+n,artist:'Artist'}))};
    if(op==='shuffleplus.prepare'){if(prepareHold)await prepareHold;if(failPrepare)throw new Error(failPrepare);return {mode:'collection',ticket,count:args.uris.length};}
    if(op==='shuffleplus.apply'){if(fail)throw new Error(fail);return {verification:"visible-order",applied:args.order.length}}
@@ -36,7 +36,7 @@ test('Shuffle+ bundle through real pinned loader: no writes on preview, native a
   },
   getTrack:async uri=>({uri,title:'Song',artist:'Artist',artists:['Artist'],album:{title:'Album'},durationMs:100000}),
   getCurrentTrack(){return {uri:uri(1)}},getProgress(){return 0},
-  closeSurface(s){registry.unmountSurface(s,'sideDrawer');return true},navigate(){},sendCommand(){},toast(){},navigateBack(){}};
+  closeSurface(s){registry.unmountSurface(s,'sideDrawer');return true},navigate(uri,target){links.push({uri,target});return navigates;},sendCommand(){},toast(){},navigateBack(){}};
  const originalFetch=globalThis.fetch;globalThis.fetch=async()=>{throw new Error('Unexpected HTTP request')};
  const loader=new ScriptLoader(runtime,logger);
  const read=()=>{tree=[...registry.mountedSurfaces.values()].find(s=>s.surfaceId==='sideDrawer')?.root.getTree();return text(tree)};
@@ -54,7 +54,7 @@ test('Shuffle+ bundle through real pinned loader: no writes on preview, native a
   loader.loadScript(path.join(root,'build/SpotifyPlus-ShufflePlus/shuffle-plus'),'user');
   assert.equal(registry.getScripts().length,1);assert.equal(calls.length,0);
   const entry=[...registry.getSideDrawerItems().values()][0];registry.emitSideDrawerPress(entry.scriptId,entry.id);await until(()=>read().includes('Load and shuffle collection'));
-  press('Check active playback adapter');await until(()=>read().includes('Active module R15'));assert.equal(mutations().length,0);
+  press('Check active playback adapter');await until(()=>read().includes('Active module R16'));assert.equal(mutations().length,0);
   press('Preview shuffled upcoming queue');await until(()=>read().includes('Confirm upcoming shuffle'));
   assert.equal(mutations().length,0);assert.match(read(),/3 tracks in preview/);
   press('Cancel shuffle confirmation');assert.equal(mutations().length,0);
@@ -97,6 +97,8 @@ test('Shuffle+ bundle through real pinned loader: no writes on preview, native a
   beforePreview('Preparing shuffled playback…');
   assert.equal(mutations().length,5);const pendingButton=button('Prepare shuffled playback');assert.ok(pendingButton.props.disabled||pendingButton.props.enabled===false);release();prepareHold=null;
   await until(()=>button('Start shuffled playback'));const staleCallback=press('Cancel shuffle confirmation');
+  press('Open track in Spotify');assert.equal(links.length,1);assert.equal(links[0].target,'spotify');assert.ok(read().includes('Shuffle+'),'failed navigation keeps the page');
+  navigates=true;press('Open track in Spotify');assert.equal(links.length,2);assert.equal(registry.mountedSurfaces.size,0,'successful navigation removes the extension overlay');
   runtime.unregisterScript('com.wamako.shuffleplus');dispatchReactEvent(staleCallback,{surfaceId:'sideDrawer'});assert.equal(mutations().length,5);
  }finally{for(const s of [...registry.getScripts()])runtime.unregisterScript(s.manifest.id);clearCommitListener('sideDrawer');globalThis.fetch=originalFetch;}
  assert.equal(registry.getScripts().length,0);assert.equal(registry.getSideDrawerItems().size,0);assert.equal(registry.cleanupCallbacks.size,0);assert.equal(registry.eventHandlers.size,0);assert.deepEqual(errors,[]);

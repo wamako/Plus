@@ -5,8 +5,6 @@ import com.lenerd.spotifyplus.module.hooks.PlayerHook;
 import com.lenerd46.spotifyplus.player.NextUpQueue;
 import org.json.*;
 import java.lang.reflect.*;
-import java.nio.charset.StandardCharsets;
-import java.security.MessageDigest;
 import java.util.*;
 import java.util.concurrent.TimeUnit;
 
@@ -16,7 +14,7 @@ public final class ShufflePlusBridge {
     private static ClassLoader engineLoader;
     private ShufflePlusBridge() {}
     public static synchronized Object execute(ClassLoader loader,String operation,JSONObject args) throws Exception {
-        if(operation.equals("shuffleplus.capabilities")) return new JSONObject().put("version",1).put("host",15).put("route","native-play-command").put("playerReady",PlayerHook.contextPlayer!=null).put("binding",PlayerHook.playBinding).put("limit",ShuffleEngine.LIMIT);
+        if(operation.equals("shuffleplus.capabilities")) return new JSONObject().put("version",1).put("host",16).put("route","native-play-command").put("playerReady",PlayerHook.contextPlayer!=null).put("binding",PlayerHook.playBinding).put("limit",ShuffleEngine.LIMIT);
         if(engine==null || engineLoader!=loader) {
             engineLoader=loader;
             engine=new ShuffleEngine(new NativeBackend(loader),android.os.SystemClock::elapsedRealtime);
@@ -79,10 +77,7 @@ public final class ShufflePlusBridge {
                 }
                 Object options=call(Utils.playerState,"options");
                 boolean shuffled=(Boolean)call(options,"shufflingContext");
-                // AutoValue PlayerQueue contains revision/current/previous/next, not playback position.
-                if(state.getClass().getMethod("toString").getDeclaringClass()==Object.class) throw new IllegalStateException();
-                String fingerprint=Base64.getEncoder().encodeToString(MessageDigest.getInstance("SHA-256")
-                        .digest(state.toString().getBytes(StandardCharsets.UTF_8)));
+                String fingerprint=QueueIdentity.fingerprint(state);
                 return new ShuffleEngine.Snapshot(repo,revision,fingerprint,shuffled,items,previous,delimiter,call(state,"track"));
             } catch(Exception | LinkageError error){throw controlled(error,"READY");}
         }
@@ -100,7 +95,7 @@ public final class ShufflePlusBridge {
         }
         public void play(Object value) {
             Play p=(Play)value;
-            if(p.client!=PlayerHook.contextPlayer) throw ShuffleEngine.error("STALE");
+            if(p.client!=PlayerHook.contextPlayer) throw ShuffleEngine.error("STALE_PLAYER");
             Object result;
             try {result=await(p.rpc.invoke(p.client,p.request));}
             catch(Exception | LinkageError error){throw ShuffleEngine.error("RPC");}

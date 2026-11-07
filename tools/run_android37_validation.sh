@@ -17,4 +17,10 @@ if [ "$SPOTIFYPLUS_RUN_PATCHED_HOST" = true ]; then
     --storage-probe "$RUNNER_TEMP/storage-probe/storage-probe" \
     --original-control "$RUNNER_TEMP/lspatch-smoke/spotify-original.apk" \
     --report "$RUNNER_TEMP/smoke-reports/startup.json" --timeout 360
+  if [ "${SELECTED_NATIVE_X86:-false}" = true ]; then
+    python3 tools/run_android_ui_checks.py \
+      --module "$RUNNER_TEMP/plus-module/app-debug.apk" \
+      --tests "$RUNNER_TEMP/ui-tests/app-debug-androidTest.apk" \
+      --report "$RUNNER_TEMP/smoke-reports/rendering-navigation.json"
+  fi
 fi

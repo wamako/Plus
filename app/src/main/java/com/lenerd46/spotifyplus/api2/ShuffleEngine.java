@@ -89,9 +89,11 @@ public final class ShuffleEngine {
             seen[index]=true; order.add(plan.tracks.get(index));
         }
         Snapshot current=backend.read();
-        if(current.owner!=plan.snapshot.owner || !current.revision.equals(plan.snapshot.revision) ||
-                !current.fingerprint.equals(plan.snapshot.fingerprint) || current.shuffled!=plan.snapshot.shuffled)
-            throw error("STALE");
+        if(current.owner!=plan.snapshot.owner) throw error("STALE_OWNER");
+        if(!current.fingerprint.equals(plan.snapshot.fingerprint)) throw error("STALE_ORDER");
+        if(current.shuffled!=plan.snapshot.shuffled) throw error("STALE_OPTIONS");
+        // Revision/metadata refreshes are common without an order change. For a
+        // SetQueue command, use this fresh revision as Spotify's CAS token.
         if(plan.mode.equals("queue")) backend.replace(current,order);
         else {
             // Collection order was fixed at prepare time, so callers cannot alter it on Apply.

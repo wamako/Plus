@@ -583,3 +583,19 @@ API2_R15_UPSTREAM.md for evidence, implementation, tests and phone acceptance.
 This remains an unverified authenticated playback repair candidate until the
 phone demonstrates the requested order. Both R15 repatching and ZIP replacement
 are required. The four other local extensions remain 0.1.7.
+
+
+## R16 / Shuffle+ 0.1.4: stale guards, navigation and glass (2026-11-07)
+
+User reports R15 still makes no playback change, with SP_SHUFFLE_STALE; Open track
+is inactive and glass has ghosted/pixelated text. R16 replaces whole-object/revision
+comparison with URI/UID/queued-flag occurrence identity, keeps real stale guards
+with specific codes and uses a fresh revision for SetQueue. Adds the missing
+system/UI navigation registrations and conditional extension-overlay dismissal.
+Glass capture excludes the foreground via INVISIBLE/finally, suppresses nested
+captures and adds actual blur. Five real Android instrumentation fixtures and a
+synthetic rendering artifact extend the emulator checks. See API2_R16_VALIDATION.md.
+No logged-in playback, native ARM or Samsung acceptance is claimed. Do not ask for
+credentials in chat; current CI has no secure interactive emulator sign-in handoff.
+R16 module and 0.1.4 ZIP both required; other extensions remain 0.1.7. Draft PR2
+stays unmerged. Wait for this revision's build/startup/instrumentation before delivery.

@@ -1,13 +1,13 @@
-# Shuffle+ 0.1.3 for Spotify Plus R15
+# Shuffle+ 0.1.4 for Spotify Plus R16
 
-Version 0.1.3 requires the **R15 module APK**. Repatch the original Spotify
+Version 0.1.4 requires the **R16 module APK**. Repatch the original Spotify
 9.1.94.1929 APK with this module; installing the ZIP or the module alone does not
 replace an older module embedded by LSPatch.
 
 Collection playback now uses Spotify's normal native PlayCommand handler and
 its interceptors, rather than a direct Esperanto Play request. It supplies the
 exact explicit song order and waits for the player/visible queue to match.
-Use **Check active playback adapter** to verify module R15, the binding and live
+Use **Check active playback adapter** to verify module R16, the binding and live
 player capture. If the player has not been captured, select a song from an album
 or playlist in Spotify before preparing again. Errors include a fixed stage code.
 
@@ -22,7 +22,7 @@ to understand explicit context playback; its implementation was not copied.
 
 ## Install
 
-1. Repatch Spotify **9.1.94.1929 / arm64** using the **R15** Plus module in
+1. Repatch Spotify **9.1.94.1929 / arm64** using the **R16** Plus module in
    LSPatch. A ZIP alone cannot add the native playback adapter to R12/R13.
 2. Extract this ZIP. Put the **shuffle-plus** folder beside your existing four
    local extension folders in SpotifyPlusLocal. It must directly contain
@@ -50,7 +50,7 @@ Start playback once so the native player repository is available.
   from Extensions afterward. A player-shuffle-button replacement is not added.
 
 Preparations do not change playback. Native tickets expire after two minutes and
-are single-use. A changed queue/player snapshot is rejected before dispatch; the
+are single-use. Song occurrence/order, queued flags, player-service or shuffle-option changes are rejected before dispatch. Revision-only updates and unrelated metadata refreshes do not invalidate a preview; the
 native SetQueue revision additionally protects upcoming-queue edits at the server.
 Starting a collection uses normal Play, which does not provide a queue-revision
 compare-and-set: it is an explicit user-requested playback replacement.
@@ -72,8 +72,12 @@ of every song in a 10,000-song request.
 
 ## Validation limits
 
-Production engine/protocol JVM checks, regression tests and the actual pinned
+Production engine/native-command JVM checks, regression tests and the actual pinned
 API-2 host-loader/renderer tests accompany the source. Android compilation and APK
 class/native checks are required before delivery. Live playback and UI acceptance
 on the user's Android 17 / LSPatch phone remain necessary. Begin with a small queue
 or album. No Last.fm key or public Spotify audio-features endpoint is required.
+
+R16 also restores the host navigation handler and closes this extension after
+Open track is accepted. Android instrumentation exercises production glass
+capture/drawing and intent resolution; these are not authenticated playback tests.

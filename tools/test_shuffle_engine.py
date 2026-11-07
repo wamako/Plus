@@ -24,9 +24,9 @@ public class Harness {
   ok(e.apply(q.ticket,List.of(2,0,1))==3);ok(b.writes==1);ok(b.ordered.get(0).nativeTrack==b.third&&b.ordered.get(1).nativeTrack==b.first&&b.ordered.get(2).nativeTrack==b.second);
   final String once=q.ticket;fails(()->e.apply(once,List.of(0,1,2)),"USED");ok(b.writes==1);
   q=e.queue();final String duplicate=q.ticket;fails(()->e.apply(duplicate,List.of(0,0,2)),"INPUT");ok(b.writes==1);
-  q=e.queue();final String stale=q.ticket;b.state=b.state("r2","snapshot",false);fails(()->e.apply(stale,List.of(0,1,2)),"STALE");ok(b.writes==1);
-  q=e.queue();final String advanced=q.ticket;b.state=b.state("r2","different current or flags",false);fails(()->e.apply(advanced,List.of(0,1,2)),"STALE");ok(b.writes==1);
-  q=e.queue();final String toggled=q.ticket;b.state=b.state("r2","different current or flags",true);fails(()->e.apply(toggled,List.of(0,1,2)),"STALE");fails(()->e.queue(),"SHUFFLE_ON");b.state=b.state("r3","new",false);
+  q=e.queue();final String stale=q.ticket;b.state=b.state("r2","order changed",false);fails(()->e.apply(stale,List.of(0,1,2)),"STALE_ORDER");ok(b.writes==1);
+  q=e.queue();final String advanced=q.ticket;b.state=b.state("r2","different current or flags",false);fails(()->e.apply(advanced,List.of(0,1,2)),"STALE_ORDER");ok(b.writes==1);
+  q=e.queue();final String toggled=q.ticket;b.state=b.state("r2","different current or flags",true);fails(()->e.apply(toggled,List.of(0,1,2)),"STALE_OPTIONS");fails(()->e.queue(),"SHUFFLE_ON");b.state=b.state("r3","new",false);
   q=e.queue();final String expired=q.ticket;now[0]=120001;fails(()->e.apply(expired,List.of(0,1,2)),"EXPIRED");
   q=e.queue();final String evicted=q.ticket;e.queue();e.queue();fails(()->e.apply(evicted,List.of(0,1,2)),"EXPIRED");
   List<String> input=new ArrayList<>(List.of(uri(2),uri(1),uri(1)));
@@ -39,6 +39,8 @@ public class Harness {
   fails(()->e.collection("spotify:collection:tracks",List.of()),"LIMIT");
   fails(()->e.collection("spotify:collection:tracks",Collections.nCopies(10001,uri(1))),"LIMIT");
   p=e.collection("spotify:collection:tracks",Collections.nCopies(10000,uri(1)));ok(p.tracks.size()==10000&&b.writes==3);
+  Backend fresh=new Backend();ShuffleEngine f=new ShuffleEngine(fresh,()->0);ShuffleEngine.Plan stable=f.queue();fresh.state=fresh.state("metadata-only-revision","snapshot",false);ok(f.apply(stable.ticket,List.of(2,0,1))==3&&fresh.writes==1);
+  stable=f.collection("spotify:collection:tracks",List.of(uri(1)));fresh.state=fresh.state("another-revision","snapshot",false);ok(f.apply(stable.ticket,List.of(0))==1&&fresh.writes==2);
   System.out.println("PASS engine stale/single-use/occurrence/history/bounds checks");
  }
 }'''
@@ -66,7 +68,7 @@ FIXTURES={
 public class AdapterHarness {
  static void ok(boolean b){if(!b)throw new AssertionError();}
  static String uri(int n){return "spotify:track:"+String.format("%022d",n);}
- public static class Track {final String uri,uid;Track(int n,String u){uri=AdapterHarness.uri(n);uid=u;}public String uri(){return uri;}public String uid(){return uid;}public Map<String,String> metadata(){return Map.of("title",uid);}public String toString(){return uri+uid;}}
+ public static class Track {final String uri,uid;final Map<String,String> meta=new HashMap<>();Track(int n,String u){uri=AdapterHarness.uri(n);uid=u;}public String uri(){return uri;}public String uid(){return uid;}public Map<String,String> metadata(){return meta;}public String toString(){return uri+uid;}}
  public static class Opt {final Track value;Opt(Track t){value=t;}public boolean c(){return value!=null;}public Track b(){return value;}public String toString(){return String.valueOf(value);}}
  public static class State {String rev="r";final Track a=new Track(1,"a"),b=new Track(1,"b"),c=new Track(2,"c"),old=new Track(3,"old");List<Track> next=List.of(a,b,c),prev=List.of(old);Opt current=new Opt(old);public Opt track(){return current;}public String revision(){return rev;}public List<Track> nextTracks(){return next;}public List<Track> prevTracks(){return prev;}public String toString(){return rev+next+prev+current;}}
  public static class Options {public boolean shuffled;public boolean shufflingContext(){return shuffled;}}
@@ -80,15 +82,17 @@ public class AdapterHarness {
  static JSONObject order(String ticket,int... values){JSONArray a=new JSONArray();for(int i:values)a.put(i);return new JSONObject().put("ticket",ticket).put("order",a);}
  public static void main(String[] args)throws Exception{
   State state=new State();Repo repo=new Repo(state);PlayerState player=new PlayerState();Handler handler=new Handler(state);com.lenerd46.spotifyplus.player.NextUpQueue.repo=repo;com.lenerd.spotifyplus.module.Utils.playerState=player;com.lenerd.spotifyplus.module.hooks.PlayerHook.contextPlayer=handler;
-  ok(((JSONObject)call("capabilities",new JSONObject())).getInt("host")==15);
+  ok(((JSONObject)call("capabilities",new JSONObject())).getInt("host")==16);
   JSONObject p=(JSONObject)call("queue",new JSONObject());ok(p.getInt("count")==3&&repo.writes==0);String ticket=p.getString("ticket");call("apply",order(ticket,2,0,1));ok(repo.last.next.equals(List.of(state.c,state.a,state.b))&&repo.last.previous.equals(state.prev));fail("apply",order(ticket,2,0,1),"USED");
-  p=(JSONObject)call("queue",new JSONObject());state.rev="changed";fail("apply",order(p.getString("ticket"),0,1,2),"STALE");player.options.shuffled=true;fail("queue",new JSONObject(),"SHUFFLE_ON");player.options.shuffled=false;
+  p=(JSONObject)call("queue",new JSONObject());state.rev="changed";state.a.meta.put("title","enriched title");state.a.meta.put("image_url","new artwork");call("apply",order(p.getString("ticket"),0,1,2));ok(repo.last.revision.equals("changed"));
+  p=(JSONObject)call("queue",new JSONObject());state.current=new Opt(new Track(3,"different-occurrence"));fail("apply",order(p.getString("ticket"),0,1,2),"STALE_ORDER");
+  p=(JSONObject)call("queue",new JSONObject());state.a.meta.put("is_queued","true");fail("apply",order(p.getString("ticket"),0,1,2),"STALE_ORDER");state.a.meta.remove("is_queued");player.options.shuffled=true;fail("queue",new JSONObject(),"SHUFFLE_ON");player.options.shuffled=false;
   JSONObject source=new JSONObject().put("context","spotify:collection:tracks").put("uris",new JSONArray().put(uri(2)).put(uri(1)).put(uri(1)));
   com.lenerd.spotifyplus.module.hooks.PlayerHook.contextPlayer=null;fail("prepare",source,"PLAYER_READY");ok(handler.writes==0);com.lenerd.spotifyplus.module.hooks.PlayerHook.contextPlayer=handler;
   p=(JSONObject)call("prepare",source);ok(handler.writes==0);call("apply",order(p.getString("ticket"),0,1,2));ok(handler.writes==1&&handler.interceptors==1);
   PlayCommand c=handler.last;ok(c.context.uri.isEmpty()&&c.context.pages.size()==1&&c.context.pages.get(0).tracks.size()==3);ok(c.options.always&&!c.options.overrides.shuffled&&c.options.skip.track==0L&&c.options.skip.page==0L);ok(c.origin.feature.equals("spotifyplus")&&c.origin.view.equals("spotify:collection:tracks"));ok(state.current.b().uri().equals(uri(2))&&state.next.size()==2&&!state.next.get(0).uid().equals(state.next.get(1).uid()));
   handler.noOp=true;p=(JSONObject)call("prepare",source);ticket=p.getString("ticket");fail("apply",order(ticket,0,1,2),"UNCONFIRMED");fail("apply",order(ticket,0,1,2),"USED");ok(handler.writes==2);handler.noOp=false;
-  p=(JSONObject)call("prepare",source);com.lenerd.spotifyplus.module.hooks.PlayerHook.contextPlayer=new Handler(state);fail("apply",order(p.getString("ticket"),0,1,2),"STALE");ok(handler.writes==2);com.lenerd.spotifyplus.module.hooks.PlayerHook.contextPlayer=handler;
+  p=(JSONObject)call("prepare",source);com.lenerd.spotifyplus.module.hooks.PlayerHook.contextPlayer=new Handler(state);fail("apply",order(p.getString("ticket"),0,1,2),"STALE_PLAYER");ok(handler.writes==2);com.lenerd.spotifyplus.module.hooks.PlayerHook.contextPlayer=handler;
   handler.status="Failure{}";p=(JSONObject)call("prepare",source);fail("apply",order(p.getString("ticket"),0,1,2),"PLAY_REFUSED");handler.status="unexpected";p=(JSONObject)call("prepare",source);fail("apply",order(p.getString("ticket"),0,1,2),"ACK");handler.status="Success{}";
   handler.loseAfterWrite=true;p=(JSONObject)call("prepare",source);ticket=p.getString("ticket");fail("apply",order(ticket,0,1,2),"RPC");int writes=handler.writes;fail("apply",order(ticket,0,1,2),"USED");ok(handler.writes==writes);handler.loseAfterWrite=false;
   repo.noOp=true;p=(JSONObject)call("queue",new JSONObject());fail("apply",order(p.getString("ticket"),1,0),"UNCONFIRMED");repo.noOp=false;repo.rejected=true;p=(JSONObject)call("queue",new JSONObject());fail("apply",order(p.getString("ticket"),0,1),"CONFLICT");
@@ -100,7 +104,7 @@ class ShuffleTests(unittest.TestCase):
  def test_engine_and_native_command(self):
   with tempfile.TemporaryDirectory() as tmp:
    root=pathlib.Path(tmp);files={**FIXTURES,'Harness.java':HARNESS}
-   for name in ['ShuffleEngine','NativePlaybackCommand','ShufflePlusBridge']:
+   for name in ['ShuffleEngine','QueueIdentity','NativePlaybackCommand','ShufflePlusBridge']:
     files['com/lenerd46/spotifyplus/api2/'+name+'.java']=(ROOT/'app/src/main/java/com/lenerd46/spotifyplus/api2'/f'{name}.java').read_text()
    for name,body in files.items():p=root/name;p.parent.mkdir(parents=True,exist_ok=True);p.write_text(body)
    c=subprocess.run(['java','com.sun.tools.javac.Main','-d',str(root/'classes'),*[str(p) for p in root.rglob('*.java')]],capture_output=True,text=True)

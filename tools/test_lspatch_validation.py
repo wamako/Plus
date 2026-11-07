@@ -232,7 +232,7 @@ class LogTests(unittest.TestCase):
         device = Mock()
         device.pid.return_value = None
         device.adb.return_value = ("Bootstrap loader from embedment\n[SpotifyPlus] Loading SpotifyPlus v\n"
-                                   "Native PlayCommand binding installed\nHost ready\nLoaded script com.wamako.shuffleplus from /private")
+                                   "Native PlayCommand binding installed\nSystem navigation handlers installed\nHost ready\nLoaded script com.wamako.shuffleplus from /private")
         details = {}
         with patch("run_lspatch_smoke.time.monotonic", side_effect=[0, 0, 31]):
             with self.assertRaisesRegex(RuntimeError, "running process"):
@@ -257,7 +257,7 @@ class LogTests(unittest.TestCase):
 
     def test_ready_markers_do_not_hide_native_startup_failure(self):
         flags, errors = log_status("Bootstrap loader from embedment\n"
-                                   "[SpotifyPlus] Loading SpotifyPlus v0.10.0\nNative PlayCommand binding installed\nHost ready\n"
+                                   "[SpotifyPlus] Loading SpotifyPlus v0.10.0\nNative PlayCommand binding installed\nSystem navigation handlers installed\nHost ready\n"
                                    "Loaded script com.wamako.shuffleplus from /test\n"
                                    "UnsatisfiedLinkError: Attempt to load writable file")
         self.assertTrue(all(flags.values()))

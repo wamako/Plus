@@ -19,9 +19,13 @@ const known = {
   PLAYER_READY: "Start a song from an album or playlist in Spotify, then prepare a new Shuffle+ preview.",
   PLAY_REFUSED: "Spotify’s native player refused this playback command. Check playback permissions and prepare a new preview.",
   READY: "Start Spotify playback once, then reopen Shuffle+ and load a new preview.",
-  PREPARE: "The native playback protocol could not be prepared. Check that R15 is active.",
+  PREPARE: "The native playback protocol could not be prepared. Check that R16 is active.",
   SHUFFLE_ON: "Turn off Spotify's shuffle in the player before reshuffling the upcoming queue.",
   STALE: "Playback or the queue changed. Load a new preview before applying it.",
+  STALE_ORDER: "The current song, history, or upcoming song order changed. Load a new preview before applying it.",
+  STALE_OWNER: "Spotify replaced its queue service. Load a new preview before applying it.",
+  STALE_OPTIONS: "Spotify’s shuffle setting changed. Load a new preview before applying it.",
+  STALE_PLAYER: "Spotify replaced its playback service. Load a new preview before applying it.",
   EXPIRED: "This preview expired. Prepare a new one; previews last two minutes.",
   INPUT: "The shuffle preview was invalid. Prepare a new preview.",
   LIMIT: "Shuffle+ applies 1–10,000 songs at a time. Choose a playback range for a larger collection.",
@@ -34,7 +38,7 @@ export function shuffleError(error, mutation = false) {
   const code = /\bSP_SHUFFLE_([A-Z_]+)\b/.exec(String(error?.message || ""))?.[1];
   const result = new Error((code === "UNCONFIRMED" ? "Spotify acknowledged the command, but its player and queue did not confirm the previewed order. Inspect playback before trying again." : known[code]) || (mutation
     ? "The native shuffle did not return a confirmed result. Inspect playback before trying again."
-    : "Shuffle+ needs the R15 playback adapter. Repatch Spotify with the R15 module, then restart it."));
+    : "Shuffle+ needs the R16 playback adapter. Repatch Spotify with the R16 module, then restart it."));
   if (code) result.message += ` [SP_SHUFFLE_${code}]`;
   result.unknown = mutation && !known[code];
   return result;
@@ -46,7 +50,7 @@ export class ShuffleClient {
     let value;
     try {
       value = await this.api.ShufflePlus.capabilities();
-      if (value?.version !== 1 || !Number.isSafeInteger(value?.host) || value.host < 15 || value?.route !== "native-play-command" || value?.limit !== SHUFFLE_LIMIT) throw new Error();
+      if (value?.version !== 1 || !Number.isSafeInteger(value?.host) || value.host < 16 || value?.route !== "native-play-command" || value?.limit !== SHUFFLE_LIMIT) throw new Error();
     } catch (error) { throw shuffleError(error); }
     check(job);
     return value;

@@ -24,3 +24,15 @@ if (!source.includes("    ShufflePlus: {")) {
 ${factory}`);
   fs.writeFileSync(file, source);
 }
+// Navigation is synchronous acceptance. Unmount the extension overlay only
+// when Android accepted the link, otherwise keep the page available to retry.
+const before = "openSpotify: uri => this.runtime.navigate(uri, 'spotify'),";
+const after = `openSpotify: uri => {
+                    const opened = this.runtime.navigate(uri, 'spotify');
+                    if (opened) this.runtime.closeSurface(scriptId);
+                    return opened;
+                },`;
+if (source.includes(before)) {
+  source = source.replace(before, after);
+  fs.writeFileSync(file, source);
+} else if (!source.includes(after)) throw new Error("Pinned SDK navigation shape changed");

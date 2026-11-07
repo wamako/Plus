@@ -2,6 +2,7 @@
 import hashlib
 import os
 import pathlib
+import re
 import subprocess
 import tempfile
 import unittest
@@ -424,6 +425,14 @@ class DeviceGuards(unittest.TestCase):
 
 
 class InputTests(unittest.TestCase):
+    def test_current_declared_build_version_is_supported_for_both_explicit_abis(self):
+        source=(pathlib.Path(__file__).resolve().parents[1]/"app/build.gradle").read_text()
+        version=re.search(r'versionName \("([^"]+)"',source).group(1)
+        for abi,suffix in [("arm64-v8a",""),("x86_64","-emulator-x86_64")]:
+            validate_module_identity({"package":"com.lenerd46.spotifyplus","version":version+suffix},abi)
+            with self.assertRaises(AssertionError):
+                validate_module_identity({"package":"com.lenerd46.spotifyplus","version":"0.10.0-api2.9.1.94.999"+suffix},abi)
+
     def test_emulator_module_version_requires_explicit_abi(self):
         phone = {"package": "com.lenerd46.spotifyplus", "version": "0.10.0-api2.9.1.94.13"}
         emulator = {**phone, "version": phone["version"] + "-emulator-x86_64"}

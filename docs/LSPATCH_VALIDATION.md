@@ -1,28 +1,44 @@
 # Android 17 / LSPatch validation on Linux
 
-## Verified default
+## Default profile and tested coverage
 
 The normal workflow runs entirely on **ubuntu-24.04/KVM**, using Google's stable
-**Android 37.0 Google APIs x86_64** image, a separately built **native x86_64**
-Spotify Plus module, and integrated official **LSPatch 1.2 (487), signature mode 2**.
-No Mac, self-hosted runner, device subscription or additional runner label is needed.
+**Android37.0 Google APIs x86_64** image, **4 guest vCPUs /4096MiB requested RAM**,
+a separately built **native x86_64** Spotify Plus module, and integrated official
+**LSPatch1.2 (487), signature mode2**. No Mac, self-hosted runner, device
+subscription or extra runner label is needed.
 
-This profile passed real patched-Spotify startup in
-[run 42324266946, job 128258025276](https://github.com/wamako/Plus/actions/runs/42324266946/job/128258025276)
-at `80035647f9d2b7f877c6dffd1799d263491e7fc8`. It completed **two launches**,
-each with process-scoped LSPatch/Plus entry, Node readiness, Shuffle+ production
-loader evidence, fifteen seconds of stability after readiness, mapped Node/JNI/addon
-libraries, and read-only extracted native code.
+The harness verifies the actual guest CPU/memory before installation, then waits
+for PackageManager's foreground/background handlers and the broadcast queue to
+settle after provisioning. It keeps Android's ordinary ANR deadlines and all
+startup/crash/stability/native-code requirements.
 
-The phone module is still built separately for **ARM64**. The x86_64 APK is an
-**emulator-only artifact**. This is logged-out startup coverage; it does not establish
-Samsung/native ARM behavior, login, audible playback, actual queue order, timers,
-extension UI interaction or visual alignment.
+At executable validation revision
+`6b15a70ac446484750312282307489b80d42b030`,
+[two independent fresh-AVD samples](https://github.com/wamako/Plus/actions/runs/42328262741)
+each passed **two launches** of the previously failing immutable module fixture:
+four launches in total. Both reported API37, native x86_64, **4 CPUs /3912MiB
+usable RAM**, all three idle checks, process-scoped LSPatch/Plus/Node/Shuffle+
+readiness, fifteen seconds stable after readiness, native mappings and read-only
+extracted code. Samples explicitly identify the reused source:
+run42325870725/`dfdf6d3ac6e725fed595b7e95556a39024e90279`.
 
-The workflow selecting this default is
-`559b51ba8fe4487e23153da061fa901d3f799abc`. It changes workflow selection and
-documentation; executable module/extension source is identical to the successful
-comparison run. See the PR's latest workflow for the final default-path rerun.
+The normal [current-source rebuild](https://github.com/wamako/Plus/actions/runs/42328262786)
+runs separately. Its build passed **75 Python/JVM checks,106 extension
+regressions,nine production-loader profiles**, TypeScript, Android unit/build and
+packaged DEX/native checks. Its newly built native x86_64/mode2 package also
+passed both launches with the same capacity, idle, readiness, stability, native
+mapping and read-only checks (job128270778839). The full workflow completed
+successfully; optional diagnostics were explicitly unrequested/skipped. Together
+with the independent fixture samples, this is six successful launches across
+three fresh AVDs. The standard workflow always builds and tests same-run artifacts;
+it does not depend on historical module fixtures. The temporary fixture-comparison
+workflow has been removed; normal CI has no historical-fixture dependency.
+
+The phone module remains **ARM64**. The x86_64 APK is **emulator-only**. These are
+logged-out startup tests, not Samsung/native ARM, login, audible playback, actual
+queue order, timers, extension UI interaction or visual acceptance tests. No
+production hook behavior or delivered phone/extension artifact changed.
 
 ## Existing setup
 
@@ -46,9 +62,9 @@ restricted to trusted same-repository runs.
 | --- | --- |
 | build | Pinned API-2 preparation, Python/JVM protocol fixtures, JS/TypeScript/production-loader regressions, Android unit/build and packaged DEX/native checks; default ARM64 phone module |
 | build-emulator-x86 | Same-run prepared sources, pinned official matching-version Node library, native x86_64 JNI/addon compilation, DEX/native and Node hash verification |
-| android17-environment | Real Linux/KVM guest boot; actual API37 and x86_64 profile evidence; no app-startup inference |
+| android17-environment | Real Linux/KVM guest boot; actual API37/x86_64/CPU/memory evidence; no app-startup inference |
 | lspatch-packaging | Exact original, ARM64 module bytes embedded unchanged, official framework/config, target37, signature mode2 and valid APK v2 signature |
-| lspatch-android17 | Same-run emulator module and Shuffle+ artifacts; verified native x86_64/mode2 package; actual installed ABI, two stable starts, Plus/Node/Shuffle+ readiness, native mappings and read-only code |
+| lspatch-android17 | Same-run emulator module and Shuffle+ artifacts; verified native x86_64/mode2 package, actual capacity and idle barriers; installed ABI, two stable starts, Plus/Node/Shuffle+ readiness, native mappings and read-only code |
 | validation-scope | Reports build, source/package, guest, patched startup and optional diagnostics separately |
 
 The environment job runs independently of the source download. The startup job
@@ -116,8 +132,9 @@ response bodies and private file IDs are not logged or committed. `input.json`
 exposes only fixed input categories, byte/hash/version metadata or an HTTP status.
 
 Reports contain fixed readiness/error categories, bounded process counts, known
-exception-type/frame groups and PID-correlated AOSP ApplicationExitInfo
-reason/status numbers. Raw logcat, exception messages, UI dumps, account data,
+exception-type/frame groups, bounded Java code identifiers from correlated ANR
+main threads and known reflection logs, and AOSP ApplicationExitInfo reason/status
+numbers. Raw logcat, exception messages, UI dumps, account data,
 APKs and private paths are not published.
 
 ## Disposable guest procedure
@@ -133,8 +150,8 @@ active ARM translator and does not claim translated or native ARM execution.
 The separate translation profile instead forces `--abi arm64-v8a` and verifies
 the bridge/ISA properties and actual mapped translator.
 
-Root ADB is limited to extension fixture preparation and native mapping/mode
-inspection. Ownership/SELinux labels are restored, and ADB is unrooted for each
+Root ADB is limited to extension fixture preparation, native mapping/mode
+inspection and reading a PID-correlated compressed system ANR trace after failure. Ownership/SELinux labels are restored, and ADB is unrooted for each
 launch. No root framework or manager is installed. No Spotify account or
 playback/queue mutation is used.
 
@@ -157,7 +174,7 @@ To request additional experiments, use the `run_lspatch_diagnostics` dispatch
 checkbox alongside patched-host testing, or optionally set
 `RUN_LSPATCH_DIAGNOSTICS=true`. No extra variable is needed for normal testing.
 
-| Optional job | Explicit profile |
+| Optional job | Explicit profile (historical2vCPU/3072MiB capacity) |
 | --- | --- |
 | lspatch-android17-arm-translation | API37, translated ARM64 module, mode2 |
 | lspatch-android15 | API35, translated ARM64 module, mode2; separate compatibility experiment |
@@ -174,7 +191,20 @@ no Spotify deep-link loop. The matching stock controls passed. Android15 ARM
 with mode0 reported host_failed/IllegalStateException, with a passing stock
 control. This does not prove the exact ANR cause.
 
-The same run's native x86/mode2 startup passed twice. The
+That small-guest native x86/mode2 run passed twice, but later fresh runs
+42325636007 and42325870725 failed with ANR. It was not a reliable profile. In
+[run42327643657](https://github.com/wamako/Plus/actions/runs/42327643657), all1754
+uncompressed APK entries matched exactly between passing/failing builds. A
+PID-correlated ANR trace located the main thread in
+DexKitBridge.nativeFindMethod, called by ThemeHook.findMaterialThemeMethod /
+hookMaterial3Palette during Application binding, before API2 startup. This
+identifies the blocking scan location; it does not prove a native deadlock.
+The four-core, settled profile above passed both independent samples without
+changing app behavior, skipping theme hooks, attaching a debugger or extending
+app ANR deadlines. CPU/memory/readiness changed together, so these results do
+not isolate which individual factor mattered.
+
+The
 [LSPatch Android app request](https://github.com/JingMatrix/LSPatch/blob/v1.2/manager/src/main/java/org/lsposed/lspatch/data/model/PatchRequest.kt)
 defaults to2; its
 [CLI](https://github.com/JingMatrix/LSPatch/blob/v1.2/patch/src/main/java/org/lsposed/patch/LSPatch.java)
@@ -190,7 +220,8 @@ HV_UNSUPPORTED and is no longer required.
 ## Direct reproduction
 
 Use JDK21, Python3.12 with `androguard==4.1.4`, the built x86_64 module and
-Shuffle+ folder, and a fresh disposable API37 Google x86_64 AVD:
+Shuffle+ folder, and a fresh disposable API37 Google x86_64 AVD configured with
+4vCPUs and4096MiB RAM:
 
 ```bash
 python3 tools/prepare_lspatch_smoke.py \
@@ -198,6 +229,7 @@ python3 tools/prepare_lspatch_smoke.py \
   --signature-bypass-level 2 --work /tmp/lspatch-smoke \
   --report /tmp/smoke-reports/package.json
 
+SELECTED_EMULATOR_CORES=4 SELECTED_EMULATOR_RAM_MB=4096 \
 SPOTIFYPLUS_SIGNATURE_BYPASS_LEVEL=2 python3 tools/run_lspatch_smoke.py \
   --device-profile linux-x86_64-native \
   --apk /tmp/lspatch-smoke/spotify-lspatched.apk \
@@ -217,15 +249,3 @@ Official SDK tools are checksum-verified. Guest boot has a ten-minute deadline
 and each device job a thirty-minute limit. KVM access and acceleration are
 checked before boot; no third-party translation package or forged ABI property
 is installed.
-
-
-## Reliability follow-up
-
-The native x86/mode2 two-launch success in run42324266946 is real, but the subsequent default-path run42325636007 at559b51b failed on its first launch with AOSP reason6 (ANR), while the stock x86 control passed. Do not call this profile reliable or the default-path rerun successful. The source/build checks passed. A temporary targeted workflow reuses the explicitly verified immutable module artifacts from run42324266946/80035647 to inspect PID-correlated main-thread ANR code identifiers without rebuilding or altering the app. Root ADB is restricted to reading that system trace after failure, and raw trace text/messages/paths are never published. The source run/commit is recorded; this is a prebuilt fixture test, not a build of the latest harness revision. The normal workflow still rebuilds all sources. No phone artifact or hook behavior has changed.
-
-
-## Emulator capacity experiment
-
-The entry comparison in run42327643657/job128266544299 found zero differences across all1754 uncompressed APK entries between the passing80035647 module and failingdfdf6d3 module. This rules out changed code/assets as the explanation; the exact runtime cause remains under investigation. The next environment-only experiment uses4 guest vCPUs and4096MiB RAM, verifies actual guest CPU/memory, and waits for Android's package/background handlers and broadcast queue after provisioning. Ordinary app ANR deadlines and every readiness/crash/stability/native check remain enforced. The temporary fixture workflow runs two independent fresh-AVD samples of the previously failingdfdf module; source run/commit and sample artifacts are explicit. Normal CI rebuilds current code. Optional historical diagnostics retain2vCPU/3072MiB. No phone code or artifacts change. Do not claim the capacity experiment succeeded before inspecting its results.
-
-The failing dfdf fixture's ANR trace in run42327643657/job128266579393 was read successfully. Main-thread frames show DexKitBridge.nativeFindMethod inside ThemeHook.findMaterialThemeMethod/hookMaterial3Palette during Application binding, before API2 starts. This identifies the blocking scan location, not a proven deadlock mechanism. The capacity/idle experiment therefore keeps production hook behavior intact while testing whether more emulator capacity removes this startup stall. Safe diagnostics also retain the already-logged resolved Material theme member's Java identifiers when a scan completes; no raw messages or paths are returned.

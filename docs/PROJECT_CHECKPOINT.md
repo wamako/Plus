@@ -1,8 +1,45 @@
 # Spotify Plus project checkpoint
 
-## Verified Linux startup profile
+## Current Linux validation state
 
-The verified default Linux profile is now Android17/API37, native x86_64, integrated official LSPatch1.2/487, signature mode2. In run42324266946 at 80035647f9d2b7f877c6dffd1799d263491e7fc8, job128258025276 passed two actual non-root launches with process-scoped loader/Plus/Node/Shuffle+ markers, fifteen seconds stable after readiness on each launch, named Node/JNI/addon mappings, and read-only extracted native code. Both modules built; 70 Python/JVM checks, 106 extension regressions, nine pinned loader profiles and Android unit/build/DEX/native checks passed. This is real logged-out startup coverage, not authenticated playback/UI/Samsung acceptance. The x86_64 APK is emulator-only; delivered ARM64 R13 and local extensions are unchanged. Android17 translated ARM with modes0/2 and native x86 mode0 failed with PID-correlated AOSP reason6 (ANR), one initial activity launch and no deep-link loop; stock controls passed. Android15 translated ARM mode0 reported host_failed. The LSPatch Android app source defaults to mode2 while its CLI defaults to0; no phone patch setting is assumed. Failed configurations remain documented and runnable as explicit diagnostics, without continue-on-error.
+The default is Ubuntu24.04/KVM, API37 Google x86_64, native x86_64 module,
+signature mode2,4 guest vCPUs and4096MiB requested RAM. Actual guest capacity and
+package/background/broadcast idle barriers are required; ordinary app ANR
+deadlines and every production-readiness/crash/native/stability check remain
+enforced. No phone hook behavior/artifact changes.
+
+Two independent fresh-AVD samples at6b15a70ac446484750312282307489b80d42b030,
+run42328262741/jobs128268598111 and128268598185, each passed two launches of the
+previously failing dfdf fixture (source run42325870725). Both verified4 CPUs,
+3912MiB usable RAM, all idle checks, Node/Shuffle+ readiness,15s stability per
+launch, native mappings and read-only code. Safe Material theme symbol observed
+on all four launches: p.ksg0.a(p.s1h,p.l0m0,p.gy51,p.iyf1,p.xth,p.dqj,int).
+This is a code location for future performance investigation, not a new hook.
+
+Current-source full build run42328262786 passed75 Python/JVM checks,106 extension
+regressions,nine loader profiles, TypeScript, Android unit/build and packaged
+DEX/native checks. Its standard startup job128270778839 passed both launches of
+the same-run rebuilt module with actual4 CPUs/3912MiB, idle barriers, all readiness
+markers,15s stability per start, native mappings and read-only code. The full
+workflow succeeded, with optional diagnostics explicitly skipped. Combined with
+the fixture samples, six launches passed across three fresh AVDs. Normal CI always
+rebuilds current artifacts. The temporary immutable-fixture workflow is removed
+so expired historical artifacts cannot break it.
+
+Small2vCPU/3072MiB native x86/mode2 initially passed but subsequent fresh runs
+559b51b/42325636007 anddfdf6d3/42325870725 failed with ANR. All1754 module ZIP
+entries matched exactly across passing/failing builds (run42327643657,
+job128266544299). The ANR main thread was inside DexKitBridge.nativeFindMethod
+from ThemeHook.findMaterialThemeMethod/hookMaterial3Palette during application
+binding. Do not call the old small-guest profile reliable. Resource/idle changes
+were tested together; no exact underlying native deadlock mechanism is proven.
+
+ARM translation/mode0/API35 are explicit opt-in diagnostics, retaining their
+historical2CPU/3072MiB capacity. Failures remain failures with no continue-on-error.
+The source secret and RUN_LSPATCH_SMOKE flag already work. No Mac, runner label
+or another URL is needed. Phone ARM/Samsung, account/playback/queue/UI acceptance
+remains separate. Use LSPATCH_VALIDATION.md for current instructions; subsequent
+older checkpoint paragraphs are history.
 
 
 Updated 2026-11-07 (UTC). This is the continuity record for future work. Read it with
@@ -459,3 +496,21 @@ Targeted diagnostic run42326965061 at ac285b07b2c6f78af4450d0a4fb4815109678776 p
 The entry comparison in run42327643657/job128266544299 found zero differences across all1754 uncompressed APK entries between the passing80035647 module and failingdfdf6d3 module. This rules out changed code/assets as the explanation; the exact runtime cause remains under investigation. The next environment-only experiment uses4 guest vCPUs and4096MiB RAM, verifies actual guest CPU/memory, and waits for Android's package/background handlers and broadcast queue after provisioning. Ordinary app ANR deadlines and every readiness/crash/stability/native check remain enforced. The temporary fixture workflow runs two independent fresh-AVD samples of the previously failingdfdf module; source run/commit and sample artifacts are explicit. Normal CI rebuilds current code. Optional historical diagnostics retain2vCPU/3072MiB. No phone code or artifacts change. Do not claim the capacity experiment succeeded before inspecting its results.
 
 The failing dfdf fixture's ANR trace in run42327643657/job128266579393 was read successfully. Main-thread frames show DexKitBridge.nativeFindMethod inside ThemeHook.findMaterialThemeMethod/hookMaterial3Palette during Application binding, before API2 starts. This identifies the blocking scan location, not a proven deadlock mechanism. The capacity/idle experiment therefore keeps production hook behavior intact while testing whether more emulator capacity removes this startup stall. Safe diagnostics also retain the already-logged resolved Material theme member's Java identifiers when a scan completes; no raw messages or paths are returned.
+
+
+## Completion record,2026-11-07 UTC
+
+Validated executable/harness/workflow revision:6b15a70ac446484750312282307489b80d42b030.
+Normal full green run:42328262786, startup job128270778839.
+Independent two-sample green run:42328262741, startup jobs128268598111/128268598185.
+75 Python/JVM checks,106 extension regressions,nine loader profiles, TypeScript,
+Android unit/build, both ABI package/native verifiers, source/framework/signature,
+actual4CPU API37 guest and two startup launches all passed. Primary startup uses
+newly built artifacts; targeted samples explicitly reused dfdf artifacts. Six
+successful launches across three fresh AVDs. Do not claim login/playback/queue/UI
+or native ARM/Samsung acceptance. Existing source secret and RUN_LSPATCH_SMOKE are
+sufficient; no Mac/additional setup required. Production hook behavior and phone
+R13/extension deliverables unchanged. The following final cleanup only updates
+these evidence docs and deletes the temporary lspatch-anr.yml fixture workflow;
+app, build, standard workflows and harness remain exactly as validated6b15a70.
+Draft PR2 remains unmerged; do not merge without user authorization.

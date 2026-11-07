@@ -93,6 +93,20 @@ jobs:
           path: extensions/local-suite/build/SpotifyPlus-ShufflePlus
           if-no-files-found: error
 
+      - name: Retain same-run prepared sources for the isolated emulator build
+        if: >-
+          (github.event_name == 'workflow_dispatch' && inputs.run_lspatch_smoke) ||
+          (vars.RUN_LSPATCH_SMOKE == 'true' &&
+           (github.event_name == 'push' ||
+            (github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository)))
+        uses: actions/cache/save@v4
+        with:
+          path: |
+            app/api2-source
+            app/api2-generated
+            app/api2-assets
+          key: spotifyplus-emulator-inputs-v1-${{ github.run_id }}
+
       - name: Decode release keystore
         if: github.event_name == 'push' && github.ref == 'refs/heads/main' && env.HAS_SIGNING_KEY == 'true'
         env:
@@ -117,6 +131,47 @@ jobs:
         with:
           name: SpotifyPlus-Release-APK
           path: app/build/outputs/apk/release/app-release.apk
+
+  build-emulator-x86:
+    needs: build
+    if: >-
+      (github.event_name == 'workflow_dispatch' && inputs.run_lspatch_smoke) ||
+      (vars.RUN_LSPATCH_SMOKE == 'true' &&
+       (github.event_name == 'push' ||
+        (github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository)))
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          java-version: '21'
+          distribution: temurin
+      - uses: android-actions/setup-android@v3
+        with:
+          packages: 'platform-tools platforms;android-35 build-tools;35.0.0 ndk;26.3.11579264 cmake;3.22.1'
+      - name: Restore only this run's verified prepared module sources
+        uses: actions/cache/restore@v4
+        with:
+          path: |
+            app/api2-source
+            app/api2-generated
+            app/api2-assets
+          key: spotifyplus-emulator-inputs-v1-${{ github.run_id }}
+          fail-on-cache-miss: true
+      - name: Prepare the pinned matching-version emulator Node library
+        run: python3 tools/prepare_emulator_node.py
+      - name: Build and verify the emulator-only x86_64 module
+        run: |
+          bash ./gradlew -PspotifyplusNativeAbi=x86_64 assembleDebug
+          python3 tools/verify_module_apk.py app/build/outputs/apk/debug/app-debug.apk
+          python3 tools/verify_api2_assets.py app/build/outputs/apk/debug/app-debug.apk --abi x86_64
+      - name: Upload the explicitly labeled emulator module
+        uses: actions/upload-artifact@v4
+        with:
+          name: SpotifyPlus-Emulator-x86_64-APK
+          path: app/build/outputs/apk/debug/app-debug.apk
+          if-no-files-found: error
 
   android17-environment:
     # No APK secret is needed: verify the Linux guest even if its source is down.
@@ -197,8 +252,22 @@ jobs:
     secrets:
       SPOTIFY_APK_URL: ${{ secrets.SPOTIFY_APK_URL }}
 
+  lspatch-android17-native-x86:
+    needs: [build, build-emulator-x86, lspatch-packaging]
+    if: >-
+      (github.event_name == 'workflow_dispatch' && inputs.run_lspatch_smoke) ||
+      (vars.RUN_LSPATCH_SMOKE == 'true' &&
+       (github.event_name == 'push' ||
+        (github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository)))
+    uses: ./.github/workflows/s24-validation.yml
+    with:
+      native_x86: true
+      run_patched_host: true
+    secrets:
+      SPOTIFY_APK_URL: ${{ secrets.SPOTIFY_APK_URL }}
+
   validation-scope:
-    needs: [build, android17-environment, lspatch-packaging, lspatch-android17, lspatch-android15]
+    needs: [build, android17-environment, lspatch-packaging, lspatch-android17, lspatch-android15, build-emulator-x86, lspatch-android17-native-x86]
     if: always()
     runs-on: ubuntu-latest
     steps:
@@ -207,6 +276,8 @@ jobs:
           BUILD_RESULT: ${{ needs.build.result }}
           PACKAGE_RESULT: ${{ needs.lspatch-packaging.result }}
           DEVICE_RESULT: ${{ needs.lspatch-android17.result }}
+          NATIVE_X86_BUILD_RESULT: ${{ needs.build-emulator-x86.result }}
+          NATIVE_X86_RESULT: ${{ needs.lspatch-android17-native-x86.result }}
           ANDROID15_RESULT: ${{ needs.lspatch-android15.result }}
           ENVIRONMENT_RESULT: ${{ needs.android17-environment.result }}
           BOOT_RESULT: ${{ needs.android17-environment.outputs.environment_result }}
@@ -216,6 +287,8 @@ jobs:
           printf 'Build/regression checks: **%s**\n\nPatched-host device job: **%s**\n\n' "$BUILD_RESULT" "$DEVICE_RESULT" >> "$GITHUB_STEP_SUMMARY"
           printf 'Configured Spotify source and LSPatch package verification: **%s**\n\n' "$PACKAGE_RESULT" >> "$GITHUB_STEP_SUMMARY"
           printf 'Android 17 Linux ARM64-translation environment: **%s** (separate from Spotify startup)\n\n' "$ENVIRONMENT_RESULT" >> "$GITHUB_STEP_SUMMARY"
+          printf 'Emulator-only x86_64 build: **%s**\n\n' "$NATIVE_X86_BUILD_RESULT" >> "$GITHUB_STEP_SUMMARY"
+          printf 'Android 17 native x86_64 emulator module: **%s** (different native ABI from the phone)\n\n' "$NATIVE_X86_RESULT" >> "$GITHUB_STEP_SUMMARY"
           printf 'Separate Android 15/API 35 patched-host compatibility: **%s** (does not establish Android 17 behavior)\n\n' "$ANDROID15_RESULT" >> "$GITHUB_STEP_SUMMARY"
           printf 'Actual emulator boot result: **%s**\n\n' "$BOOT_RESULT" >> "$GITHUB_STEP_SUMMARY"
           printf 'Patched tests enabled: **%s**; APK source configured: **%s**\n\n' "$PATCHED_TESTS_ENABLED" "$APK_SOURCE_CONFIGURED" >> "$GITHUB_STEP_SUMMARY"

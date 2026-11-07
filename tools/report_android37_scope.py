@@ -3,11 +3,15 @@
 import json
 import os
 import pathlib
-from run_lspatch_smoke import NATIVE, TRANSLATED, TRANSLATED35, TRANSLATED_PROFILES
+from run_lspatch_smoke import NATIVE, NATIVE_X86, TRANSLATED, TRANSLATED35, TRANSLATED_PROFILES
 
 def classify(mode, outcome, environment, probe_only=False, profile=NATIVE):
     details = environment.get("environment", {})
     abi_valid = (profile == NATIVE and details.get("abi") == "arm64-v8a" and not details.get("arm_translation"))
+    if profile == NATIVE_X86:
+        abi_valid = (details.get("profile") == NATIVE_X86 and details.get("abi") == "x86_64" and
+                     details.get("app_abi") == "x86_64" and details.get("emulator") is True and
+                     details.get("arm_translation") is False and details.get("arm_compat_advertised") is True)
     if profile in TRANSLATED_PROFILES:
         abi_valid = (details.get("profile") == profile and details.get("abi") == "x86_64" and
                      details.get("app_abi") == "arm64-v8a" and details.get("emulator") is True and
@@ -21,6 +25,7 @@ def classify(mode, outcome, environment, probe_only=False, profile=NATIVE):
               else "unsupported_runner" if mode == "unavailable" else "setup_failed")
     return {"test_kind": "android_boot_result", "emulation_mode": mode, "result": result,
             "device_profile": profile, "guest_api": details.get("api"), "native_arm64_test": guest and profile == NATIVE,
+            "native_x86_test": guest and profile == NATIVE_X86,
             "arm64_translation_test": guest and profile in TRANSLATED_PROFILES,
             "passed": True if guest else False if outcome in ("success", "failure") else None,
             "emulator_boot_attempted": outcome in ("success", "failure"),

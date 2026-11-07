@@ -232,3 +232,37 @@ separate: a successful stock control never changes a failed patched verdict.
 Only fixed markers/counts/booleans are retained, including whether Spotify was
 resumed and whether process-dump identity shapes were present. Source and native
 runtime binaries are unchanged by this control coverage.
+
+## Native x86_64 emulator-only build
+
+A distinct native-x86 experiment uses Android 17/API 37 on Linux/KVM without
+translating the module's native code. The phone build still defaults to ARM64.
+The optional Gradle property spotifyplusNativeAbi=x86_64 creates version
+0.10.0-api2.9.1.94.13-emulator-x86_64 and the separate
+SpotifyPlus-Emulator-x86_64-APK artifact. It is not the delivered phone APK.
+
+The emulator build restores prepared sources/assets only from its own workflow
+run, checks the official nodejs-mobile 18.20.4 archive and x86 library hashes,
+and requires matching node_version.h, v8-version.h, v8config.h and node_api.h.
+Those four headers were compared successfully against the pinned runtime before
+the local environment became unavailable. The ARM donor library is not replaced.
+The native addon is rebuilt for x86_64. Gradle selects only the requested ABI,
+clears generated addon assets before copying that ABI, and preserves the
+vendor x86 Node bytes. The official Node license is bundled in its assets.
+ABI verifiers check ELF architecture, pinned Node hash and load order. Package
+verification checks the explicit module version/ABI and both pinned framework
+architectures. Default ARM builds retain their existing ABI/version contract.
+
+The native test installs Spotify explicitly with x86_64, verifies that installed
+ABI and requires the same two launches, host/Shuffle+ readiness and read-only
+native code. Reports use linux-x86_64-native/kvm-native-x86_64,
+native_x86_test:true, native_arm64_test:false and arm64_translation_test:false.
+Its artifact is LSPatch-Android17-Native-x86-Reports. This is source/runtime
+compatibility on another native CPU, not proof of the phone's ARM binary.
+
+The stock controls in run 42319302108 passed on both API 35 and API 37 using the
+original ARM64 APK. The patched API 35 app stayed resumed but reported host_failed
+and IllegalStateException; the patched API 37 app lost its registered main
+process after module entry. Neither reached Node/Shuffle+ readiness. These
+results justify testing a matching native-x86 variant; they do not by themselves
+identify the precise translated-runtime failure or establish a native-x86 pass.

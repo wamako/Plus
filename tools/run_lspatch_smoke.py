@@ -41,6 +41,10 @@ NATIVE = "native-arm64"
 TRANSLATED = "linux-x86_64-arm64-translation"
 TRANSLATED35 = "linux-x86_64-arm64-translation-api35"
 TRANSLATED_PROFILES = (TRANSLATED, TRANSLATED35)
+NATIVE_X86 = "linux-x86_64-native"
+
+def app_abi(profile):
+    return "x86_64" if profile == NATIVE_X86 else "arm64-v8a"
 
 def log_status(log):
     return ({name: marker in log for name, marker in MARKERS.items()},
@@ -145,6 +149,11 @@ def check_environment(device, profile=NATIVE):
             raise RuntimeError("Requires native arm64-v8a for the native profile")
         return {"api": api, "abi": abi, "app_abi": "arm64-v8a", "emulator": True,
                 "profile": profile, "arm_translation": False}
+    if profile == NATIVE_X86:
+        if abi != "x86_64" or "arm64-v8a" not in device.shell("getprop", "ro.product.cpu.abilist64").split(","):
+            raise RuntimeError("Native x86 emulator profile requires the selected Google compatibility image")
+        return {"api": api, "abi": abi, "app_abi": "x86_64", "emulator": True,
+                "profile": profile, "arm_translation": False, "arm_compat_advertised": True}
     if profile not in TRANSLATED_PROFILES:
         raise RuntimeError("Unknown emulator test profile")
     if abi != "x86_64":
@@ -169,10 +178,11 @@ def provision(device, apk, extension, profile=NATIVE):
         raise RuntimeError("Invalid Shuffle+ input folder")
     # Force the original universal APK's ARM64 ABI on the translation profile;
     # a successful native-x86 Spotify launch would not exercise this module.
-    device.adb("install", "--abi", "arm64-v8a", apk, timeout=180)
+    selected_abi = app_abi(profile)
+    device.adb("install", "--abi", selected_abi, apk, timeout=180)
     package_info = device.shell("dumpsys", "package", PACKAGE)
-    if not re.search(r"(?m)^\s*primaryCpuAbi=arm64-v8a(?:\s|$)", package_info):
-        raise RuntimeError("Spotify was not installed with the required ARM64 ABI")
+    if not re.search(r"(?m)^\s*primaryCpuAbi=" + selected_abi + r"(?:\s|$)", package_info):
+        raise RuntimeError("Spotify was not installed with the required " + ("ARM64" if selected_abi == "arm64-v8a" else "x86_64") + " ABI")
     match = re.fullmatch(r"package:com\.spotify\.music uid:(\d+)",
                          device.shell("pm", "list", "packages", "-U", PACKAGE))
     if not match:
@@ -251,7 +261,9 @@ def original_control(device, original, profile, abi="arm64-v8a", timeout=60):
     """Only called after this harness installed the disposable patched app."""
     from prepare_lspatch_smoke import checksum, ORIGINAL_SHA
     check_environment(device, profile)
-    if abi not in ("arm64-v8a", "x86_64") or (abi == "x86_64" and profile not in TRANSLATED_PROFILES):
+    if (abi not in ("arm64-v8a", "x86_64") or
+            (abi == "x86_64" and profile not in (*TRANSLATED_PROFILES, NATIVE_X86)) or
+            (profile == NATIVE_X86 and abi != "x86_64")):
         raise RuntimeError("Invalid original-control ABI")
     if checksum(original) != ORIGINAL_SHA:
         raise RuntimeError("Original control requires the exact pinned unpatched APK")
@@ -299,7 +311,7 @@ def main():
     parser.add_argument("--check-environment", action="store_true")
     parser.add_argument("--original-control", type=pathlib.Path,
                         help="After a failed patched startup, compare the pinned original on this disposable guest")
-    parser.add_argument("--device-profile", choices=(NATIVE, *TRANSLATED_PROFILES), default=NATIVE)
+    parser.add_argument("--device-profile", choices=(NATIVE, NATIVE_X86, *TRANSLATED_PROFILES), default=NATIVE)
     parser.add_argument("--report", type=pathlib.Path, required=True)
     parser.add_argument("--timeout", type=int, default=180)
     args = parser.parse_args()
@@ -307,7 +319,7 @@ def main():
         parser.error("Patched-host testing requires --apk and --extension")
     report = {"test_kind": ("android35_environment_only" if args.device_profile == TRANSLATED35 else "android37_environment_only") if args.check_environment else "logged_out_lspatch_startup", "passed": False,
               "emulation_mode": os.environ.get("SPOTIFYPLUS_EMULATION_MODE", "unspecified"),
-              "device_profile": args.device_profile, "required_api": 35 if args.device_profile == TRANSLATED35 else 37, "required_app_abi": "arm64-v8a", "launches": [], "startup_attempts": [],
+              "device_profile": args.device_profile, "required_api": 35 if args.device_profile == TRANSLATED35 else 37, "required_app_abi": app_abi(args.device_profile), "launches": [], "startup_attempts": [],
               "playback_test_executed": False, "account_test_executed": False,
               "shuffle_ui_test_executed": False,
               "patched_host_test_executed": False,
@@ -319,7 +331,7 @@ def main():
         if not args.check_environment:
             report["stage"] = "install_and_provision"
             provision(device, args.apk, args.extension, args.device_profile)
-            report["installed_app_abi"] = "arm64-v8a"
+            report["installed_app_abi"] = app_abi(args.device_profile)
             report["patched_host_test_executed"] = True
             for _ in range(2):
                 report["stage"] = "launch_" + str(len(report["launches"]) + 1)
@@ -337,7 +349,7 @@ def main():
         report["failure"] = str(error) if isinstance(error, RuntimeError) else "ADB command timed out or could not run"
         if report["patched_host_test_executed"] and args.original_control:
             try:
-                control = original_control(device, args.original_control, args.device_profile)
+                control = original_control(device, args.original_control, args.device_profile, app_abi(args.device_profile))
                 report["original_controls"] = [control]
                 if not control["passed"] and args.device_profile in TRANSLATED_PROFILES:
                     report["original_controls"].append(original_control(device, args.original_control, args.device_profile, "x86_64"))
@@ -347,6 +359,8 @@ def main():
         raise SystemExit(report["failure"]) from None
     finally:
         args.report.write_text(json.dumps(report, indent=2) + "\n")
+        # The report contains fixed diagnostic categories, never raw device logs.
+        print("STARTUP_REPORT " + json.dumps(report, sort_keys=True), flush=True)
     print("PASS: Android API " + str(report["required_api"]) + " emulator environment (" + args.device_profile + ")" if args.check_environment else
           "PASS: two non-root app starts, Node/JNI loading, Shuffle+ loader and read-only native code")
 

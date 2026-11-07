@@ -60,7 +60,13 @@ def verify_origin(output, patched, original, expected_hash):
         assert crc == entry.CRC, "Embedded original CRC mismatch"
         assert sha.hexdigest() == expected_hash, "Embedded original APK changed"
 
-def verify(original, module, jar, patched, expected_module_sha=MODULE_SHA):
+def validate_module_identity(info, abi):
+    assert abi in ("arm64-v8a", "x86_64"), "Unsupported module ABI"
+    assert info["package"] == "com.lenerd46.spotifyplus"
+    expected = "0.10.0-api2.9.1.94.13" + ("-emulator-x86_64" if abi == "x86_64" else "")
+    assert info["version"] == expected, "Module version does not match its explicit ABI profile"
+
+def verify(original, module, jar, patched, expected_module_sha=MODULE_SHA, module_abi="arm64-v8a"):
     with original.open("rb") as f: original_hash = digest(f)
     with module.open("rb") as f: module_hash = digest(f)
     with jar.open("rb") as f: jar_hash = digest(f)
@@ -73,8 +79,12 @@ def verify(original, module, jar, patched, expected_module_sha=MODULE_SHA):
         assert value["target_sdk"] == "37", "Unexpected host target SDK"
     assert patched_manifest["min_sdk"] == "28", "LSPatch's minimum Android version differs"
     assert patched_manifest["component_factory"] == "org.lsposed.lspatch.metaloader.LSPAppComponentFactoryStub"
-    assert module_manifest["package"] == "com.lenerd46.spotifyplus"
-    assert module_manifest["version"] == "0.10.0-api2.9.1.94.13"
+    validate_module_identity(module_manifest, module_abi)
+    with zipfile.ZipFile(module) as package:
+        for path in ("lib/" + module_abi + "/libnode.so", "lib/" + module_abi + "/libnative-lib.so",
+                     "assets/nodejs/addons/" + module_abi + "/spotifyplus_bridge.node"):
+            data = package.read(path)
+            assert data[:6] == b"\x7fELF\x02\x01" and struct.unpack_from("<H", data, 18)[0] == (183 if module_abi == "arm64-v8a" else 62), "Module native ABI does not match its profile"
     with zipfile.ZipFile(patched) as output, zipfile.ZipFile(jar) as patcher:
         assert len(output.namelist()) == len(set(output.namelist())), "Duplicate ZIP names"
         verify_origin(output, patched, original, original_hash)
@@ -96,10 +106,11 @@ def verify(original, module, jar, patched, expected_module_sha=MODULE_SHA):
             assert digest(f) == module_hash, "Embedded R13 module changed"
         loader = "assets/lspatch/loader.dex"
         assert output.read(loader) == patcher.read(loader), "Loader does not match tested patcher"
-        native = "assets/lspatch/so/arm64-v8a/liblspatch.so"
-        binary = output.read(native)
-        assert binary == patcher.read(native), "ARM64 framework does not match tested patcher"
-        assert binary[:6] == b"\x7fELF\x02\x01" and struct.unpack_from("<H", binary, 18)[0] == 183
+        for abi, machine in (("arm64-v8a", 183), ("x86_64", 62)):
+            native = "assets/lspatch/so/" + abi + "/liblspatch.so"
+            binary = output.read(native)
+            assert binary == patcher.read(native), "Framework does not match tested patcher"
+            assert binary[:6] == b"\x7fELF\x02\x01" and struct.unpack_from("<H", binary, 18)[0] == machine
     with patched.open("rb") as f: patched_hash = digest(f)
     return {
         "test_kind": "offline_lspatch_packaging", "passed": True,
@@ -110,6 +121,7 @@ def verify(original, module, jar, patched, expected_module_sha=MODULE_SHA):
         "patch_mode": "integrated", "signature_bypass_level": config["sigBypassLevel"],
         "embedded_original_unchanged": True, "embedded_module_unchanged": True,
         "loader_and_arm64_framework_match_patcher": True,
+        "framework_abis_verified": ["arm64-v8a", "x86_64"], "module_abi": module_abi,
         "runtime_test_executed": False,
         "runtime_test_limitation": "No Android emulator or device was used; launch, login, native library loading and Shuffle+ playback were not exercised.",
     }
@@ -120,5 +132,6 @@ if __name__ == "__main__":
         parser.add_argument("--" + name, required=True, type=pathlib.Path)
     parser.add_argument("--module-sha256", default=MODULE_SHA,
                         help="Expected input artifact hash; defaults to delivered R13")
+    parser.add_argument("--module-abi", choices=("arm64-v8a", "x86_64"), default="arm64-v8a")
     args = parser.parse_args()
-    print(json.dumps(verify(args.original, args.module, args.jar, args.patched, args.module_sha256), indent=2))
+    print(json.dumps(verify(args.original, args.module, args.jar, args.patched, args.module_sha256, args.module_abi), indent=2))

@@ -398,3 +398,36 @@ x86_64 library hash 9acba7e26a1e864f13b78f1b7121773643f3f33a4c6a2fe7d4f63eb06d4d
 Its ARM64 library hash differs from the pinned phone donor, so no library was
 replaced. An isolated native-x86 emulator build is a possible later experiment,
 not implemented or validated here. Keep the delivered ARM64 runtime unchanged.
+
+## Controlled results and native-x86 experiment
+
+Run 42319302108 at 52a6f015b3c509247a5b8b495d4ed038031b39f4 completed build,
+Linux environment and package checks. Both translated patched-host jobs failed.
+Verified report ZIPs:
+API35 0dd64a9d5c1109c5d7a1b44a0896db267082253fc8d15d86f5dd9466960f93b4;
+API37 16ce32ea2032e8319cc16be0e8089d0dfe7c0f2707735012e88db2f4a1090252.
+The original ARM64 control passed (stable 15 seconds/resumed) on both.
+API35 patched app remained resumed with one live process but host_failed/
+IllegalStateException; API37 patched process disappeared (registered/live 0,
+no resumed activity). Both had LSPatch/module entry, no Node/Shuffle+ readiness.
+The stock result validates basic process/activity detection and base-app ARM
+translation. It does not prove a successful patched runtime.
+
+Prepared an isolated native-x86 emulator variant from the same module source.
+Gradle property defaults ARM64; x86 uses explicit emulator version suffix and
+artifact, rebuilds JNI/addon and loads official Node 18.20.4 x86_64. The vendor
+archive, ELF machine/version/hash and four identical pinned headers were checked
+locally; ARM-marker preservation/negative checks passed. Official Node license
+is included. The pinned patcher JAR was also downloaded/verified: both ARM64
+machine183 and x86_64 machine62 framework libraries exist.
+
+Local native-variant tests reached 67 total (one prepared Java fixture skipped),
+with Actions/bash/whitespace lint passing before the final workflow separation.
+The managed local environment then became unavailable during that refactor.
+No local command was treated as completed afterward. GitHub stayed available;
+recovered the authored changes from immutable 52a6f015 sources via API, preserving
+the same guards and tests. Native build is a separate job using same-run cached
+prepared source/assets, so its failure does not suppress the normal ARM build.
+Explicit API inputs are validated before use. CI must validate the reconstructed
+workflow and actually compile/launch x86; no native-x86 pass is claimed yet.
+The delivered R13 ARM APK and Shuffle+ ZIP identities are unchanged.

@@ -10,8 +10,8 @@ from unittest.mock import patch, Mock
 
 from prepare_lspatch_smoke import download, describe_input, apkmirror_file_link, HTTPSRedirects
 from google_drive_input import download_url as drive_download_url, confirmation_url as drive_confirmation_url
-from run_lspatch_smoke import Device, log_status, provision, check_environment, NATIVE, TRANSLATED, TRANSLATED35, safe_startup_details, collect_startup_details, launch
-from verify_lspatched_package import verify_origin
+from run_lspatch_smoke import Device, log_status, provision, check_environment, NATIVE, NATIVE_X86, TRANSLATED, TRANSLATED35, safe_startup_details, collect_startup_details, launch
+from verify_lspatched_package import verify_origin, validate_module_identity
 from check_android37_acceleration import assess
 from report_android37_scope import classify
 from check_android37_image import inspect as inspect_image, PACKAGE as IMAGE_PACKAGE
@@ -51,6 +51,17 @@ class ImageInventoryTests(unittest.TestCase):
 
 
 class BootScopeTests(unittest.TestCase):
+    def test_native_x86_profile_cannot_become_an_arm_translation_or_phone_pass(self):
+        details = {"api": 37, "abi": "x86_64", "app_abi": "x86_64", "emulator": True,
+                   "profile": NATIVE_X86, "arm_translation": False, "arm_compat_advertised": True}
+        env = {"passed": True, "test_kind": "android37_environment_only", "environment": details}
+        report = classify("kvm-native-x86_64", "success", env, profile=NATIVE_X86)
+        self.assertTrue(report["native_x86_test"])
+        self.assertFalse(report["native_arm64_test"])
+        self.assertFalse(report["arm64_translation_test"])
+        self.assertFalse(classify("hardware", "success", env, profile=NATIVE)["passed"])
+        self.assertFalse(classify("hardware", "success", env, profile=TRANSLATED)["passed"])
+
     def test_android15_guest_is_never_reported_as_an_android17_pass(self):
         details = {"api": 35, "abi": "x86_64", "app_abi": "arm64-v8a", "emulator": True,
                    "profile": TRANSLATED35, "arm_translation": True,
@@ -224,6 +235,12 @@ class LogTests(unittest.TestCase):
 
 
 class DeviceGuards(unittest.TestCase):
+    def test_native_x86_environment_does_not_require_an_active_arm_translator(self):
+        device = self.translation_device(**{"ro.dalvik.vm.native.bridge": "0"})
+        environment = check_environment(device, NATIVE_X86)
+        self.assertEqual(environment["app_abi"], "x86_64")
+        self.assertFalse(environment["arm_translation"])
+
     def test_android15_profile_requires_explicit_selection(self):
         device = self.translation_device(**{"ro.build.version.sdk": "35"})
         self.assertEqual(check_environment(device, TRANSLATED35)["api"], 35)
@@ -372,6 +389,52 @@ class DeviceGuards(unittest.TestCase):
 
 
 class InputTests(unittest.TestCase):
+    def test_emulator_module_version_requires_explicit_abi(self):
+        phone = {"package": "com.lenerd46.spotifyplus", "version": "0.10.0-api2.9.1.94.13"}
+        emulator = {**phone, "version": phone["version"] + "-emulator-x86_64"}
+        validate_module_identity(phone, "arm64-v8a")
+        validate_module_identity(emulator, "x86_64")
+        with self.assertRaises(AssertionError):
+            validate_module_identity(emulator, "arm64-v8a")
+        with self.assertRaises(AssertionError):
+            validate_module_identity(phone, "x86_64")
+
+    def test_emulator_node_keeps_arm_bytes_and_checks_archive_and_headers_before_writing(self):
+        import prepare_emulator_node as node
+        import struct
+        binary = bytearray(80)
+        binary[:6] = b"\x7fELF\x02\x01"
+        struct.pack_into("<H", binary, 18, 62)
+        binary += b"v18.20.4"
+        with tempfile.TemporaryDirectory() as temp:
+            root = pathlib.Path(temp)
+            archive = root / "vendor.zip"
+            for header in node.HEADERS:
+                path = root / "app/libnode/include/node" / header
+                path.parent.mkdir(parents=True, exist_ok=True)
+                path.write_bytes(b"trusted header")
+            with zipfile.ZipFile(archive, "w") as package:
+                for header in node.HEADERS:
+                    package.writestr("include/node/" + header, b"trusted header")
+                package.writestr("bin/x86_64/libnode.so", binary)
+            arm = root / "app/libnode/bin/arm64-v8a/libnode.so"
+            arm.parent.mkdir(parents=True, exist_ok=True)
+            arm.write_bytes(b"unchanged phone runtime")
+            with patch.object(node, "ARCHIVE_SHA", hashlib.sha256(archive.read_bytes()).hexdigest()), \
+                    patch.object(node, "NODE_SHA", hashlib.sha256(binary).hexdigest()):
+                node.install(archive, root)
+                self.assertEqual(arm.read_bytes(), b"unchanged phone runtime")
+                target = root / "app/libnode/bin/x86_64/libnode.so"
+                target.unlink()
+                (root / "app/libnode/include/node/node_api.h").write_bytes(b"wrong header")
+                with self.assertRaisesRegex(ValueError, "headers"):
+                    node.install(archive, root)
+                self.assertFalse(target.exists())
+                archive.write_bytes(archive.read_bytes() + b"corrupt")
+                with self.assertRaisesRegex(ValueError, "checksum"):
+                    node.install(archive, root)
+                self.assertFalse(target.exists())
+
     def drive_form(self, *, file_id="fixtureFile123", action="https://drive.usercontent.google.com/download", method="get", extra=""):
         return ('<html><form id="download-form" action="' + action + '" method="' + method + '">'
                 '<input type="hidden" name="id" value="' + file_id + '">'

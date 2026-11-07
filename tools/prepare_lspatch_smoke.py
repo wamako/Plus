@@ -155,6 +155,7 @@ def download(url, path, expected, diagnostics=None):
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--module", required=True, type=pathlib.Path)
+    parser.add_argument("--module-abi", choices=("arm64-v8a", "x86_64"), default="arm64-v8a")
     parser.add_argument("--work", required=True, type=pathlib.Path)
     parser.add_argument("--report", required=True, type=pathlib.Path)
     args = parser.parse_args()
@@ -172,7 +173,7 @@ def main():
         subprocess.run(["java", "-jar", str(jar), "-o", str(output), "-m",
                         str(args.module.resolve()), str(original)], check=True, stdout=log, stderr=log)
     patched, = output.glob("*.apk")
-    result = verify(original, args.module, jar, patched, checksum(args.module))
+    result = verify(original, args.module, jar, patched, checksum(args.module), args.module_abi)
     classes = args.work / "verifier"
     classes.mkdir(exist_ok=True)
     source = pathlib.Path(__file__).with_name("VerifyLspatchSignature.java")

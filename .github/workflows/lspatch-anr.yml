@@ -1,0 +1,35 @@
+name: Diagnose patched startup with an immutable module fixture
+on:
+  pull_request:
+    paths:
+      - 'tools/lspatch_anr.py'
+      - 'tools/test_lspatch_anr.py'
+      - 'tools/run_lspatch_smoke.py'
+      - '.github/workflows/lspatch-anr.yml'
+      - '.github/workflows/s24-validation.yml'
+permissions:
+  contents: read
+  actions: read
+jobs:
+  check-anr-parser:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - run: python3 -m unittest discover -s tools -p test_lspatch_anr.py
+  inspect-main-thread:
+    needs: check-anr-parser
+    if: >-
+      vars.RUN_LSPATCH_SMOKE == 'true' &&
+      github.event.pull_request.head.repo.full_name == github.repository
+    uses: ./.github/workflows/s24-validation.yml
+    with:
+      native_x86: true
+      signature_bypass_level: '2'
+      run_patched_host: true
+      module_run_id: '42324266946'
+      module_source_commit: '80035647f9d2b7f877c6dffd1799d263491e7fc8'
+    secrets:
+      SPOTIFY_APK_URL: ${{ secrets.SPOTIFY_APK_URL }}

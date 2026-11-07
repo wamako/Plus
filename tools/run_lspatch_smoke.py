@@ -118,8 +118,11 @@ def collect_startup_details(device, pid, details):
         details["spotify_deeplink_start_count"] = sum(bool(re.search(
             r"\bSTART u0\b.*\bdat=spotify:.*\bcmp=com\.spotify\.music/", line)) for line in log.splitlines())
         try:
-            details["process_exit"] = safe_exit_details(
-                device.shell("dumpsys", "activity", "exit-info", PACKAGE, timeout=15), candidate)
+            exit_info = device.shell("dumpsys", "activity", "exit-info", PACKAGE, timeout=15)
+            details["process_exit"] = safe_exit_details(exit_info, candidate)
+            if 6 in details["process_exit"]["reason_codes"]:
+                from lspatch_anr import collect
+                details["anr_main_thread"] = collect(device, exit_info, candidate)
         except (RuntimeError, subprocess.SubprocessError):
             details["exit_info_unavailable"] = True
         details["process_observed"] = candidate is not None
@@ -359,6 +362,8 @@ def main():
     report = {"test_kind": ("android35_environment_only" if args.device_profile == TRANSLATED35 else "android37_environment_only") if args.check_environment else "logged_out_lspatch_startup", "passed": False,
               "emulation_mode": os.environ.get("SPOTIFYPLUS_EMULATION_MODE", "unspecified"),
               "signature_bypass_level": int(os.environ.get("SPOTIFYPLUS_SIGNATURE_BYPASS_LEVEL", "0")),
+              "module_artifact_run_id": os.environ.get("MODULE_ARTIFACT_RUN", "") if re.fullmatch(r"\d{1,20}", os.environ.get("MODULE_ARTIFACT_RUN", "")) else "unspecified",
+              "module_artifact_commit": os.environ.get("MODULE_ARTIFACT_COMMIT", "") if re.fullmatch(r"[0-9a-f]{40}", os.environ.get("MODULE_ARTIFACT_COMMIT", "")) else "unspecified",
               "device_profile": args.device_profile, "required_api": 35 if args.device_profile == TRANSLATED35 else 37, "required_app_abi": app_abi(args.device_profile), "launches": [], "startup_attempts": [],
               "playback_test_executed": False, "account_test_executed": False,
               "shuffle_ui_test_executed": False,

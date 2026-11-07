@@ -217,3 +217,8 @@ Official SDK tools are checksum-verified. Guest boot has a ten-minute deadline
 and each device job a thirty-minute limit. KVM access and acceleration are
 checked before boot; no third-party translation package or forged ABI property
 is installed.
+
+
+## Reliability follow-up
+
+The native x86/mode2 two-launch success in run42324266946 is real, but the subsequent default-path run42325636007 at559b51b failed on its first launch with AOSP reason6 (ANR), while the stock x86 control passed. Do not call this profile reliable or the default-path rerun successful. The source/build checks passed. A temporary targeted workflow reuses the explicitly verified immutable module artifacts from run42324266946/80035647 to inspect PID-correlated main-thread ANR code identifiers without rebuilding or altering the app. Root ADB is restricted to reading that system trace after failure, and raw trace text/messages/paths are never published. The source run/commit is recorded; this is a prebuilt fixture test, not a build of the latest harness revision. The normal workflow still rebuilds all sources. No phone artifact or hook behavior has changed.

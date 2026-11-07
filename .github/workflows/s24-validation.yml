@@ -5,6 +5,12 @@ name: LSPatch Linux Android validation
 on:
   workflow_call:
     inputs:
+      module_run_id:
+        type: string
+        default: ''
+      module_source_commit:
+        type: string
+        default: ''
       signature_bypass_level:
         type: string
         default: '2'
@@ -37,6 +43,9 @@ jobs:
       SPOTIFYPLUS_EMULATION_MODE: ${{ inputs.native_x86 && 'kvm-native-x86_64' || 'kvm-arm64-translation' }}
       DEVICE_PROFILE: ${{ inputs.native_x86 && 'linux-x86_64-native' || (inputs.api_level == '35' && 'linux-x86_64-arm64-translation-api35' || 'linux-x86_64-arm64-translation') }}
       SELECTED_API_LEVEL: ${{ inputs.api_level }}
+      MODULE_ARTIFACT_RUN: ${{ inputs.module_run_id || github.run_id }}
+      MODULE_ARTIFACT_COMMIT: ${{ inputs.module_source_commit || github.event.pull_request.head.sha || github.sha }}
+      REUSED_MODULE_FIXTURE: ${{ inputs.module_run_id != '' }}
       SPOTIFYPLUS_SIGNATURE_BYPASS_LEVEL: ${{ inputs.signature_bypass_level }}
       SELECTED_NATIVE_X86: ${{ inputs.native_x86 }}
       SPOTIFYPLUS_RUN_PATCHED_HOST: ${{ inputs.run_patched_host }}
@@ -72,17 +81,43 @@ jobs:
         run: |
           emulator -accel-check
           python3 tools/check_android37_image.py --abi x86_64 --api-level "$SELECTED_API_LEVEL"
+      - name: Verify explicitly reused immutable module fixture
+        if: inputs.module_run_id != ''
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          python3 - <<'PY'
+          import json, os, re, urllib.request
+          run, commit = os.environ["MODULE_ARTIFACT_RUN"], os.environ["MODULE_ARTIFACT_COMMIT"]
+          if not re.fullmatch(r"[1-9]\d{3,19}", run) or not re.fullmatch(r"[0-9a-f]{40}", commit):
+              raise SystemExit("Invalid explicit fixture identity")
+          repo = os.environ["GITHUB_REPOSITORY"]
+          request = urllib.request.Request("https://api.github.com/repos/" + repo + "/actions/runs/" + run,
+              headers={"Authorization": "Bearer " + os.environ["GH_TOKEN"], "Accept": "application/vnd.github+json"})
+          try:
+              with urllib.request.urlopen(request, timeout=30) as response:
+                  info = json.load(response)
+          except Exception:
+              raise SystemExit("Could not verify fixture run") from None
+          if info.get("head_sha") != commit or info.get("status") != "completed" or info.get("head_repository", {}).get("full_name") != repo:
+              raise SystemExit("Fixture run does not match its declared immutable source")
+          print("Using explicit prebuilt fixture run " + run + " at " + commit + "; not a build of the current harness revision")
+          PY
       - name: Download same-run Plus module
         if: inputs.run_patched_host
         uses: actions/download-artifact@v4
         with:
           name: ${{ inputs.native_x86 && 'SpotifyPlus-Emulator-x86_64-APK' || 'SpotifyPlus-Debug-APK' }}
+          run-id: ${{ inputs.module_run_id || github.run_id }}
+          github-token: ${{ github.token }}
           path: ${{ runner.temp }}/plus-module
       - name: Download same-run Shuffle+ extension
         if: inputs.run_patched_host
         uses: actions/download-artifact@v4
         with:
           name: SpotifyPlus-ShufflePlus-0.1.0
+          run-id: ${{ inputs.module_run_id || github.run_id }}
+          github-token: ${{ github.token }}
           path: ${{ runner.temp }}/shuffle-extension
       - name: Install APK inspection dependency
         if: inputs.run_patched_host

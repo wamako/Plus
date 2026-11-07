@@ -73,12 +73,16 @@ def projects(source,latest):
  s=s.replace('formatAuthors(manifest.author, user)',"formatAuthors(Array.isArray(manifest.author) ? manifest.author : manifest.authors, user)")
  s=s.replace("authors: { name: string, url: string }[] | undefined", "authors: { name: string, url?: string }[] | undefined").replace("url: sanitizeUrl(author.url)", "url: sanitizeUrl(author.url || `https://www.github.com/${user}`)")
  p.write_text(s)
+ p=market/'src/types/extension.ts';p.write_text(p.read_text().replace('author?: MarketplaceAuthor[];', 'author?: string | MarketplaceAuthor[];'))
+ p=market/'src/installed-page.tsx';p.write_text(p.read_text().replace("installed.author?.map(author => author.name).join(', ') || 'Unknown developer'", "(typeof installed.author === 'string' ? installed.author : installed.author?.map(author => author.name).join(', ')) || 'Unknown developer'"))
  p=market/'src/index.tsx';p.write_text(p.read_text().replace('}, marketplaceIcon).register();','}).register();'))
  p=market/'package.json';p.write_text(p.read_text().replace(' ../../app/src/main/assets/nodejs-src/tools/tests/marketplace-compatibility.test.mjs',''))
  # These tests exercise the actual selected marketplace files through esbuild.
  tests=source/'app/src/main/assets/nodejs-src/tools/tests'
  for name in ['marketplace-markdown','marketplace-metadata','marketplace-updates']:
   shutil.copy2(latest/'app/src/main/assets/nodejs-src/tools/tests'/f'{name}.test.mjs',tests/f'{name}.test.mjs')
+ shutil.copy2(Path(__file__).with_name('marketplace-legacy-author.test.mjs'),tests/'marketplace-legacy-author.test.mjs')
+ p=market/'package.json';p.write_text(p.read_text().replace('marketplace-updates.test.mjs', 'marketplace-updates.test.mjs ../../app/src/main/assets/nodejs-src/tools/tests/marketplace-legacy-author.test.mjs'))
  p=tests/'marketplace-metadata.test.mjs';p.write_text(p.read_text().replace("['Author', null, {},","[null, {},").replace("    for (const value of","    assert.equal(schema.safeParse({ ...base, author: 'Legacy author' }).success, true);\n    for (const value of",1))
  p=tests/'marketplace-markdown.test.mjs';p.write_text(p.read_text().replace('schemaVersion, 4','schemaVersion, 7'))
  p=source/'scripts/settings/src/settings-components.tsx';s=p.read_text();new=(latest/'scripts/settings/src/settings-components.tsx').read_text()

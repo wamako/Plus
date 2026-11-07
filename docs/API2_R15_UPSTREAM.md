@@ -59,7 +59,8 @@ Selected updates are applied reproducibly by tools/apply_upstream_updates.py:
   arrays; normalize display names without breaking existing local manifests.
   Save validated repository provenance with an atomic package install, expose
   installed-main reads only to the elevated marketplace, and retain that source
-  across restarts, updates and rollback. The Cache.read await repair is retained.
+  across restarts, updates and rollback. Installed marketplace cards accept both
+  legacy string authors and upstream arrays. The Cache.read await repair is retained.
 - Settings: labelled/focused text fields, larger button targets, aligned toggles,
   fractional sliders mapped to native integer progress and clamped/snapped values,
   and numeric draft reset on blur. The about page identifies R15 and Marketplace

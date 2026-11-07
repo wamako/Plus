@@ -94,6 +94,7 @@ class BootScopeTests(unittest.TestCase):
                 if expected == 2:
                     self.assertIn("--apk", lines[1])
                     self.assertIn("--extension", lines[1])
+                    self.assertIn("--storage-probe", lines[1])
 
     def test_linux_guest_requires_all_translation_evidence_and_never_claims_native_arm(self):
         details = {"api": 37, "abi": "x86_64", "app_abi": "arm64-v8a", "emulator": True,

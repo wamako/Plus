@@ -1,5 +1,18 @@
 # Spotify Plus project checkpoint
 
+## Android storage validation follow-up
+
+The normal current-source workflow now builds a separate CI-only storage probe
+and requires its write/read-back marker on launch one and persisted-read/cleanup
+marker on launch two. The second launch must use a distinct app process. The
+fixture tests typed preferences, private text/JSON/binary files, cache and
+removals through the production API-2 SDK/loader/native bridge, without a Spotify
+account or playback. It never enters a phone deliverable. See the new storage
+section in LSPATCH_VALIDATION.md and inspect the current run's startup.json:
+storage_persistence_verified must be true, with both phase verdicts. Earlier
+green runs below predate this gate. Native settings clicks, authenticated
+playback/queue and Samsung firmware/layout acceptance remain separate.
+
 ## Current Linux validation state
 
 The default is Ubuntu24.04/KVM, API37 Google x86_64, native x86_64 module,

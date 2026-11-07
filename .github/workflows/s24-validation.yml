@@ -138,6 +138,14 @@ jobs:
       - name: Install APK inspection dependency
         if: inputs.run_patched_host
         run: python3 -m pip install androguard==4.1.4
+      - name: Download current-run CI-only storage probe
+        if: inputs.run_patched_host
+        uses: actions/download-artifact@v4
+        with:
+          name: SpotifyPlus-CI-Storage-Probe
+          run-id: ${{ github.run_id }}
+          github-token: ${{ github.token }}
+          path: ${{ runner.temp }}/storage-probe
       - name: Verify original source, integrated patch and APK signature
         if: inputs.run_patched_host
         env:
@@ -188,4 +196,4 @@ jobs:
           echo 'Guest environment, original APK/package verification and actual Spotify startup are separate checks. No account/playback/UI result is inferred from a guest boot.' >> "$GITHUB_STEP_SUMMARY"
       - name: Remove private test inputs
         if: always()
-        run: rm -rf "$RUNNER_TEMP/lspatch-smoke" "$RUNNER_TEMP/plus-module" "$RUNNER_TEMP/shuffle-extension"
+        run: rm -rf "$RUNNER_TEMP/lspatch-smoke" "$RUNNER_TEMP/plus-module" "$RUNNER_TEMP/shuffle-extension" "$RUNNER_TEMP/storage-probe"

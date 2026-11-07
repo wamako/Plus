@@ -1,7 +1,8 @@
 #!/usr/bin/env python3
 """Exercise the patched host and Shuffle+ loader on a disposable Android AVD.
 
-This is a logged-out startup test, not a Spotify playback/account test. Root ADB
+This is a logged-out startup test, optionally checking storage across app
+processes, not a Spotify playback/account test. Root ADB
 is used only to provision/inspect the disposable AVD; each app launch runs with
 ADB unrooted and LSPatch in integrated mode. Refuses physical/populated devices.
 No raw logcat, UI dumps, APKs, account data or credentials are written to reports.
@@ -17,6 +18,11 @@ import time
 
 PACKAGE = "com.spotify.music"
 EXTENSION = "com.wamako.shuffleplus"
+STORAGE_PROBE = "com.wamako.ci.storageprobe"
+STORAGE_MARKERS = {
+    "write": "SPOTIFYPLUS_CI_STORAGE_WRITE_OK",
+    "reload": "SPOTIFYPLUS_CI_STORAGE_RELOAD_OK",
+}
 MARKERS = {
     "integrated_loader_entered": "Bootstrap loader from embedment",
     "module_entered": "[SpotifyPlus] Loading SpotifyPlus v",
@@ -49,6 +55,15 @@ def app_abi(profile):
 def log_status(log):
     return ({name: marker in log for name, marker in MARKERS.items()},
             [name for name, marker in ERRORS.items() if marker in log])
+
+def storage_status(log, phase):
+    if phase not in STORAGE_MARKERS:
+        raise RuntimeError("Invalid storage probe phase")
+    flags = {name: bool(re.search(r"(?m)\b" + marker + r"\s*$", log))
+             for name, marker in STORAGE_MARKERS.items()}
+    if any(present for name, present in flags.items() if name != phase):
+        raise RuntimeError("Storage probe reported the wrong launch phase")
+    return flags[phase], flags
 
 def activity_manager_pids(text):
     # AOSP ProcessRecord.toShortString uses pid:processName/u0a<appId>.
@@ -228,15 +243,24 @@ def settle_guest(device):
     device.shell("cmd", "activity", "wait-for-broadcast-idle", timeout=45)
     return {"package_handler_idle": True, "package_background_handler_idle": True, "broadcasts_idle": True}
 
-def provision(device, apk, extension, profile=NATIVE):
+def provision(device, apk, extension, profile=NATIVE, storage_probe=None):
     check_environment(device, profile)
     if device.shell("pm", "list", "packages", PACKAGE):
         raise RuntimeError("Spotify is already installed; use a fresh AVD without an account")
-    manifest = json.loads((extension / "manifest.json").read_text())
-    if manifest.get("id") != EXTENSION or manifest.get("api") != 2 or manifest.get("main") != "index.js":
-        raise RuntimeError("Expected the built Shuffle+ API-2 extension")
-    if any(p.is_symlink() for p in extension.rglob("*")) or not (extension / "index.js").is_file():
-        raise RuntimeError("Invalid Shuffle+ input folder")
+    fixtures = [(EXTENSION, extension)]
+    if storage_probe is not None:
+        fixtures.append((STORAGE_PROBE, storage_probe))
+    for identity, folder in fixtures:
+        try:
+            manifest = json.loads((folder / "manifest.json").read_text())
+            if (not isinstance(manifest, dict) or manifest.get("id") != identity or
+                    manifest.get("api") != 2 or manifest.get("main") != "index.js"):
+                raise RuntimeError("Expected a built API-2 smoke-test extension")
+            if (folder.is_symlink() or any(p.is_symlink() for p in folder.rglob("*")) or
+                    not (folder / "index.js").is_file()):
+                raise RuntimeError("Invalid smoke-test extension folder")
+        except (OSError, ValueError):
+            raise RuntimeError("Could not read smoke-test extension fixture") from None
     # Force the original universal APK's ARM64 ABI on the translation profile;
     # a successful native-x86 Spotify launch would not exercise this module.
     selected_abi = app_abi(profile)
@@ -253,17 +277,19 @@ def provision(device, apk, extension, profile=NATIVE):
     try:
         staging = "/data/local/tmp/spotifyplus-ci-extension"
         files = "/data/user/0/com.spotify.music/files"
-        destination = files + "/spotifyplus-installed-extensions/" + EXTENSION
-        device.adb("push", extension, staging, timeout=120)
-        device.shell("mkdir", "-p", str(pathlib.PurePosixPath(destination).parent))
-        device.shell("cp", "-R", staging, destination)
+        for identity, folder in fixtures:
+            destination = files + "/spotifyplus-installed-extensions/" + identity
+            device.adb("push", folder, staging, timeout=120)
+            device.shell("mkdir", "-p", str(pathlib.PurePosixPath(destination).parent))
+            device.shell("cp", "-R", staging, destination)
+            device.shell("rm", "-rf", staging)
         device.shell("chown", "-R", uid + ":" + uid, files)
         device.shell("restorecon", "-R", files)
         device.shell("rm", "-rf", staging)
     finally:
         device.root(False)
 
-def launch(device, timeout, details=None):
+def launch(device, timeout, details=None, storage_phase=None):
     details = {} if details is None else details
     device.shell("am", "force-stop", PACKAGE)
     device.adb("logcat", "-c")
@@ -289,16 +315,23 @@ def launch(device, timeout, details=None):
                 details["last_observed_markers"] = flags
                 if errors:
                     raise RuntimeError("Startup error categories: " + ", ".join(errors))
+                storage_ready = True
+                if storage_phase is not None:
+                    storage_ready, storage_flags = storage_status(app_log, storage_phase)
+                    details["storage_probe_markers"] = storage_flags
                 if time.monotonic() - began > 60 and not (flags["integrated_loader_entered"] and flags["module_entered"]):
                     raise RuntimeError("Integrated LSPatch or Plus module entry was not observed within 60 seconds")
-                if all(flags.values()):
+                if all(flags.values()) and storage_ready:
                     if stable_until is None:
                         stable_until = time.monotonic() + 15
                     if time.monotonic() >= stable_until:
                         complete = True
-                        return {**flags, "stable_after_ready_seconds": 15}, pid
+                        result = {**flags, "stable_after_ready_seconds": 15}
+                        if storage_phase is not None:
+                            result["storage_probe"] = {"phase": storage_phase, "passed": True}
+                        return result, pid
             time.sleep(2)
-        raise RuntimeError("Timed out waiting for module, Node host and Shuffle+ loader evidence")
+        raise RuntimeError("Timed out waiting for module, Node host, Shuffle+ or storage probe evidence")
     finally:
         if not complete:
             collect_startup_details(device, pid, details)
@@ -374,6 +407,8 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--apk", type=pathlib.Path)
     parser.add_argument("--extension", type=pathlib.Path)
+    parser.add_argument("--storage-probe", type=pathlib.Path,
+                        help="CI-only user extension verifying storage across the two app processes")
     parser.add_argument("--check-environment", action="store_true")
     parser.add_argument("--original-control", type=pathlib.Path,
                         help="After a failed patched startup, compare the pinned original on this disposable guest")
@@ -391,6 +426,8 @@ def main():
               "device_profile": args.device_profile, "required_api": 35 if args.device_profile == TRANSLATED35 else 37, "required_app_abi": app_abi(args.device_profile), "launches": [], "startup_attempts": [],
               "playback_test_executed": False, "account_test_executed": False,
               "shuffle_ui_test_executed": False,
+              "storage_persistence_test_requested": not args.check_environment and args.storage_probe is not None,
+              "storage_persistence_verified": False,
               "patched_host_test_executed": False,
               "limitation": "Generic AVD; Samsung firmware, authenticated playback, queue ordering and extension UI interaction require separate acceptance tests."}
     args.report.parent.mkdir(parents=True, exist_ok=True)
@@ -404,21 +441,27 @@ def main():
         report["environment"].update(guest_capacity(device, int(expected_cpu) if expected_cpu else None, int(expected_ram) if expected_ram else None))
         if not args.check_environment:
             report["stage"] = "install_and_provision"
-            provision(device, args.apk, args.extension, args.device_profile)
+            provision(device, args.apk, args.extension, args.device_profile, args.storage_probe)
             report["installed_app_abi"] = app_abi(args.device_profile)
             report["stage"] = "settle_guest_after_provision"
             report["guest_idle_checks"] = settle_guest(device)
             report["patched_host_test_executed"] = True
-            for _ in range(2):
+            previous_pid = None
+            for number in range(2):
                 report["stage"] = "launch_" + str(len(report["launches"]) + 1)
                 details = {}
                 report["startup_attempts"].append(details)
-                result, pid = launch(device, args.timeout, details)
+                storage_phase = ("write", "reload")[number] if args.storage_probe is not None else None
+                result, pid = launch(device, args.timeout, details, storage_phase)
+                if previous_pid == pid:
+                    raise RuntimeError("The second launch did not use a fresh app process")
+                previous_pid = pid
                 report["stage"] = "inspect_native_code"
                 result["native_code"] = inspect_native_code(device, pid, args.device_profile)
                 if device.pid() != pid:
                     raise RuntimeError("Spotify exited during native code inspection")
                 report["launches"].append(result)
+            report["storage_persistence_verified"] = args.storage_probe is not None
         report["passed"] = True
     except (RuntimeError, subprocess.SubprocessError) as error:
         # All RuntimeError messages above are fixed categories, not raw output.
@@ -438,7 +481,8 @@ def main():
         # The report contains fixed diagnostic categories, never raw device logs.
         print("STARTUP_REPORT " + json.dumps(report, sort_keys=True), flush=True)
     print("PASS: Android API " + str(report["required_api"]) + " emulator environment (" + args.device_profile + ")" if args.check_environment else
-          "PASS: two non-root app starts, Node/JNI loading, Shuffle+ loader and read-only native code")
+          "PASS: two non-root app starts, Node/JNI loading, Shuffle+ loader and read-only native code" +
+          ("; storage persisted across fresh app processes" if report["storage_persistence_verified"] else ""))
 
 if __name__ == "__main__":
     main()

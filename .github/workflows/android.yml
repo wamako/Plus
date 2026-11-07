@@ -73,6 +73,7 @@ jobs:
           npm ci --ignore-scripts
           node tools/setup-sdk.mjs
           npm run check
+          npm run check:storage-probe
 
       - name: Test and build installable debug APK
         run: |
@@ -97,6 +98,14 @@ jobs:
           name: SpotifyPlus-ShufflePlus-0.1.0
           path: extensions/local-suite/build/SpotifyPlus-ShufflePlus
           if-no-files-found: error
+
+      - name: Upload the separate CI-only storage probe
+        uses: actions/upload-artifact@v4
+        with:
+          name: SpotifyPlus-CI-Storage-Probe
+          path: extensions/local-suite/build/SpotifyPlus-CI-Storage-Probe
+          if-no-files-found: error
+          retention-days: 14
 
       - name: Retain same-run prepared sources for the isolated emulator build
         if: >-
@@ -331,7 +340,7 @@ jobs:
           printf 'Original source and ARM64 module/package verification (signature mode 2): **%s**\n\n' "$PACKAGE_RESULT" >> "$GITHUB_STEP_SUMMARY"
           printf 'Isolated x86_64 module build: **%s**\n\n' "$NATIVE_X86_BUILD_RESULT" >> "$GITHUB_STEP_SUMMARY"
           printf 'Android17 Linux/KVM native x86_64 environment: **%s**; actual guest: **%s**\n\n' "$ENVIRONMENT_RESULT" "$BOOT_RESULT" >> "$GITHUB_STEP_SUMMARY"
-          printf 'Patched Spotify two-launch startup, native x86_64/signature mode 2: **%s**\n\n' "$DEVICE_RESULT" >> "$GITHUB_STEP_SUMMARY"
+          printf 'Patched Spotify two-launch startup and storage persistence, native x86_64/signature mode 2: **%s**\n\n' "$DEVICE_RESULT" >> "$GITHUB_STEP_SUMMARY"
           printf 'Optional diagnostics: Android17 ARM translation **%s**; Android15 ARM translation **%s**; native x86 mode 0 **%s**\n\n' "$ARM_DIAGNOSTIC_RESULT" "$ANDROID15_RESULT" "$MODE0_RESULT" >> "$GITHUB_STEP_SUMMARY"
           printf 'Patched tests enabled: **%s**; APK source configured: **%s**\n\n' "$PATCHED_TESTS_ENABLED" "$APK_SOURCE_CONFIGURED" >> "$GITHUB_STEP_SUMMARY"
           echo "Patched tests enabled: $PATCHED_TESTS_ENABLED; APK source configured: $APK_SOURCE_CONFIGURED"

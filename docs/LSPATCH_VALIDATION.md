@@ -40,6 +40,36 @@ logged-out startup tests, not Samsung/native ARM, login, audible playback, actua
 queue order, timers, extension UI interaction or visual acceptance tests. No
 production hook behavior or delivered phone/extension artifact changed.
 
+## Storage persistence coverage
+
+The normal patched-host job also installs the separate CI-only API-2 user
+extension `com.wamako.ci.storageprobe` on its fresh logged-out AVD. The pinned
+production loader builds and loads this fixture through the ordinary SDK and
+native storage bridge. It is a separate `SpotifyPlus-CI-Storage-Probe` artifact;
+it is never bundled with the phone module, Shuffle+, or the four local extensions.
+
+Launch one writes and reads back string, object and boolean preferences, private
+text/JSON/binary files and a cache file. It also verifies preference/file/cache
+removal. After force-stop, launch two must read all retained values before any
+write, verify earlier removals, and remove the fixture's own data. Both launches
+use unrooted ADB and must still pass every existing startup, native-code and
+15-second stability check. The harness requires distinct app processes and the
+correct phase marker in each process's own logs. A missing marker, a second
+first-launch marker, any storage assertion or a host failure fails the job.
+
+`startup.json` records `storage_persistence_test_requested`,
+`storage_persistence_verified` and the fixed `write`/`reload` phase verdicts.
+Environment-only runs and standalone runs without `--storage-probe` leave
+verification false. Earlier startup successes predate this gate and do not
+establish storage persistence. No stored values or raw device logs are reported.
+This checks the Android storage path; it does not click native settings controls
+or establish Samsung, account, playback or UI acceptance.
+
+Run `npm run check:storage-probe` in `extensions/local-suite` after pinned SDK
+setup to build the fixture and execute its actual-loader/bridge failure tests.
+Python harness regressions cover process-scoped markers, lost reload state,
+incorrect fixture identity and failed second-launch reports.
+
 ## Existing setup
 
 The user has already enabled and configured:
@@ -64,7 +94,7 @@ restricted to trusted same-repository runs.
 | build-emulator-x86 | Same-run prepared sources, pinned official matching-version Node library, native x86_64 JNI/addon compilation, DEX/native and Node hash verification |
 | android17-environment | Real Linux/KVM guest boot; actual API37/x86_64/CPU/memory evidence; no app-startup inference |
 | lspatch-packaging | Exact original, ARM64 module bytes embedded unchanged, official framework/config, target37, signature mode2 and valid APK v2 signature |
-| lspatch-android17 | Same-run emulator module and Shuffle+ artifacts; verified native x86_64/mode2 package, actual capacity and idle barriers; installed ABI, two stable starts, Plus/Node/Shuffle+ readiness, native mappings and read-only code |
+| lspatch-android17 | Same-run emulator module, Shuffle+ and CI storage fixture; verified native x86_64/mode2 package, actual capacity and idle barriers; installed ABI, two stable starts, Plus/Node/Shuffle+ readiness, persisted storage/cleanup, native mappings and read-only code |
 | validation-scope | Reports build, source/package, guest, patched startup and optional diagnostics separately |
 
 The environment job runs independently of the source download. The startup job
@@ -234,6 +264,7 @@ SPOTIFYPLUS_SIGNATURE_BYPASS_LEVEL=2 python3 tools/run_lspatch_smoke.py \
   --device-profile linux-x86_64-native \
   --apk /tmp/lspatch-smoke/spotify-lspatched.apk \
   --extension /path/to/shuffle-plus \
+  --storage-probe /path/to/SpotifyPlus-CI-Storage-Probe/storage-probe \
   --original-control /tmp/lspatch-smoke/spotify-original.apk \
   --report /tmp/smoke-reports/startup.json --timeout 360
 ```

@@ -353,3 +353,21 @@ seconds; missing framework/module entry after 60 seconds. Verified exact Host
 ready/Loaded script strings against the pinned upstream host.ts/script-loader.ts.
 Local tests now 55, one prepared Java fixture skipped; Actions lint passes.
 This changes only the harness/docs, not the module or extension executables.
+
+Diagnostic run 42314895848 at 94287750b12662bb67211813fe45b64b25ed07c4 passed
+55 checks (no skips), build, environment and package verification. Actual first
+startup job 128226816562 reported no running process after the grace period.
+Verified report ZIP SHA-256 184a3cdea35618b42f1803327558e20f3ffc64e7951673352b7b29c5ed2fb119:
+stage:launch_1, installed_app_abi:arm64-v8a, loader/module markers:true,
+Node/Shuffle+ markers:false, exception/error categories:[], no known Java/native
+crash. A previous start PID was correlated in diagnostic logs, but the name-only
+pidof lookup had not returned a single PID. This is not proof of either process
+death or a naming failure, and not a successful runtime/extension test.
+
+Replaced name-only PID detection with ActivityManager ProcessRecord identity for
+the exact user-0 main app, plus `/proc/PID` existence and unique live-candidate
+checks. Format verified against AOSP ProcessRecord.toShortString/toString.
+Helpers/other users/invalid PIDs are excluded; no arbitrary first PID is selected.
+Lookup method and counts are included in fixed-field diagnostics. Local tests:
+58 total, one prepared Java fixture skipped; Actions lint and whitespace pass.
+No app/extension executable code changed. A fresh CI run is required.

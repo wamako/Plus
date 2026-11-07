@@ -197,3 +197,14 @@ only and never satisfy startup. No raw logs, messages, URLs or file paths are
 written to reports. A missing process fails after a 30-second grace period;
 missing LSPatch/module entry fails after 60 seconds. Node/extension readiness
 still has the configured deadline. These diagnostics do not change app code.
+
+The next diagnostic run, 42314895848 at `94287750b12662bb67211813fe45b64b25ed07c4`,
+passed all 55 checks/build/environment/package verification. On the first launch
+its process log contained integrated-loader and Plus-module entry markers, but
+no Node/Shuffle+ readiness, known exception or crash report. The name-only PID
+lookup reported no process. This does not establish whether the app actually
+exited or the lookup lost it. The harness now follows Android ActivityManager's
+registered main process for user 0, verifies its `/proc` entry and refuses
+ambiguous live candidates. It records only lookup counts/method, never process
+dump content. Helper processes and other users cannot satisfy the main-process
+check. A fresh execution must determine the actual runtime outcome.

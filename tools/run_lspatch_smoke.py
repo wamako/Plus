@@ -44,6 +44,11 @@ def log_status(log):
     return ({name: marker in log for name, marker in MARKERS.items()},
             [name for name, marker in ERRORS.items() if marker in log])
 
+def activity_manager_pids(text):
+    # AOSP ProcessRecord.toShortString uses pid:processName/u0a<appId>.
+    # Match only this app's main user-0 process, not helpers or historical PID 0.
+    return sorted(set(re.findall(r"ProcessRecord\{[0-9a-fA-F]+\s+([1-9]\d*):com\.spotify\.music/u0a\d+\}", text)), key=int)
+
 def safe_startup_details(app_log):
     """Fixed names/booleans only; never return log lines, paths or messages."""
     flags, errors = log_status(app_log)
@@ -73,6 +78,10 @@ def collect_startup_details(device, pid, details):
         details["spotify_native_crash_reported"] = bool(re.search(r">>>\s*com\.spotify\.music\s*<<<", log))
         # Global markers are diagnostic only and can never satisfy startup.
         details["launch_log_markers"] = log_status(log)[0]
+        lookup = getattr(device, "last_process_lookup", None)
+        if isinstance(lookup, dict) and lookup.get("method") == "android_activity_manager":
+            details["android_process_lookup"] = {key: lookup[key] for key in
+                ("method", "registered_main_processes", "live_main_processes")}
         details["diagnostics_collected"] = True
     except (RuntimeError, subprocess.SubprocessError):
         details["diagnostics_collected"] = False
@@ -102,9 +111,15 @@ class Device:
             raise RuntimeError("AVD could not switch ADB privilege for test setup")
 
     def pid(self):
-        # pidof returns exit 1 while the process is absent.
-        value = self.adb("shell", "pidof com.spotify.music || true").strip()
-        return value if re.fullmatch(r"\d+", value) else None
+        # Native hosts/translation can change process titles or expose multiple
+        # name matches. Follow Android's registered main app process instead.
+        records = self.shell("dumpsys", "activity", "processes", PACKAGE, timeout=15)
+        candidates = activity_manager_pids(records)
+        live = [pid for pid in candidates if self.adb("shell",
+                "test -d /proc/" + pid + " && echo alive || true", timeout=15).strip() == "alive"]
+        self.last_process_lookup = {"method": "android_activity_manager",
+                                    "registered_main_processes": len(candidates), "live_main_processes": len(live)}
+        return live[0] if len(live) == 1 else None
 
 def check_environment(device, profile=NATIVE):
     if device.shell("getprop", "ro.kernel.qemu") != "1":

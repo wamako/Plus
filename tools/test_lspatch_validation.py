@@ -208,6 +208,36 @@ class LogTests(unittest.TestCase):
 
 
 class DeviceGuards(unittest.TestCase):
+    def activity_device(self, records, alive):
+        device = object.__new__(Device)
+        device.shell = Mock(return_value=records)
+        device.adb = Mock(side_effect=alive)
+        return device
+
+    def test_process_identity_uses_android_main_record_and_ignores_helpers(self):
+        records = ('ProcessRecord{a1 42:com.spotify.music/u0a113}\n'
+                   'ProcessRecord{a2 43:com.spotify.music:helper/u0a113}\n'
+                   'ProcessRecord{a3 44:com.spotify.music.other/u0a114}\n'
+                   'ProcessRecord{a1 42:com.spotify.music/u0a113}\n')
+        device = self.activity_device(records, ["alive"])
+        self.assertEqual(device.pid(), "42")
+        device.shell.assert_called_once_with("dumpsys", "activity", "processes", "com.spotify.music", timeout=15)
+        self.assertEqual(device.last_process_lookup["registered_main_processes"], 1)
+
+    def test_stale_and_ambiguous_process_records_do_not_select_an_arbitrary_pid(self):
+        records = 'ProcessRecord{a1 42:com.spotify.music/u0a113}\nProcessRecord{a2 43:com.spotify.music/u0a113}'
+        self.assertEqual(self.activity_device(records, ["", "alive"]).pid(), "43")
+        self.assertIsNone(self.activity_device(records, ["alive", "alive"]).pid())
+        self.assertIsNone(self.activity_device(records, ["", ""]).pid())
+
+    def test_invalid_or_other_user_process_ids_never_become_shell_commands(self):
+        records = ('ProcessRecord{a1 0:com.spotify.music/u0a113}\n'
+                   'ProcessRecord{a2 42:com.spotify.music/u10a113}\n'
+                   'ProcessRecord{a3 42;private:com.spotify.music/u0a113}\n')
+        device = self.activity_device(records, [])
+        self.assertIsNone(device.pid())
+        device.adb.assert_not_called()
+
     def translation_device(self, **overrides):
         props = {"ro.kernel.qemu": "1", "ro.build.version.sdk": "37",
                  "ro.product.cpu.abi": "x86_64", "ro.product.cpu.abilist64": "x86_64,arm64-v8a",

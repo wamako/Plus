@@ -3,8 +3,9 @@
 import argparse, hashlib, json, re, pathlib, shutil, subprocess, tarfile, tempfile, urllib.request, zipfile
 ROOT = pathlib.Path(__file__).resolve().parents[1]
 UPSTREAM = '615455bf0a7a81cd2d01382a1f1e9e0a699fb082'
-RUNTIME_URL = 'https://github.com/LeNerd46/SpotifyPlus/releases/download/v0.10-preview-1/spotifyplus-0.10.0-preview-1.apk'
 RUNTIME_SHA = 'd94cabfe0f6fdeb07a81da60030bf8e63eab4c3a5339bc99fcda81028788cf48'
+R11_SHA = '176aac1fec257cf18b7f2fc002f5cad2be2f9cc774a69694094e34555abb5df2'
+NODE_SHA = 'ce00e709fe6b84c5a57b48cbcba8549cf594d752d386a93a8b2c6b76fb9d021a'
 LYRICS = '6e60d0a038149c2df72664275d35beb2916cafd1'
 
 def download(url, path):
@@ -16,7 +17,9 @@ def archive(owner, repo, commit, destination):
     if destination.is_dir(): return
     with tempfile.TemporaryDirectory() as tmp:
         package = pathlib.Path(tmp) / 'source.tar.gz'
-        download(f'https://codeload.github.com/{owner}/{repo}/tar.gz/{commit}', package)
+        url = (f'https://gitlab.com/LeNerd46/spotify-plus/-/archive/{commit}/spotify-plus-{commit}.tar.gz'
+               if repo == 'SpotifyPlus' else f'https://codeload.github.com/{owner}/{repo}/tar.gz/{commit}')
+        download(url, package)
         with tarfile.open(package) as source:
             source.extractall(pathlib.Path(tmp) / 'extracted', filter='data')
         source = next((pathlib.Path(tmp) / 'extracted').iterdir())
@@ -33,7 +36,7 @@ def run(command, directory): subprocess.run(command, cwd=directory, check=True)
 def main():
     parser=argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--source', type=pathlib.Path)
-    parser.add_argument('--runtime-apk', type=pathlib.Path)
+    parser.add_argument('--runtime-apk', type=pathlib.Path, help='Verified R11 APK (binary donor), or the original pinned preview APK')
     parser.add_argument('--no-js-build', action='store_true')
     args=parser.parse_args()
     cache=ROOT/'.api2-cache'; cache.mkdir(exist_ok=True)
@@ -46,12 +49,13 @@ def main():
         else: archive('LeNerd46','SpotifyPlus',UPSTREAM,source)
     cpp=source/'app/src/main/cpp/spotifyengine.cpp'
     replace(cpp, '#include "spotifyengine.h"', '#include <unistd.h>\n#include "spotifyengine.h"')
-    runtime=args.runtime_apk or cache/'upstream.apk'
-    if not runtime.exists(): download(RUNTIME_URL,runtime)
+    runtime=args.runtime_apk or cache/'r11/app-debug.apk'
+    if not runtime.exists(): raise RuntimeError('Supply --runtime-apk with the verified R11 APK; upstream moved without its old GitHub release binaries')
     with runtime.open('rb') as stream: digest=hashlib.file_digest(stream,'sha256').hexdigest()
-    if digest != RUNTIME_SHA: raise RuntimeError('Upstream runtime APK checksum mismatch')
+    if digest not in {RUNTIME_SHA, R11_SHA}: raise RuntimeError('Runtime donor APK checksum mismatch')
     with zipfile.ZipFile(runtime) as apk:
         node=apk.read('lib/arm64-v8a/libnode.so')
+        if hashlib.sha256(node).hexdigest() != NODE_SHA: raise RuntimeError('Node binary checksum mismatch')
         if b'v18.20.4' not in node: raise RuntimeError('Node binary/header version mismatch')
         out=source/'app/libnode/bin/arm64-v8a/libnode.so';out.parent.mkdir(parents=True,exist_ok=True);out.write_bytes(node)
     generated=ROOT/'app/api2-generated/java'
@@ -114,6 +118,20 @@ def main():
 '''+content[end:]
     manager.write_text(content)
     services=generated/'com/lenerd/spotifyplus/module/scripting/SpotifyServices.java'
+    replace(services, '    public Object execute(String operation, JSONObject args) throws Exception {', '''    public Object execute(String operation, JSONObject args) throws Exception {
+        if (operation.startsWith("shuffleplus.")) return com.lenerd46.spotifyplus.api2.ShufflePlusBridge.execute(loader, operation, args);''')
+    replace(services, '    private Object modifyPlaylist(String operation, JSONObject args) throws Exception {', '''    private Object modifyPlaylist(String operation, JSONObject args) throws Exception {
+        // 9.1.94 changed the generated builder aliases and creation-origin enum.
+        if (operation.equals("playlists.create")) {
+            String name = args.getString("name").trim();
+            String uri = new com.lenerd46.spotifyplus.api2.NativePlaylistWriter(loader, PlayerHook.core).create(name);
+            return new JSONObject().put("uri", uri).put("name", name);
+        }
+        if (operation.equals("playlists.addTracks")) {
+            new com.lenerd46.spotifyplus.api2.NativePlaylistWriter(loader, PlayerHook.core)
+                .addTracks(args.getString("uri"), strings(args.getJSONArray("uris")));
+            return JSONObject.NULL;
+        }''')
     replace(services,'if (value != null && type("p.v8f").isInstance(value) && (Boolean) call(value, "c")) {\n            throw new IllegalStateException(String.valueOf(call(call(value, "a"), "g")));\n        }','if (value != null && String.valueOf(value).startsWith("Failure")) throw new IllegalStateException(String.valueOf(value));')
     start=services.read_text().index('    private synchronized Object queue() throws Exception {')
     end=services.read_text().index('    private JSONArray tracks(',start)
@@ -133,7 +151,20 @@ def main():
     }
 '''+content[end:])
     lyrics=cache/f'lyrics-{LYRICS}'
-    archive('LeNerd46','beautiful-lyrics-spotify-plus',LYRICS,lyrics)
+    if digest == R11_SHA:
+        # Preserve the exact already-validated extension after upstream's GitHub
+        # repository migration. The entire donor APK was verified above.
+        prefix='assets/api2-extensions/beautiful-lyrics/'
+        with zipfile.ZipFile(runtime) as apk:
+            for name in apk.namelist():
+                if name.startswith(prefix) and not name.endswith('/'):
+                    relative=pathlib.PurePosixPath(name[len(prefix):])
+                    if '..' in relative.parts or relative.is_absolute(): raise RuntimeError('Invalid donor path')
+                    destination=lyrics/'dist'/relative
+                    destination.parent.mkdir(parents=True,exist_ok=True)
+                    destination.write_bytes(apk.read(name))
+        shutil.copy2(lyrics/'dist/LICENSE',lyrics/'LICENSE')
+    else: archive('LeNerd46','beautiful-lyrics-spotify-plus',LYRICS,lyrics)
     fixture=source/'scripts/lyrics'; fixture.mkdir(exist_ok=True)
     shutil.copy2(lyrics/'dist/lyrics.apk',fixture/'lyrics.apk')
     shutil.copy2(lyrics/'dist/manifest.json',fixture/'manifest.json')
@@ -143,6 +174,7 @@ def main():
         "JSON.parse(SpotifyPlus.Platform.Storage.Cache.read(`${user}-${repo}`) as string ?? 'null')",
         "JSON.parse(await SpotifyPlus.Platform.Storage.Cache.read(`${user}-${repo}`) as string ?? 'null')")
     runtime_source=source/'app/src/main/assets/nodejs-src'
+    run(['node',str(ROOT/'extensions/local-suite/tools/patch-shuffle-sdk.mjs'),str(runtime_source)],ROOT)
     if not args.no_js_build:
         run(['npm','ci','--ignore-scripts'],runtime_source)
         run(['npm','run','build'],runtime_source)

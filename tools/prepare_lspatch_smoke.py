@@ -1,0 +1,191 @@
+#!/usr/bin/env python3
+"""Download checksum-pinned test inputs and patch Spotify; never upload host APKs.
+
+SPOTIFY_APK_URL must be an HTTPS URL supplied through a repository secret. No
+Spotify account, token or API key is used. The original stays in the job temp dir.
+"""
+import argparse
+import hashlib
+import http.cookiejar
+from html.parser import HTMLParser
+import json
+import os
+import pathlib
+import re
+import shutil
+import subprocess
+import urllib.request
+import urllib.parse
+import urllib.error
+import zipfile
+
+from verify_lspatched_package import JAR_SHA, manifest, verify
+from google_drive_input import download_url as drive_download_url, drive_file_id, confirmation_url as drive_confirmation_url
+
+ORIGINAL_SHA = "a0a6fbe6b87249bd3de88f16b342cce233f94513d41a0f6f2a06558ba51a9304"
+PATCHER_URL = "https://github.com/JingMatrix/LSPatch/releases/download/v1.2/lspatch-v1.2-487-release.jar"
+
+def checksum(path):
+    with path.open("rb") as stream:
+        return hashlib.file_digest(stream, "sha256").hexdigest()
+
+def describe_input(path):
+    """Safe classification only: never include content, paths, URLs or headers."""
+    report = {"test_kind": "spotify_input_diagnostic", "bytes": path.stat().st_size,
+              "actual_sha256": checksum(path), "kind": "unknown_file_type",
+              "runtime_test_executed": False}
+    with path.open("rb") as source:
+        prefix = source.read(512).lstrip().lower()
+    if prefix.startswith((b"<!doctype html", b"<html")):
+        report["kind"] = "html_page_not_apk"
+    elif zipfile.is_zipfile(path):
+        with zipfile.ZipFile(path) as source:
+            android = "AndroidManifest.xml" in source.namelist()
+            patched = "assets/lspatch/config.json" in source.namelist()
+        report["kind"] = "zip_archive_not_apk"
+        if android:
+            report["kind"] = "unreadable_android_apk"
+            try:
+                info = manifest(path)
+                if info["package"] == "com.spotify.music":
+                    report["kind"] = "already_lspatched_spotify_apk" if patched else "spotify_apk"
+                    for key, pattern in (("version", r"\d+(?:\.\d+){1,5}"),
+                                         ("version_code", r"\d{1,15}"), ("target_sdk", r"\d{1,4}")):
+                        value = str(info.get(key) or "")
+                        report[key] = value if re.fullmatch(pattern, value) else "unrecognized"
+                elif info["package"] in ("com.lenerd46.spotifyplus", "com.lenerd.spotifyplus"):
+                    report["kind"] = "spotify_plus_module_apk_not_original_spotify"
+                else:
+                    report["kind"] = "different_android_apk"
+            except Exception:
+                pass  # Keep a fixed category; exception text may contain data.
+    return report
+
+class DownloadLinkParser(HTMLParser):
+    def __init__(self):
+        super().__init__(convert_charrefs=True)
+        self.links = []
+
+    def handle_starttag(self, tag, attrs):
+        values = dict(attrs)
+        if tag == "a" and values.get("id") == "download-link":
+            self.links.append(values.get("href", ""))
+
+def apkmirror_file_link(page_url, html):
+    """Resolve only the observed provider file anchor, never ads or scripts."""
+    page = urllib.parse.urlsplit(page_url)
+    hosts = {"www.apkmirror.com", "apkmirror.com"}
+    if page.scheme != "https" or page.hostname not in hosts or page.username or page.password or page.port not in (None, 443):
+        return None
+    parser = DownloadLinkParser()
+    parser.feed(html)
+    if not parser.links:
+        return None
+    if len(parser.links) != 1:
+        raise ValueError("Ambiguous provider download link")
+    url = urllib.parse.urljoin(page_url, parser.links[0])
+    target = urllib.parse.urlsplit(url)
+    if (target.scheme != "https" or target.hostname != page.hostname or
+            target.username or target.password or target.port not in (None, 443) or
+            target.path != "/wp-content/themes/APKMirror/download.php" or target.fragment):
+        raise ValueError("Unexpected provider download link")
+    return url
+
+class HTTPSRedirects(urllib.request.HTTPRedirectHandler):
+    def redirect_request(self, req, fp, code, msg, headers, newurl):
+        if urllib.parse.urlsplit(newurl).scheme != "https":
+            raise ValueError("Insecure test-input redirect")
+        return super().redirect_request(req, fp, code, msg, headers, newurl)
+
+def download(url, path, expected, diagnostics=None):
+    # Do not include URLs (which may be signed), HTTP headers or response bodies
+    # in errors, patcher logs, reports or Actions artifacts.
+    if not url.startswith("https://"):
+        raise ValueError("An HTTPS test-input URL is required")
+    try:
+        expected_drive_id = drive_file_id(url) if expected == ORIGINAL_SHA else None
+        if expected_drive_id:
+            url = drive_download_url(url)
+        opener = urllib.request.build_opener(HTTPSRedirects(),
+                    urllib.request.HTTPCookieProcessor(http.cookiejar.CookieJar()))
+        # At most one download page and one file request. Cookies are limited to
+        # this download session and never copied from a browser or logged.
+        for attempt in range(2):
+            with opener.open(url, timeout=120) as response, path.open("wb") as out:
+                if not response.url.startswith("https://"):
+                    raise ValueError("Insecure test-input redirect")
+                final_url = response.url
+                shutil.copyfileobj(response, out)
+            if attempt or expected != ORIGINAL_SHA or path.stat().st_size > 2 * 1024 * 1024:
+                break
+            with path.open("rb") as source:
+                prefix = source.read(512).lstrip().lower()
+            if not prefix.startswith((b"<!doctype html", b"<html")):
+                break
+            html = path.read_text(encoding="utf-8", errors="replace")
+            link = (drive_confirmation_url(final_url, html, expected_drive_id) if expected_drive_id else
+                    apkmirror_file_link(final_url, html))
+            if not link:
+                break
+            url = link
+            print("Following provider download-page file link; exact APK checksum remains required")
+    except urllib.error.HTTPError as error:
+        path.unlink(missing_ok=True)
+        status = int(error.code)
+        if diagnostics is not None:
+            diagnostics.write_text(json.dumps({"test_kind": "spotify_input_diagnostic",
+                "kind": "http_download_failed", "http_status": status,
+                "runtime_test_executed": False}, indent=2) + "\n")
+        raise RuntimeError("Test input could not be downloaded (HTTP " + str(status) +
+                           "); use a working HTTPS APK source accessible to CI") from None
+    except Exception:
+        path.unlink(missing_ok=True)
+        raise RuntimeError("Test input could not be downloaded; check the configured HTTPS source") from None
+    if checksum(path) != expected:
+        try:
+            if diagnostics is not None:
+                report = describe_input(path)
+                report.update({"expected_sha256": expected, "checksum_matches": False})
+                diagnostics.write_text(json.dumps(report, indent=2) + "\n")
+                print("Spotify input mismatch: " + report["kind"] + "; safe diagnostics saved in input.json")
+        finally:
+            path.unlink()
+        raise ValueError("Test input SHA-256 does not match the pinned version")
+
+def main():
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--module", required=True, type=pathlib.Path)
+    parser.add_argument("--module-abi", choices=("arm64-v8a", "x86_64"), default="arm64-v8a")
+    parser.add_argument("--signature-bypass-level", type=int, choices=(0, 2), default=0)
+    parser.add_argument("--work", required=True, type=pathlib.Path)
+    parser.add_argument("--report", required=True, type=pathlib.Path)
+    args = parser.parse_args()
+    url = os.environ.get("SPOTIFY_APK_URL", "")
+    if not url:
+        raise SystemExit("Set the SPOTIFY_APK_URL repository secret to the original Spotify 9.1.94.1929 APK HTTPS source")
+    args.work.mkdir(parents=True, exist_ok=True)
+    args.report.parent.mkdir(parents=True, exist_ok=True)
+    original, jar = args.work / "spotify-original.apk", args.work / "lspatch-487.jar"
+    download(url, original, ORIGINAL_SHA, args.report.parent / "input.json")
+    download(PATCHER_URL, jar, JAR_SHA)
+    output = args.work / "patched"
+    # No debug or SDK override: exercise the target-37 integrated patch as-is.
+    with (args.work / "patcher.log").open("w") as log:
+        subprocess.run(["java", "-jar", str(jar), "-o", str(output), "--sigbypasslv", str(args.signature_bypass_level), "-m",
+                        str(args.module.resolve()), str(original)], check=True, stdout=log, stderr=log)
+    patched, = output.glob("*.apk")
+    result = verify(original, args.module, jar, patched, checksum(args.module), args.module_abi, args.signature_bypass_level)
+    classes = args.work / "verifier"
+    classes.mkdir(exist_ok=True)
+    source = pathlib.Path(__file__).with_name("VerifyLspatchSignature.java")
+    subprocess.run(["javac", "-proc:none", "-cp", str(jar), "-d", str(classes), str(source)], check=True)
+    signature = subprocess.run(["java", "-cp", str(classes) + os.pathsep + str(jar),
+                                "VerifyLspatchSignature", str(patched)], check=True, capture_output=True, text=True)
+    result["signature"] = json.loads(signature.stdout)
+    args.report.write_text(json.dumps(result, indent=2) + "\n")
+    # Fixed local name for the device runner; paths and private URLs stay local.
+    patched.rename(args.work / "spotify-lspatched.apk")
+    print("Verified integrated LSPatch 1.2 (487) package and APK signature")
+
+if __name__ == "__main__":
+    main()

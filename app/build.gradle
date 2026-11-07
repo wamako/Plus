@@ -2,6 +2,9 @@ plugins {
     id 'com.android.application'
 }
 
+def nativeAbi = providers.gradleProperty('spotifyplusNativeAbi').getOrElse('arm64-v8a')
+if (!(nativeAbi in ['arm64-v8a', 'x86_64'])) throw new GradleException('Unsupported Spotify Plus native ABI')
+
 android {
     namespace 'com.lenerd46.spotifyplus'
     compileSdk 35
@@ -12,11 +15,11 @@ android {
         applicationId "com.lenerd46.spotifyplus"
         minSdk 27
         targetSdk 35
-        versionCode 28
-        versionName "0.10.0-api2.9.1.94.11"
+        versionCode 31
+        versionName ("0.10.0-api2.9.1.94.14" + (nativeAbi == 'x86_64' ? '-emulator-x86_64' : ''))
 
         testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
-        ndk { abiFilters 'arm64-v8a' }
+        ndk { abiFilters nativeAbi }
         externalNativeBuild { cmake { arguments '-DANDROID_STL=c++_shared'; targets 'native-lib', 'spotifyplus_bridge' } }
     }
 
@@ -45,7 +48,10 @@ android {
     ndkVersion '26.3.11579264'
     externalNativeBuild { cmake { path file('api2-source/app/src/main/cpp/CMakeLists.txt'); version '3.22.1' } }
     sourceSets { main { java.srcDir 'api2-generated/java'; assets.srcDir 'api2-assets'; jniLibs.srcDir 'api2-source/app/libnode/bin' } }
-    packaging { jniLibs { pickFirsts += ['**/libc++_shared.so', '**/libnode.so'] } }
+    packaging { jniLibs {
+        pickFirsts += ['**/libc++_shared.so', '**/libnode.so']
+        if (nativeAbi == 'x86_64') keepDebugSymbols += ['**/libnode.so']
+    } }
 
     compileOptions {
         sourceCompatibility JavaVersion.VERSION_21
@@ -83,9 +89,10 @@ dependencies {
 tasks.register('syncApi2Addon') {
     dependsOn 'externalNativeBuildDebug'
     doLast {
-        def matches = fileTree("$buildDir/intermediates/cmake").matching { include '**/obj/arm64-v8a/libspotifyplus_bridge.so' }.files
+        def matches = fileTree("$buildDir/intermediates/cmake").matching { include "**/obj/${nativeAbi}/libspotifyplus_bridge.so" }.files
         if (matches.size() != 1) throw new GradleException("Expected one compiled API-2 addon, found " + matches)
-        copy { from matches.first(); into 'api2-assets/nodejs/addons/arm64-v8a'; rename { 'spotifyplus_bridge.node' } }
+        delete 'api2-assets/nodejs/addons'
+        copy { from matches.first(); into "api2-assets/nodejs/addons/${nativeAbi}"; rename { 'spotifyplus_bridge.node' } }
     }
 }
 tasks.matching { it.name == 'mergeDebugAssets' || it.name == 'mergeReleaseAssets' }.configureEach { dependsOn 'syncApi2Addon' }

@@ -1,16 +1,15 @@
-# Shuffle+ 0.1.2 for Spotify Plus R14
+# Shuffle+ 0.1.3 for Spotify Plus R15
 
-Version 0.1.2 requires the **R14 module APK**. Repatch the original Spotify
+Version 0.1.3 requires the **R15 module APK**. Repatch the original Spotify
 9.1.94.1929 APK with this module; installing the ZIP or the module alone does not
 replace an older module embedded by LSPatch.
 
-Collection playback now sends an anonymous explicit track context instead of
-reusing the source collection identity. Every song occurrence has a fresh UID;
-the source URI is retained only as the playback origin. The host waits up to five
-seconds for Spotify's current song and every exposed upcoming occurrence to match
-the request. An OK reply with an unchanged or different queue is unconfirmed,
-never success. Upcoming-queue reshuffles also require readback of the new order,
-unchanged current song and history. The Prepare/Start control remains in place.
+Collection playback now uses Spotify's normal native PlayCommand handler and
+its interceptors, rather than a direct Esperanto Play request. It supplies the
+exact explicit song order and waits for the player/visible queue to match.
+Use **Check active playback adapter** to verify module R15, the binding and live
+player capture. If the player has not been captured, select a song from an album
+or playlist in Spotify before preparing again. Errors include a fixed stage code.
 
 Independent Android adaptation inspired by Spicetify's Shuffle+ (khanhas and
 Tetrax-10). This is not the desktop file or rxri's audio-feature FeatureShuffle.
@@ -23,7 +22,7 @@ to understand explicit context playback; its implementation was not copied.
 
 ## Install
 
-1. Repatch Spotify **9.1.94.1929 / arm64** using the **R14** Plus module in
+1. Repatch Spotify **9.1.94.1929 / arm64** using the **R15** Plus module in
    LSPatch. A ZIP alone cannot add the native playback adapter to R12/R13.
 2. Extract this ZIP. Put the **shuffle-plus** folder beside your existing four
    local extension folders in SpotifyPlusLocal. It must directly contain

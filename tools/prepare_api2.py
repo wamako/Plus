@@ -47,6 +47,9 @@ def main():
             for relative in ['app/libnode/include','app/src/main/cpp','app/src/main/assets/nodejs-src','scripts/marketplace','scripts/settings','spotifyplus-sdk/src/main/java','app/src/main/java']:
                 shutil.copytree(args.source/relative,source/relative,dirs_exist_ok=True)
         else: archive('LeNerd46','SpotifyPlus',UPSTREAM,source)
+    updates=cache/'upstream-updates-c407383'
+    archive('LeNerd46','SpotifyPlus','c407383820660d4273703f53d517ce12beced77e',updates)
+    run(['python3',str(ROOT/'tools/apply_upstream_updates.py'),'--source',str(source),'--upstream',str(updates)],ROOT)
     cpp=source/'app/src/main/cpp/spotifyengine.cpp'
     replace(cpp, '#include "spotifyengine.h"', '#include <unistd.h>\n#include "spotifyengine.h"')
     runtime=args.runtime_apk or cache/'r11/app-debug.apk'
@@ -132,6 +135,8 @@ def main():
                 .addTracks(args.getString("uri"), strings(args.getJSONArray("uris")));
             return JSONObject.NULL;
         }''')
+    replace(services,'await(call(ready(PlayerHook.contextPlayer), "a", call(builder, "build")));',
+        'Object target = ready(PlayerHook.contextPlayer);\n                await(com.lenerd46.spotifyplus.api2.NativePlaybackCommand.dispatcher(loader, target.getClass()).invoke(target, call(builder, "build")));')
     replace(services,'if (value != null && type("p.v8f").isInstance(value) && (Boolean) call(value, "c")) {\n            throw new IllegalStateException(String.valueOf(call(call(value, "a"), "g")));\n        }','if (value != null && String.valueOf(value).startsWith("Failure")) throw new IllegalStateException(String.valueOf(value));')
     start=services.read_text().index('    private synchronized Object queue() throws Exception {')
     end=services.read_text().index('    private JSONArray tracks(',start)
@@ -170,9 +175,6 @@ def main():
     shutil.copy2(lyrics/'dist/manifest.json',fixture/'manifest.json')
     replace(services,'private Object field(Object value, String name) throws Exception { return value.getClass().getField(name).get(value); }',
         'private Object field(Object value, String name) throws Exception { for (Class<?> type=value.getClass(); type!=null; type=type.getSuperclass()) { try { Field f=type.getDeclaredField(name); f.setAccessible(true); return f.get(value); } catch (NoSuchFieldException ignored) {} } throw new NoSuchFieldException(name); }')
-    replace(source/'scripts/marketplace/src/fetch-metadata.ts',
-        "JSON.parse(SpotifyPlus.Platform.Storage.Cache.read(`${user}-${repo}`) as string ?? 'null')",
-        "JSON.parse(await SpotifyPlus.Platform.Storage.Cache.read(`${user}-${repo}`) as string ?? 'null')")
     runtime_source=source/'app/src/main/assets/nodejs-src'
     run(['node',str(ROOT/'extensions/local-suite/tools/patch-shuffle-sdk.mjs'),str(runtime_source)],ROOT)
     if not args.no_js_build:
@@ -184,11 +186,18 @@ def main():
         for name in ['marketplace','settings']:
             project=source/'scripts'/name
             run(['npm','ci','--ignore-scripts'],project)
+            sdk_link=project/'node_modules/spotifyplus'
+            if sdk_link.is_symlink():sdk_link.unlink()
+            elif sdk_link.exists():shutil.rmtree(sdk_link)
+            sdk_link.symlink_to(runtime_source.resolve(),target_is_directory=True)
             run(['npm','run','build'],project)
+            run(['npm','run','check'],project)
             if name == 'marketplace': run(['npm','test'],project)
     assets=ROOT/'app/api2-assets'
     if assets.exists():shutil.rmtree(assets)
     shutil.copytree(source/'app/src/main/assets/nodejs',assets/'nodejs')
+    notices=assets/'upstream-notices';notices.mkdir(exist_ok=True)
+    shutil.copy2(updates/'LICENSE',notices/'SpotifyPlus-MIT.txt')
     load_order=re.findall(r'extractAndLoad\(Utils.MODULE_APK_PATH, outDir, "([^"\n]+)"\)',manager.read_text())
     (assets/'api2-native-load-order.json').write_text(json.dumps(load_order))
     for name in ['marketplace','settings']:

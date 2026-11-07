@@ -38,7 +38,7 @@ def verify(path, abi='arm64-v8a'):
                 host_classes.update(validate_dex(entry,apk.read(entry)))
         validate_storage_classes(host_classes)
         assert "Lcom/lenerd46/spotifyplus/api2/NativePlaylistWriter;" in host_classes, "Missing 9.1.94 playlist writer"
-        for name in ["ShuffleEngine", "ShuffleProtocol", "ShufflePlusBridge"]:
+        for name in ["ShuffleEngine", "NativePlaybackCommand", "ShufflePlusBridge"]:
             assert "Lcom/lenerd46/spotifyplus/api2/"+name+";" in host_classes, "Missing Shuffle+ native adapter: "+name
         sdk=apk.read('assets/nodejs/loader/script-api.js')
         for name in [b'ShufflePlus:', b'shuffleplus.capabilities', b'shuffleplus.queue', b'shuffleplus.prepare', b'shuffleplus.apply']:

@@ -39,6 +39,7 @@ public final class SideDrawerHook extends SpotifyHook {
             root.addView(com.lenerd46.spotifyplus.features.FeatureSheets.text(a,active.isEmpty()?"Install extensions from Marketplace. Extensions with their own pages appear here.":"Installed extension pages",15));
             for(Entry e:active)root.addView(com.lenerd46.spotifyplus.features.FeatureSheets.button(a,e.title,()->{com.lenerd46.spotifyplus.features.FeatureSheets.close();open(e.script,e.id);}));
             root.addView(com.lenerd46.spotifyplus.features.FeatureSheets.button(a,"Marketplace",()->{com.lenerd46.spotifyplus.features.FeatureSheets.close();openRegistered("com.lenerd.marketplace");}));
+            root.addView(com.lenerd46.spotifyplus.features.FeatureSheets.button(a,"Extension settings",()->{com.lenerd46.spotifyplus.features.FeatureSheets.close();openRegistered("com.lenerd.settings");}));
         }));
     }
     private static void clearBack(){if(Build.VERSION.SDK_INT>=33&&dispatcher!=null&&back!=null)dispatcher.unregisterOnBackInvokedCallback(back);dispatcher=null;back=null;}

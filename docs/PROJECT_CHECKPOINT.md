@@ -567,3 +567,19 @@ unmatched playback is unknown, not success, with no automatic mutation retry.
 The source-identity explanation remains a hypothesis pending phone testing.
 See API2_SHUFFLE_R14.md for request evidence, verification scope and test limits.
 R14 requires repatching; 0.1.2 alone cannot change the old embedded R13 adapter.
+
+## R15 / Shuffle+ 0.1.3 and upstream release backports
+
+The user reports R14 still preserves canonical playback order and requests
+compatible upstream updates. Reviewed GitLab main c407383820660d4273703f53d517ce12beced77e.
+R15 captures Spotify's normal native PlayCommand handler (p.cgz.a in the exact
+9.1.94 APK) and awaits its interceptors/result instead of using direct Play RPC.
+The native binding marker is now required on each emulator launch. 0.1.3 exposes
+read-only active-adapter diagnostics and requires host 15/native-play-command.
+Marketplace 1.0.0, backward-compatible author metadata/source persistence, and
+compatible settings control fixes are backported; native renderer/theme/SDK
+changes with unvalidated dependencies are documented and excluded. See
+API2_R15_UPSTREAM.md for evidence, implementation, tests and phone acceptance.
+This remains an unverified authenticated playback repair candidate until the
+phone demonstrates the requested order. Both R15 repatching and ZIP replacement
+are required. The four other local extensions remain 0.1.7.

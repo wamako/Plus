@@ -26,6 +26,7 @@ STORAGE_MARKERS = {
 MARKERS = {
     "integrated_loader_entered": "Bootstrap loader from embedment",
     "module_entered": "[SpotifyPlus] Loading SpotifyPlus v",
+    "native_play_binding_ready": "Native PlayCommand binding installed",
     "node_host_ready": "Host ready",
     "shuffle_extension_loaded": "Loaded script com.wamako.shuffleplus from ",
 }

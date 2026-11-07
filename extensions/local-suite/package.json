@@ -9,7 +9,7 @@
     "typecheck": "tsc --noEmit",
     "check": "npm run test && npm run typecheck && npm run build && npm run preflight",
     "check:storage-probe": "node tools/build-storage-probe.mjs && node --test tests/storage-probe-host.test.mjs",
-    "preflight": "node --test tests/host-preflight.test.mjs tests/shuffle-host.test.mjs"
+    "preflight": "node --test tests/host-preflight.test.mjs tests/shuffle-host.test.mjs tests/upstream-host.test.mjs"
   },
   "devDependencies": {
     "@types/node": "22.19.17",

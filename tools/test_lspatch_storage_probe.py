@@ -11,7 +11,7 @@ from unittest.mock import Mock, patch
 from run_lspatch_smoke import STORAGE_MARKERS, launch, main, provision, storage_status
 
 HOST_READY = ("Bootstrap loader from embedment\n[SpotifyPlus] Loading SpotifyPlus v\n"
-              "Host ready\nLoaded script com.wamako.shuffleplus from /private\n")
+              "Native PlayCommand binding installed\nHost ready\nLoaded script com.wamako.shuffleplus from /private\n")
 
 
 class StorageProbeTests(unittest.TestCase):

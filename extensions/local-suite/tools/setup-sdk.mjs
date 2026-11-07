@@ -31,6 +31,7 @@ run("tar", ["-xzf", archive, "-C", temp, selected]);
 const destination = path.join(root, ".sdk");
 await fs.rm(destination, { recursive: true, force: true });
 await fs.rename(path.join(temp, selected), destination);
+run("python3", [path.resolve(root, "../../tools/apply_upstream_updates.py"), "--sdk", destination]);
 run("node", [path.join(root, "tools/patch-shuffle-sdk.mjs"), destination]);
 run("npm", ["ci", "--ignore-scripts"], destination);
 run("npm", ["run", "build"], destination);

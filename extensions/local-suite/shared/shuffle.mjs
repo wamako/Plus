@@ -16,8 +16,10 @@ export function permutation(length, rng = Math.random) {
 export function shuffleTracks(tracks, rng) { return permutation(tracks.length, rng).map(i => tracks[i]); }
 const check = job => { if (job?.cancelled) throw new Error("Operation cancelled."); };
 const known = {
+  PLAYER_READY: "Start a song from an album or playlist in Spotify, then prepare a new Shuffle+ preview.",
+  PLAY_REFUSED: "Spotify’s native player refused this playback command. Check playback permissions and prepare a new preview.",
   READY: "Start Spotify playback once, then reopen Shuffle+ and load a new preview.",
-  PREPARE: "The native playback protocol could not be prepared. Check that R14 is active.",
+  PREPARE: "The native playback protocol could not be prepared. Check that R15 is active.",
   SHUFFLE_ON: "Turn off Spotify's shuffle in the player before reshuffling the upcoming queue.",
   STALE: "Playback or the queue changed. Load a new preview before applying it.",
   EXPIRED: "This preview expired. Prepare a new one; previews last two minutes.",
@@ -32,7 +34,8 @@ export function shuffleError(error, mutation = false) {
   const code = /\bSP_SHUFFLE_([A-Z_]+)\b/.exec(String(error?.message || ""))?.[1];
   const result = new Error((code === "UNCONFIRMED" ? "Spotify acknowledged the command, but its player and queue did not confirm the previewed order. Inspect playback before trying again." : known[code]) || (mutation
     ? "The native shuffle did not return a confirmed result. Inspect playback before trying again."
-    : "Shuffle+ needs the R14 playback adapter. Repatch Spotify with the R14 module, then restart it."));
+    : "Shuffle+ needs the R15 playback adapter. Repatch Spotify with the R15 module, then restart it."));
+  if (code) result.message += ` [SP_SHUFFLE_${code}]`;
   result.unknown = mutation && !known[code];
   return result;
 }
@@ -40,11 +43,13 @@ export class ShuffleClient {
   constructor(api) { this.api = api; }
   async capabilities(job) {
     check(job);
+    let value;
     try {
-      const value = await this.api.ShufflePlus.capabilities();
-      if (value?.version !== 1 || !Number.isSafeInteger(value?.host) || value.host < 14 || value?.limit !== SHUFFLE_LIMIT) throw new Error();
+      value = await this.api.ShufflePlus.capabilities();
+      if (value?.version !== 1 || !Number.isSafeInteger(value?.host) || value.host < 15 || value?.route !== "native-play-command" || value?.limit !== SHUFFLE_LIMIT) throw new Error();
     } catch (error) { throw shuffleError(error); }
     check(job);
+    return value;
   }
   validate(value, count, mode) {
     if (typeof value?.ticket !== "string" || !/^[a-f0-9-]{36}$/.test(value.ticket) ||

@@ -11,7 +11,7 @@ function App() {
     [data, setData] = useState<any>(null), [tracks, setTracks] = useState<any[]>([]),
     [part, setPart] = useState(0), [plan, setPlan] = useState<any>(null),
     [confirmation, setConfirmation] = useState<string | null>(null),
-    [reviewed, setReviewed] = useState(0), [outcome, setOutcome] = useState(""), task = useTask(), liked = useLikedSource();
+    [reviewed, setReviewed] = useState(0), [outcome, setOutcome] = useState(""), [runtime, setRuntime] = useState(""), task = useTask(), liked = useLikedSource();
   const count = Math.ceil(tracks.length / SHUFFLE_LIMIT), from = part * SHUFFLE_LIMIT,
     selected = data?.mode === "queue" ? tracks : tracks.slice(from, from + SHUFFLE_LIMIT),
     needsReview = shuffleClient.needsReview(),
@@ -39,12 +39,14 @@ function App() {
     if (!plan || !confirmation) return;
     const selectedPlan = plan, token = confirmation;
     clear();
-    task.run(job => shuffleClient.apply(selectedPlan, token, token, job), value => {
+    task.run((job, progress) => { progress("Applying through Spotify’s native player and checking the queue…"); return shuffleClient.apply(selectedPlan, token, token, job); }, value => {
       setOutcome(selectedPlan.mode === "queue" ? `Verified: ${value.applied} upcoming songs reordered. The playing song and history were kept.` : `Started the ${value.applied}-song selection. The current song and visible queue match the preview.`);
     });
   }
   return <Page title="Shuffle+">
-    <Label muted>Random song order without taste or artist weighting. Previewing never changes playback. Requires Spotify Plus R14.</Label>
+    <Label muted>Random song order without taste or artist weighting. Previewing never changes playback. Requires Spotify Plus R15.</Label>
+    <Button title="Check active playback adapter" disabled={task.busy} onPress={() => task.run(job => shuffleClient.capabilities(job), info => setRuntime(`Active module R${info.host} · native PlayCommand · binding ${info.binding || "unknown"} · ${info.playerReady ? "player captured" : "start playback in Spotify first"}`))} />
+    {runtime ? <Label>{runtime}</Label> : null}
     <Button title="Preview shuffled upcoming queue" disabled={task.busy} onPress={() => {
       clear(); setData(null); setTracks([]); setPart(0);
       task.run(job => shuffleClient.queue(job), value => {

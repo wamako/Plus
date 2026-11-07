@@ -20,6 +20,7 @@ import urllib.error
 import zipfile
 
 from verify_lspatched_package import JAR_SHA, manifest, verify
+from verify_native_play_binding import verify as verify_play_binding
 from google_drive_input import download_url as drive_download_url, drive_file_id, confirmation_url as drive_confirmation_url
 
 ORIGINAL_SHA = "a0a6fbe6b87249bd3de88f16b342cce233f94513d41a0f6f2a06558ba51a9304"
@@ -167,6 +168,7 @@ def main():
     args.report.parent.mkdir(parents=True, exist_ok=True)
     original, jar = args.work / "spotify-original.apk", args.work / "lspatch-487.jar"
     download(url, original, ORIGINAL_SHA, args.report.parent / "input.json")
+    play_binding = verify_play_binding(original)
     download(PATCHER_URL, jar, JAR_SHA)
     output = args.work / "patched"
     # No debug or SDK override: exercise the target-37 integrated patch as-is.
@@ -175,6 +177,7 @@ def main():
                         str(args.module.resolve()), str(original)], check=True, stdout=log, stderr=log)
     patched, = output.glob("*.apk")
     result = verify(original, args.module, jar, patched, checksum(args.module), args.module_abi, args.signature_bypass_level)
+    result["native_play_binding"] = play_binding
     classes = args.work / "verifier"
     classes.mkdir(exist_ok=True)
     source = pathlib.Path(__file__).with_name("VerifyLspatchSignature.java")

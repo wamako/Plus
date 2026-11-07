@@ -1,6 +1,7 @@
 package com.lenerd46.spotifyplus.api2;
 
 import com.lenerd.spotifyplus.module.Utils;
+import com.lenerd.spotifyplus.module.hooks.PlayerHook;
 import com.lenerd46.spotifyplus.player.NextUpQueue;
 import org.json.*;
 import java.lang.reflect.*;
@@ -15,7 +16,7 @@ public final class ShufflePlusBridge {
     private static ClassLoader engineLoader;
     private ShufflePlusBridge() {}
     public static synchronized Object execute(ClassLoader loader,String operation,JSONObject args) throws Exception {
-        if(operation.equals("shuffleplus.capabilities")) return new JSONObject().put("version",1).put("host",14).put("limit",ShuffleEngine.LIMIT);
+        if(operation.equals("shuffleplus.capabilities")) return new JSONObject().put("version",1).put("host",15).put("route","native-play-command").put("playerReady",PlayerHook.contextPlayer!=null).put("binding",PlayerHook.playBinding).put("limit",ShuffleEngine.LIMIT);
         if(engine==null || engineLoader!=loader) {
             engineLoader=loader;
             engine=new ShuffleEngine(new NativeBackend(loader),android.os.SystemClock::elapsedRealtime);
@@ -88,34 +89,24 @@ public final class ShufflePlusBridge {
         public Object preparePlay(ShuffleEngine.Snapshot snapshot,String context,List<String> uris) {
             try {
                 String prefix="shuffleplus-"+UUID.randomUUID()+"-";
-                Object request=ShuffleProtocol.play(loader,context,uris,prefix);
-                Class<?> response=ShuffleProtocol.response(loader), clientType=type("com.spotify.esperanto.esperanto.ClientBase");
-                Object client=uniqueField(snapshot.owner,clientType);
-                Method rpc=null;
-                for(Method method:clientType.getMethods()) {
-                    Class<?>[] p=method.getParameterTypes();
-                    if(method.getName().equals("callSingle") && !method.isBridge() && p.length==3 && p[0]==String.class && p[1]==String.class && p[2].isInstance(request)) {
-                        if(rpc!=null) throw new IllegalStateException();rpc=method;
-                    }
-                }
-                if(rpc==null) throw new NoSuchMethodException();
-                // Resolve Rx methods before dispatch, including on a cold extension start.
+                Object target=PlayerHook.contextPlayer;
+                if(target==null) throw ShuffleEngine.error("PLAYER_READY");
+                Object request=NativePlaybackCommand.prepare(loader,context,uris,prefix);
+                Method dispatch=NativePlaybackCommand.dispatcher(loader,target.getClass());
                 type("io.reactivex.rxjava3.core.Single").getMethod("timeout",long.class,TimeUnit.class);
                 type("io.reactivex.rxjava3.core.Single").getMethod("blockingGet");
-                return new Play(client,rpc,request,response,watch(snapshot.owner),List.copyOf(uris),prefix);
+                return new Play(target,dispatch,request,watch(snapshot.owner),List.copyOf(uris),prefix);
             } catch(Exception | LinkageError error){throw controlled(error,"PREPARE");}
         }
         public void play(Object value) {
-            Play p=(Play)value;byte[] response;
-            try {response=(byte[])await(p.rpc.invoke(p.client,"spotify.player.esperanto.proto.ContextPlayer","Play",p.request));}
+            Play p=(Play)value;
+            if(p.client!=PlayerHook.contextPlayer) throw ShuffleEngine.error("STALE");
+            Object result;
+            try {result=await(p.rpc.invoke(p.client,p.request));}
             catch(Exception | LinkageError error){throw ShuffleEngine.error("RPC");}
-            int code;
-            try {code=ShuffleProtocol.result(p.response,response);}
-            catch(Exception | LinkageError error){throw ShuffleEngine.error("ACK");}
-            if(code==1) throw ShuffleEngine.error("FORBIDDEN");
-            if(code==2) throw ShuffleEngine.error("NOT_FOUND");
-            if(code==3) throw ShuffleEngine.error("CONFLICT");
-            if(code!=0) throw ShuffleEngine.error("ACK");
+            String status=String.valueOf(result);
+            if(status.startsWith("Failure")) throw ShuffleEngine.error("PLAY_REFUSED");
+            if(!status.startsWith("Success")) throw ShuffleEngine.error("ACK");
             p.watch.confirm(state -> collectionMatches(state,p.uris,p.prefix));
         }
         public void replace(ShuffleEngine.Snapshot snapshot,List<ShuffleEngine.Item> order) {
@@ -232,9 +223,9 @@ public final class ShufflePlusBridge {
             return ShuffleEngine.error(fallback);
         }
         private static final class Play {
-            final Object client,request;final Method rpc;final Class<?> response;
+            final Object client,request;final Method rpc;
             final Watch watch;final List<String> uris;final String prefix;
-            Play(Object c,Method r,Object q,Class<?> response,Watch watch,List<String> uris,String prefix){client=c;rpc=r;request=q;this.response=response;this.watch=watch;this.uris=uris;this.prefix=prefix;}
+            Play(Object c,Method r,Object q,Watch watch,List<String> uris,String prefix){client=c;rpc=r;request=q;this.watch=watch;this.uris=uris;this.prefix=prefix;}
         }
     }
 }

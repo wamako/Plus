@@ -27,10 +27,10 @@ test('Shuffle+ bundle through real pinned loader: no writes on preview, native a
   callApiSync(op){if(op==='player.state')return {contextUri:context,trackUri:uri(1)};throw new Error(op)},
   requestApi:async(op,args)=>{
    calls.push({op,args});
-   if(op==='shuffleplus.capabilities')return {version:1,host:13,limit:10000};
+   if(op==='shuffleplus.capabilities')return {version:1,host:14,limit:10000};
    if(op==='shuffleplus.queue')return {mode:'queue',ticket,count:3,tracks:[1,1,2].map(n=>({uri:uri(n),title:'Song '+n,artist:'Artist'}))};
    if(op==='shuffleplus.prepare'){if(prepareHold)await prepareHold;if(failPrepare)throw new Error(failPrepare);return {mode:'collection',ticket,count:args.uris.length};}
-   if(op==='shuffleplus.apply'){if(fail)throw new Error(fail);return {applied:args.order.length}}
+   if(op==='shuffleplus.apply'){if(fail)throw new Error(fail);return {verification:"visible-order",applied:args.order.length}}
    if(op==='album.get')return {uri:args.uri,name:'Album',disc:[{number:1,track:Array.from({length:args.uri===largeAlbum?10000:2},(_,i)=>({gid:(i+1).toString(16).padStart(32,'0')}))}]};
    throw new Error(op);
   },
@@ -58,7 +58,7 @@ test('Shuffle+ bundle through real pinned loader: no writes on preview, native a
   assert.equal(mutations().length,0);assert.match(read(),/3 tracks in preview/);
   press('Cancel shuffle confirmation');assert.equal(mutations().length,0);
   press('Preview shuffled upcoming queue');await until(()=>read().includes('Confirm upcoming shuffle'));
-  press('Confirm upcoming shuffle');await until(()=>read().includes('Confirmed: 3 songs'));
+  press('Confirm upcoming shuffle');await until(()=>read().includes('Verified: 3 upcoming songs'));
   assert.equal(mutations().length,1);assert.equal(values.get('com.wamako.shuffleplus:shuffle-write-v1').phase,'complete');
   press('Load and shuffle collection');await until(()=>read().includes('Prepare shuffled playback'));
   assert.equal(mutations().length,1);press('Prepare shuffled playback');await until(()=>button('Start shuffled playback'));
@@ -79,19 +79,24 @@ test('Shuffle+ bundle through real pinned loader: no writes on preview, native a
   const largePrepared=calls.findLast(c=>c.op==='shuffleplus.prepare');
   assert.equal(largePrepared.args.uris.length,10000);
   assert.equal(new Set(largePrepared.args.uris).size,10000);
-  press('Start shuffled playback');await until(()=>read().includes('Confirmed: 10000 songs'));
+  press('Start shuffled playback');await until(()=>read().includes('Started the 10000-song selection'));
   assert.equal(mutations().length,4,'explicit start sends exactly one playback command');
-  beforePreview('Confirmed: 10000 songs');
+  beforePreview('Started the 10000-song selection');
+  fail='SP_SHUFFLE_UNCONFIRMED';press('Prepare shuffled playback');await until(()=>button('Start shuffled playback'));press('Start shuffled playback');
+  await until(()=>read().includes('did not confirm the previewed order'));
+  assert.equal(values.get('com.wamako.shuffleplus:shuffle-write-v1').phase,'unknown');
+  assert.equal(mutations().length,5);assert.ok(!read().includes('Started the 10000-song selection'));
+  press('I checked playback; allow another shuffle');await until(()=>!read().includes('I checked playback; allow another shuffle'));fail=null;
   failPrepare='SP_SHUFFLE_READY';press('Prepare shuffled playback');
   await until(()=>read().includes('Start Spotify playback once'));
   beforePreview('Start Spotify playback once');
-  assert.equal(mutations().length,4);assert.ok(!button('Start shuffled playback'));
+  assert.equal(mutations().length,5);assert.ok(!button('Start shuffled playback'));
   failPrepare=null;let release;prepareHold=new Promise(resolve=>{release=resolve});
   press('Prepare shuffled playback');await until(()=>read().includes('Preparing shuffled playback…'));
   beforePreview('Preparing shuffled playback…');
-  assert.equal(mutations().length,4);const pendingButton=button('Prepare shuffled playback');assert.ok(pendingButton.props.disabled||pendingButton.props.enabled===false);release();prepareHold=null;
+  assert.equal(mutations().length,5);const pendingButton=button('Prepare shuffled playback');assert.ok(pendingButton.props.disabled||pendingButton.props.enabled===false);release();prepareHold=null;
   await until(()=>button('Start shuffled playback'));const staleCallback=press('Cancel shuffle confirmation');
-  runtime.unregisterScript('com.wamako.shuffleplus');dispatchReactEvent(staleCallback,{surfaceId:'sideDrawer'});assert.equal(mutations().length,4);
+  runtime.unregisterScript('com.wamako.shuffleplus');dispatchReactEvent(staleCallback,{surfaceId:'sideDrawer'});assert.equal(mutations().length,5);
  }finally{for(const s of [...registry.getScripts()])runtime.unregisterScript(s.manifest.id);clearCommitListener('sideDrawer');globalThis.fetch=originalFetch;}
  assert.equal(registry.getScripts().length,0);assert.equal(registry.getSideDrawerItems().size,0);assert.equal(registry.cleanupCallbacks.size,0);assert.equal(registry.eventHandlers.size,0);assert.deepEqual(errors,[]);
 });

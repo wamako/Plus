@@ -1,12 +1,16 @@
-# Shuffle+ 0.1.1 for Spotify Plus R13
+# Shuffle+ 0.1.2 for Spotify Plus R14
 
-Version 0.1.1 changes the Prepare control into Start shuffled playback in place
-and keeps confirmation, progress, errors and results above the paginated song
-cards. Previously the playback confirmation appeared below
-forty song cards and could look like the Prepare button had done nothing.
-Preparation remains read-only: tap **Start shuffled playback** to apply it.
-Replace the existing shuffle-plus folder, refresh and restart Spotify; an
-existing R13 installation does not need to be repatched for this extension update.
+Version 0.1.2 requires the **R14 module APK**. Repatch the original Spotify
+9.1.94.1929 APK with this module; installing the ZIP or the module alone does not
+replace an older module embedded by LSPatch.
+
+Collection playback now sends an anonymous explicit track context instead of
+reusing the source collection identity. Every song occurrence has a fresh UID;
+the source URI is retained only as the playback origin. The host waits up to five
+seconds for Spotify's current song and every exposed upcoming occurrence to match
+the request. An OK reply with an unchanged or different queue is unconfirmed,
+never success. Upcoming-queue reshuffles also require readback of the new order,
+unchanged current song and history. The Prepare/Start control remains in place.
 
 Independent Android adaptation inspired by Spicetify's Shuffle+ (khanhas and
 Tetrax-10). This is not the desktop file or rxri's audio-feature FeatureShuffle.
@@ -19,8 +23,8 @@ to understand explicit context playback; its implementation was not copied.
 
 ## Install
 
-1. Repatch Spotify **9.1.94.1929 / arm64** using the **R13** Plus module in
-   LSPatch. A ZIP alone cannot add the native playback adapter to R12.
+1. Repatch Spotify **9.1.94.1929 / arm64** using the **R14** Plus module in
+   LSPatch. A ZIP alone cannot add the native playback adapter to R12/R13.
 2. Extract this ZIP. Put the **shuffle-plus** folder beside your existing four
    local extension folders in SpotifyPlusLocal. It must directly contain
    manifest.json and index.js. Do not nest it inside an extra ZIP wrapper folder.
@@ -53,7 +57,7 @@ Starting a collection uses normal Play, which does not provide a queue-revision
 compare-and-set: it is an explicit user-requested playback replacement.
 
 Each apply is one native command, with no clear/add loop, Web API fallback, or
-automatic retry. A timeout or malformed acknowledgment is uncertain: inspect
+automatic retry. A timeout, unmatched queue or malformed acknowledgment is uncertain: inspect
 Spotify's player and queue, then use **I checked playback; allow another shuffle**
 before starting another action. This does not undo or repeat the earlier action.
 Normal Spotify playback/account restrictions remain in effect.
@@ -62,6 +66,10 @@ This first release supports song collections and a loaded upcoming queue. Artist
 discographies, folders, podcast shows and local files are not implemented.
 Random permutations can naturally keep adjacent artists, duplicate source songs,
 or occasionally the same order. There is no taste/artist weighting or deduplication.
+
+The native queue may expose only a window of a large collection. Collection
+success verifies the current song and that visible window; it is not a readback
+of every song in a 10,000-song request.
 
 ## Validation limits
 

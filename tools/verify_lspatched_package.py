@@ -63,8 +63,9 @@ def verify_origin(output, patched, original, expected_hash):
 def validate_module_identity(info, abi):
     assert abi in ("arm64-v8a", "x86_64"), "Unsupported module ABI"
     assert info["package"] == "com.lenerd46.spotifyplus"
-    expected = "0.10.0-api2.9.1.94.13" + ("-emulator-x86_64" if abi == "x86_64" else "")
-    assert info["version"] == expected, "Module version does not match its explicit ABI profile"
+    suffix = "-emulator-x86_64" if abi == "x86_64" else ""
+    expected = {"0.10.0-api2.9.1.94.13"+suffix,"0.10.0-api2.9.1.94.14"+suffix}
+    assert info["version"] in expected, "Module version does not match its explicit ABI profile"
 
 def validate_signature_mode(config, expected):
     assert expected in (0, 2), "Unsupported explicit signature mode"
@@ -107,7 +108,7 @@ def verify(original, module, jar, patched, expected_module_sha=MODULE_SHA, modul
         validate_signature_mode(config, signature_bypass_level)
         assert config["appComponentFactory"] == original_manifest["component_factory"]
         with output.open("assets/lspatch/modules/com.lenerd46.spotifyplus.apk") as f:
-            assert digest(f) == module_hash, "Embedded R13 module changed"
+            assert digest(f) == module_hash, "Embedded module changed"
         loader = "assets/lspatch/loader.dex"
         assert output.read(loader) == patcher.read(loader), "Loader does not match tested patcher"
         for abi, machine in (("arm64-v8a", 183), ("x86_64", 62)):

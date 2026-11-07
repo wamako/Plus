@@ -17,7 +17,7 @@ export function shuffleTracks(tracks, rng) { return permutation(tracks.length, r
 const check = job => { if (job?.cancelled) throw new Error("Operation cancelled."); };
 const known = {
   READY: "Start Spotify playback once, then reopen Shuffle+ and load a new preview.",
-  PREPARE: "The native playback protocol could not be prepared. Check that R13 is active.",
+  PREPARE: "The native playback protocol could not be prepared. Check that R14 is active.",
   SHUFFLE_ON: "Turn off Spotify's shuffle in the player before reshuffling the upcoming queue.",
   STALE: "Playback or the queue changed. Load a new preview before applying it.",
   EXPIRED: "This preview expired. Prepare a new one; previews last two minutes.",
@@ -30,9 +30,9 @@ const known = {
 };
 export function shuffleError(error, mutation = false) {
   const code = /\bSP_SHUFFLE_([A-Z_]+)\b/.exec(String(error?.message || ""))?.[1];
-  const result = new Error(known[code] || (mutation
+  const result = new Error((code === "UNCONFIRMED" ? "Spotify acknowledged the command, but its player and queue did not confirm the previewed order. Inspect playback before trying again." : known[code]) || (mutation
     ? "The native shuffle did not return a confirmed result. Inspect playback before trying again."
-    : "Shuffle+ needs the R13 playback adapter. Repatch Spotify with the R13 module, then restart it."));
+    : "Shuffle+ needs the R14 playback adapter. Repatch Spotify with the R14 module, then restart it."));
   result.unknown = mutation && !known[code];
   return result;
 }
@@ -42,7 +42,7 @@ export class ShuffleClient {
     check(job);
     try {
       const value = await this.api.ShufflePlus.capabilities();
-      if (value?.version !== 1 || value?.host < 13 || value?.limit !== SHUFFLE_LIMIT) throw new Error();
+      if (value?.version !== 1 || !Number.isSafeInteger(value?.host) || value.host < 14 || value?.limit !== SHUFFLE_LIMIT) throw new Error();
     } catch (error) { throw shuffleError(error); }
     check(job);
   }
@@ -88,7 +88,7 @@ export class ShuffleClient {
       throw new Error("Could not save the shuffle action record. Nothing was sent.");
     try {
       const result = await this.api.ShufflePlus.apply(plan.ticket, plan.order);
-      if (result?.applied !== plan.count) throw new Error("Invalid native acknowledgment");
+      if (result?.applied !== plan.count || result?.verification !== "visible-order") throw new Error("Invalid native acknowledgment");
       journal.phase = "complete";
       this.api.Platform.Storage.set("shuffle-write-v1", { ...journal });
       return result;

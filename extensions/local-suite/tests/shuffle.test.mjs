@@ -9,11 +9,11 @@ function fixture(){
  const api={Platform:{Storage:{get:k=>values.get(k),set:(k,v)=>values.set(k,structuredClone(v))}},
   request:async(op,args)=>{
    calls.push({op,args});
-   if(op==='shuffleplus.capabilities')return {version:1,host:13,limit:10000};
+   if(op==='shuffleplus.capabilities')return {version:1,host:14,limit:10000};
    if(op==='shuffleplus.queue')return {mode:'queue',ticket,count:3,tracks};
    if(op==='shuffleplus.prepare')return {mode:'collection',ticket,count:args.uris.length};
    assert.equal(op,'shuffleplus.apply');assert.equal(values.get('shuffle-write-v1').phase,'pending');
-   if(failure)throw failure;return response||{applied:args.order.length};
+   if(failure)throw failure;return response||{applied:args.order.length,verification:"visible-order"};
   }};
  api.ShufflePlus={capabilities:()=>api.request('shuffleplus.capabilities'),previewQueue:()=>api.request('shuffleplus.queue'),prepare:(context,uris)=>api.request('shuffleplus.prepare',{context,uris}),apply:(ticket,order)=>api.request('shuffleplus.apply',{ticket,order})};
  return {values,calls,api,client:new ShuffleClient(api),fail:e=>failure=e,respond:r=>response=r};
@@ -43,7 +43,7 @@ test('collection prepare preserves already shuffled URIs including duplicates, a
  await f.client.apply(p,'ok','ok',{});assert.equal(f.client.previous().phase,'complete');
 });
 test('native stale/rejection errors are stopped; RPC/lost/malformed acknowledgments remain unknown and are not retried',async()=>{
- for(const [message,phase] of [['SP_SHUFFLE_STALE','stopped'],['SP_SHUFFLE_FORBIDDEN','stopped'],['SP_SHUFFLE_RPC','unknown'],['SP_SHUFFLE_ACK','unknown'],['SP_SHUFFLE_USED','unknown'],['private-token and private-account','unknown']]){
+ for(const [message,phase] of [['SP_SHUFFLE_STALE','stopped'],['SP_SHUFFLE_FORBIDDEN','stopped'],['SP_SHUFFLE_RPC','unknown'],['SP_SHUFFLE_ACK','unknown'],['SP_SHUFFLE_UNCONFIRMED','unknown'],['SP_SHUFFLE_USED','unknown'],['private-token and private-account','unknown']]){
   const f=fixture(),p=await f.client.queue({});f.fail(new Error(message));
   await assert.rejects(f.client.apply(p,'ok','ok',{}),e=>!e.message.includes('private-token'));
   assert.equal(f.client.previous().phase,phase);assert.equal(f.calls.filter(c=>c.op==='shuffleplus.apply').length,1);
@@ -59,6 +59,14 @@ test('cancellation, missing adapter and failed durable journal prevent playback 
  const p=await f.client.queue({});await assert.rejects(f.client.apply(p,'ok','ok',{cancelled:true}),/cancelled/);
  f.api.Platform.Storage.set=()=>{};await assert.rejects(f.client.apply(p,'ok','ok',{}),/Nothing was sent/);
  assert.equal(f.calls.filter(c=>c.op==='shuffleplus.apply').length,0);
- const old=new ShuffleClient({request:async()=>{throw new Error('Unknown operation')},Platform:f.api.Platform});await assert.rejects(old.queue({}),/R13/);
+ const old=new ShuffleClient({request:async()=>{throw new Error('Unknown operation')},Platform:f.api.Platform});await assert.rejects(old.queue({}),/R14/);
  assert.equal(shuffleError(new Error('SP_SHUFFLE_RPC'),true).unknown,true);
+});
+
+test('old host and count-only success replies cannot claim verified playback',async()=>{
+ const f=fixture();f.api.ShufflePlus.capabilities=async()=>({version:1,host:13,limit:10000});
+ await assert.rejects(f.client.capabilities({}),/R14/);assert.equal(f.calls.length,0);
+ const g=fixture(),p=await g.client.queue({});g.respond({applied:3});
+ await assert.rejects(g.client.apply(p,'ok','ok',{}));assert.equal(g.client.previous().phase,'unknown');
+ assert.equal(g.calls.filter(c=>c.op==='shuffleplus.apply').length,1);
 });

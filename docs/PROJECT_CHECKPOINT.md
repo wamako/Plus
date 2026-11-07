@@ -555,3 +555,15 @@ R13/extension deliverables unchanged. The following final cleanup only updates
 these evidence docs and deletes the temporary lspatch-anr.yml fixture workflow;
 app, build, standard workflows and harness remain exactly as validated6b15a70.
 Draft PR2 remains unmerged; do not merge without user authorization.
+
+## Shuffle+ actual queue unchanged: R14 / 0.1.2 repair (2026-11-07)
+
+User confirms the Start control works but real playback remains in the original
+order. R13 accepted an OK RPC without observing playback; its fixtures also
+accepted no-op replies. R14 sends an anonymous explicit context, occurrence UIDs,
+origin and explicit start options, and requires a matching real queue emission
+before success. Extension 0.1.2 requires host 14 and the visible-order marker;
+unmatched playback is unknown, not success, with no automatic mutation retry.
+The source-identity explanation remains a hypothesis pending phone testing.
+See API2_SHUFFLE_R14.md for request evidence, verification scope and test limits.
+R14 requires repatching; 0.1.2 alone cannot change the old embedded R13 adapter.

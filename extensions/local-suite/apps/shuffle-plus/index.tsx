@@ -40,11 +40,11 @@ function App() {
     const selectedPlan = plan, token = confirmation;
     clear();
     task.run(job => shuffleClient.apply(selectedPlan, token, token, job), value => {
-      setOutcome(`Confirmed: ${value.applied} songs. ${selectedPlan.mode === "queue" ? "The playing song and history were kept." : "The shuffled selection is playing with Spotify shuffle off."}`);
+      setOutcome(selectedPlan.mode === "queue" ? `Verified: ${value.applied} upcoming songs reordered. The playing song and history were kept.` : `Started the ${value.applied}-song selection. The current song and visible queue match the preview.`);
     });
   }
   return <Page title="Shuffle+">
-    <Label muted>Random song order without taste or artist weighting. Previewing never changes playback. Requires Spotify Plus R13.</Label>
+    <Label muted>Random song order without taste or artist weighting. Previewing never changes playback. Requires Spotify Plus R14.</Label>
     <Button title="Preview shuffled upcoming queue" disabled={task.busy} onPress={() => {
       clear(); setData(null); setTracks([]); setPart(0);
       task.run(job => shuffleClient.queue(job), value => {

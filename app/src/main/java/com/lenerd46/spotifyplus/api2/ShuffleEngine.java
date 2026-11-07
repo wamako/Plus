@@ -26,11 +26,15 @@ public final class ShuffleEngine {
         public final boolean shuffled;
         public final List<Item> next;
         public final List<?> previous;
-        public final Object delimiter;
+        public final Object delimiter, current;
         public Snapshot(Object owner, String revision, String fingerprint, boolean shuffled,
                         List<Item> next, List<?> previous, Object delimiter) {
+            this(owner,revision,fingerprint,shuffled,next,previous,delimiter,null);
+        }
+        public Snapshot(Object owner, String revision, String fingerprint, boolean shuffled,
+                        List<Item> next, List<?> previous, Object delimiter,Object current) {
             this.owner=owner; this.revision=revision; this.fingerprint=fingerprint; this.shuffled=shuffled;
-            this.next=List.copyOf(next); this.previous=List.copyOf(previous); this.delimiter=delimiter;
+            this.next=List.copyOf(next); this.previous=List.copyOf(previous); this.delimiter=delimiter; this.current=current;
         }
     }
     public static final class Plan {

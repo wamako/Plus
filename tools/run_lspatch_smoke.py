@@ -71,7 +71,37 @@ def safe_startup_details(app_log):
                "writable_code_rejected": "Attempt to load writable file" in app_log}
     return {"process_markers": flags, "process_error_categories": errors,
             "exception_types": [name for name in exception_types if re.search(r"\b" + name + r"\b", app_log)],
-            "native_link_reasons": reasons}
+            "native_link_reasons": reasons,
+            "exception_frame_groups": {name: bool(re.search(r"\bat " + pattern + r"[\w.$<>]*\(", app_log))
+                for name, pattern in {
+                    "module_entry": r"com\.lenerd46\.spotifyplus\.XposedLoader\.",
+                    "api2_bootstrap": r"com\.lenerd46\.spotifyplus\.api2\.Api2Runtime\.",
+                    "native_script_manager": r"com\.lenerd\.spotifyplus\.module\.scripting\.ScriptManager\.",
+                    "native_renderer": r"com\.lenerd\.spotifyplus\.module\.scripting\.ScriptViewHost\.",
+                    "legacy_hooks": r"com\.lenerd46\.spotifyplus\.hooks\.",
+                    "dexkit": r"org\.luckypray\.dexkit\.",
+                    "lspatch": r"org\.lsposed\.lspatch\.",
+                    "spotify": r"com\.spotify\.",
+                    "soloader": r"com\.facebook\.soloader\."
+                }.items()}}
+
+
+def safe_exit_details(text, pid):
+    """AOSP ApplicationExitInfo numbers only, restricted to this launched main PID."""
+    if not pid or not re.fullmatch(r"[1-9]\d*", str(pid)) or not isinstance(text, str):
+        return {"matching_records": 0, "reason_codes": [], "status_codes": []}
+    reasons, statuses = [], []
+    for block in re.split(r"(?=ApplicationExitInfo(?:\s|:))", text):
+        if not (re.search(r"\bpid=" + re.escape(str(pid)) + r"(?:\s|$)", block) and
+                re.search(r"\bprocess=com\.spotify\.music(?:\s|$)", block)):
+            continue
+        reason = re.search(r"\breason=(\d{1,2})(?:\s|$)", block)
+        status = re.search(r"\bstatus=(-?\d{1,3})(?:\s|$)", block)
+        if reason and 0 <= int(reason[1]) <= 16:
+            reasons.append(int(reason[1]))
+            if status and -255 <= int(status[1]) <= 255:
+                statuses.append(int(status[1]))
+    return {"matching_records": len(reasons), "reason_codes": reasons[:4], "status_codes": statuses[:4]}
 
 def collect_startup_details(device, pid, details):
     try:
@@ -83,6 +113,15 @@ def collect_startup_details(device, pid, details):
         candidate = pid or (java_pids[-1] if java_pids else started_pids[-1] if started_pids else None)
         app_log = device.adb("logcat", "-d", "--pid=" + candidate, timeout=15) if candidate else ""
         details.update(safe_startup_details(app_log))
+        details["spotify_activity_start_count"] = sum(bool(re.search(
+            r"\bSTART u0\b.*\bcmp=com\.spotify\.music/", line)) for line in log.splitlines())
+        details["spotify_deeplink_start_count"] = sum(bool(re.search(
+            r"\bSTART u0\b.*\bdat=spotify:.*\bcmp=com\.spotify\.music/", line)) for line in log.splitlines())
+        try:
+            details["process_exit"] = safe_exit_details(
+                device.shell("dumpsys", "activity", "exit-info", PACKAGE, timeout=15), candidate)
+        except (RuntimeError, subprocess.SubprocessError):
+            details["exit_info_unavailable"] = True
         details["process_observed"] = candidate is not None
         details["spotify_java_crash_reported"] = bool(java_pids)
         details["spotify_native_crash_reported"] = bool(re.search(r">>>\s*com\.spotify\.music\s*<<<", log))
@@ -319,6 +358,7 @@ def main():
         parser.error("Patched-host testing requires --apk and --extension")
     report = {"test_kind": ("android35_environment_only" if args.device_profile == TRANSLATED35 else "android37_environment_only") if args.check_environment else "logged_out_lspatch_startup", "passed": False,
               "emulation_mode": os.environ.get("SPOTIFYPLUS_EMULATION_MODE", "unspecified"),
+              "signature_bypass_level": int(os.environ.get("SPOTIFYPLUS_SIGNATURE_BYPASS_LEVEL", "0")),
               "device_profile": args.device_profile, "required_api": 35 if args.device_profile == TRANSLATED35 else 37, "required_app_abi": app_abi(args.device_profile), "launches": [], "startup_attempts": [],
               "playback_test_executed": False, "account_test_executed": False,
               "shuffle_ui_test_executed": False,

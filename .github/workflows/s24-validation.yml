@@ -5,6 +5,9 @@ name: LSPatch Linux Android validation
 on:
   workflow_call:
     inputs:
+      signature_bypass_level:
+        type: string
+        default: '0'
       native_x86:
         type: boolean
         default: false
@@ -34,6 +37,7 @@ jobs:
       SPOTIFYPLUS_EMULATION_MODE: ${{ inputs.native_x86 && 'kvm-native-x86_64' || 'kvm-arm64-translation' }}
       DEVICE_PROFILE: ${{ inputs.native_x86 && 'linux-x86_64-native' || (inputs.api_level == '35' && 'linux-x86_64-arm64-translation-api35' || 'linux-x86_64-arm64-translation') }}
       SELECTED_API_LEVEL: ${{ inputs.api_level }}
+      SPOTIFYPLUS_SIGNATURE_BYPASS_LEVEL: ${{ inputs.signature_bypass_level }}
       SELECTED_NATIVE_X86: ${{ inputs.native_x86 }}
       SPOTIFYPLUS_RUN_PATCHED_HOST: ${{ inputs.run_patched_host }}
     outputs:
@@ -43,6 +47,7 @@ jobs:
       - name: Validate explicit profile inputs
         run: |
           case "$SELECTED_API_LEVEL" in 35|37.0) ;; *) echo 'Unsupported explicit API' >&2; exit 2 ;; esac
+          case "$SPOTIFYPLUS_SIGNATURE_BYPASS_LEVEL" in 0|2) ;; *) echo 'Unsupported explicit signature mode' >&2; exit 2 ;; esac
           if [ "$SELECTED_NATIVE_X86" = true ] && [ "$SELECTED_API_LEVEL" != 37.0 ]; then
             echo 'The native x86 profile requires API 37.0' >&2
             exit 2
@@ -90,6 +95,7 @@ jobs:
           python3 tools/prepare_lspatch_smoke.py
           --module "$RUNNER_TEMP/plus-module/app-debug.apk"
           --module-abi ${{ inputs.native_x86 && 'x86_64' || 'arm64-v8a' }}
+          --signature-bypass-level "$SPOTIFYPLUS_SIGNATURE_BYPASS_LEVEL"
           --work "$RUNNER_TEMP/lspatch-smoke"
           --report "$RUNNER_TEMP/smoke-reports/package.json"
       - name: Boot the selected API with KVM and verify the explicit ABI profile
@@ -120,14 +126,14 @@ jobs:
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: ${{ inputs.native_x86 && 'LSPatch-Android17-Native-x86-Reports' || (inputs.api_level == '35' && (inputs.run_patched_host && 'LSPatch-Android15-Linux-Reports' || 'Android15-Linux-Environment-Report') || (inputs.run_patched_host && 'LSPatch-Android17-Linux-Reports' || 'Android17-Linux-Environment-Report')) }}
+          name: ${{ inputs.signature_bypass_level == '2' && (inputs.native_x86 && 'LSPatch-Android17-Native-x86-Sig2-Reports' || 'LSPatch-Android17-ARM-Sig2-Reports') || (inputs.native_x86 && 'LSPatch-Android17-Native-x86-Reports' || (inputs.api_level == '35' && (inputs.run_patched_host && 'LSPatch-Android15-Linux-Reports' || 'Android15-Linux-Environment-Report') || (inputs.run_patched_host && 'LSPatch-Android17-Linux-Reports' || 'Android17-Linux-Environment-Report'))) }}
           path: ${{ runner.temp }}/smoke-reports/*.json
           if-no-files-found: ignore
           retention-days: 14
       - name: Explain coverage
         if: always()
         run: |
-          echo "Linux/KVM API $SELECTED_API_LEVEL; profile $DEVICE_PROFILE. Native x86 installs x86_64; translated profiles install ARM64. These are separate from native ARM/Samsung firmware coverage." >> "$GITHUB_STEP_SUMMARY"
+          echo "Linux/KVM API $SELECTED_API_LEVEL; profile $DEVICE_PROFILE; signature mode $SPOTIFYPLUS_SIGNATURE_BYPASS_LEVEL. Native x86 installs x86_64; translated profiles install ARM64. These are separate from native ARM/Samsung firmware coverage." >> "$GITHUB_STEP_SUMMARY"
           echo 'Guest environment, original APK/package verification and actual Spotify startup are separate checks. No account/playback/UI result is inferred from a guest boot.' >> "$GITHUB_STEP_SUMMARY"
       - name: Remove private test inputs
         if: always()

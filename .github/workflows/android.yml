@@ -266,8 +266,37 @@ jobs:
     secrets:
       SPOTIFY_APK_URL: ${{ secrets.SPOTIFY_APK_URL }}
 
+  lspatch-android17-native-x86-sig2:
+    needs: [build, build-emulator-x86, lspatch-packaging]
+    if: >-
+      (github.event_name == 'workflow_dispatch' && inputs.run_lspatch_smoke) ||
+      (vars.RUN_LSPATCH_SMOKE == 'true' &&
+       (github.event_name == 'push' ||
+        (github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository)))
+    uses: ./.github/workflows/s24-validation.yml
+    with:
+      native_x86: true
+      signature_bypass_level: '2'
+      run_patched_host: true
+    secrets:
+      SPOTIFY_APK_URL: ${{ secrets.SPOTIFY_APK_URL }}
+
+  lspatch-android17-arm-sig2:
+    needs: [build, lspatch-packaging]
+    if: >-
+      (github.event_name == 'workflow_dispatch' && inputs.run_lspatch_smoke) ||
+      (vars.RUN_LSPATCH_SMOKE == 'true' &&
+       (github.event_name == 'push' ||
+        (github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository)))
+    uses: ./.github/workflows/s24-validation.yml
+    with:
+      signature_bypass_level: '2'
+      run_patched_host: true
+    secrets:
+      SPOTIFY_APK_URL: ${{ secrets.SPOTIFY_APK_URL }}
+
   validation-scope:
-    needs: [build, android17-environment, lspatch-packaging, lspatch-android17, lspatch-android15, build-emulator-x86, lspatch-android17-native-x86]
+    needs: [build, android17-environment, lspatch-packaging, lspatch-android17, lspatch-android15, build-emulator-x86, lspatch-android17-native-x86, lspatch-android17-native-x86-sig2, lspatch-android17-arm-sig2]
     if: always()
     runs-on: ubuntu-latest
     steps:
@@ -278,6 +307,8 @@ jobs:
           DEVICE_RESULT: ${{ needs.lspatch-android17.result }}
           NATIVE_X86_BUILD_RESULT: ${{ needs.build-emulator-x86.result }}
           NATIVE_X86_RESULT: ${{ needs.lspatch-android17-native-x86.result }}
+          NATIVE_X86_SIG2_RESULT: ${{ needs.lspatch-android17-native-x86-sig2.result }}
+          ARM_SIG2_RESULT: ${{ needs.lspatch-android17-arm-sig2.result }}
           ANDROID15_RESULT: ${{ needs.lspatch-android15.result }}
           ENVIRONMENT_RESULT: ${{ needs.android17-environment.result }}
           BOOT_RESULT: ${{ needs.android17-environment.outputs.environment_result }}
@@ -289,6 +320,7 @@ jobs:
           printf 'Android 17 Linux ARM64-translation environment: **%s** (separate from Spotify startup)\n\n' "$ENVIRONMENT_RESULT" >> "$GITHUB_STEP_SUMMARY"
           printf 'Emulator-only x86_64 build: **%s**\n\n' "$NATIVE_X86_BUILD_RESULT" >> "$GITHUB_STEP_SUMMARY"
           printf 'Android 17 native x86_64 emulator module: **%s** (different native ABI from the phone)\n\n' "$NATIVE_X86_RESULT" >> "$GITHUB_STEP_SUMMARY"
+          printf 'Android 17 explicit signature-mode-2 trials: ARM64 **%s**; native x86_64 **%s** (separate from mode 0 and phone settings)\n\n' "$ARM_SIG2_RESULT" "$NATIVE_X86_SIG2_RESULT" >> "$GITHUB_STEP_SUMMARY"
           printf 'Separate Android 15/API 35 patched-host compatibility: **%s** (does not establish Android 17 behavior)\n\n' "$ANDROID15_RESULT" >> "$GITHUB_STEP_SUMMARY"
           printf 'Actual emulator boot result: **%s**\n\n' "$BOOT_RESULT" >> "$GITHUB_STEP_SUMMARY"
           printf 'Patched tests enabled: **%s**; APK source configured: **%s**\n\n' "$PATCHED_TESTS_ENABLED" "$APK_SOURCE_CONFIGURED" >> "$GITHUB_STEP_SUMMARY"

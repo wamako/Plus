@@ -431,3 +431,6 @@ prepared source/assets, so its failure does not suppress the normal ARM build.
 Explicit API inputs are validated before use. CI must validate the reconstructed
 workflow and actually compile/launch x86; no native-x86 pass is claimed yet.
 The delivered R13 ARM APK and Shuffle+ ZIP identities are unchanged.
+
+
+Linux validation at b4276278c8240d16e5787eaa927f0653191ec82a, run 42322636521: all 67 Python/JVM checks, 106 extension regressions, nine loader profiles, Android unit/build and DEX/native verification passed. The isolated x86_64 module compiled with the pinned official matching-header Node18.20.4. Both ARM and x86 module package checks and the API37 guest passed. Patched ARM64 startup still failed on API35/37, and native x86_64 also lost its main process before Node/Shuffle+ readiness. Original ARM64 (API37) and x86_64 controls passed. API35 failure diagnostics/control were unavailable on this attempt. No phone artifacts were replaced. Current experiment adds PID-correlated ApplicationExitInfo reason/status numbers, fixed exception-frame groups, activity redirect counts and explicit signature mode 2 trials on both ABIs. Mode 0 remains separate and failed; no phone patch setting is assumed. Actual startup success is not yet established.

@@ -266,3 +266,6 @@ and IllegalStateException; the patched API 37 app lost its registered main
 process after module entry. Neither reached Node/Shuffle+ readiness. These
 results justify testing a matching native-x86 variant; they do not by themselves
 identify the precise translated-runtime failure or establish a native-x86 pass.
+
+
+The native x86_64 module compiled and passed its packaged runtime checks in [run 42322636521](https://github.com/wamako/Plus/actions/runs/42322636521), but its patched startup failed before Node/Shuffle+ readiness; the unmodified x86_64 control passed. The ARM translation profiles also failed. The next diagnostic comparison explicitly tests the patcher's documented signature mode 2 separately from mode 0 on each ABI. Reports record the actual verified setting; no setting is claimed to match the user's phone. Exit-info reports expose only bounded AOSP reason/status numbers for the launched main PID. Exception-frame categories and redirect counts contain no raw messages, paths or URLs.

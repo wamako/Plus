@@ -10,8 +10,8 @@ from unittest.mock import patch, Mock
 
 from prepare_lspatch_smoke import download, describe_input, apkmirror_file_link, HTTPSRedirects
 from google_drive_input import download_url as drive_download_url, confirmation_url as drive_confirmation_url
-from run_lspatch_smoke import Device, log_status, provision, check_environment, NATIVE, NATIVE_X86, TRANSLATED, TRANSLATED35, safe_startup_details, collect_startup_details, launch
-from verify_lspatched_package import verify_origin, validate_module_identity
+from run_lspatch_smoke import Device, log_status, provision, check_environment, NATIVE, NATIVE_X86, TRANSLATED, TRANSLATED35, safe_startup_details, safe_exit_details, collect_startup_details, launch
+from verify_lspatched_package import verify_origin, validate_module_identity, validate_signature_mode
 from check_android37_acceleration import assess
 from report_android37_scope import classify
 from check_android37_image import inspect as inspect_image, PACKAGE as IMAGE_PACKAGE
@@ -177,6 +177,34 @@ class AccelerationTests(unittest.TestCase):
 
 
 class LogTests(unittest.TestCase):
+    def test_signature_modes_cannot_silently_replace_each_other(self):
+        for expected in (0, 2):
+            validate_signature_mode({"sigBypassLevel": expected}, expected)
+            for other in (2 if expected == 0 else 0, True, "2", 3):
+                with self.subTest(expected=expected, actual=other), self.assertRaises(AssertionError):
+                    validate_signature_mode({"sigBypassLevel": other}, expected)
+
+    def test_exit_records_are_main_pid_scoped_and_never_expose_descriptions(self):
+        text = ("ApplicationExitInfo #0:\n pid=42 realUid=10123\n"
+                " process=com.spotify.music reason=1 (EXIT_SELF) subreason=0 status=0\n"
+                " description=private-name https://private.invalid/token trace=/data/private\n"
+                "ApplicationExitInfo #1:\n pid=42\n process=com.spotify.music:helper reason=4 status=1\n"
+                "ApplicationExitInfo #2:\n pid=43\n process=com.spotify.music reason=6 status=9\n")
+        details = safe_exit_details(text, "42")
+        self.assertEqual(details, {"matching_records": 1, "reason_codes": [1], "status_codes": [0]})
+        self.assertNotIn("private", str(details))
+        self.assertEqual(safe_exit_details(text, None)["matching_records"], 0)
+        self.assertEqual(safe_exit_details(text, "4x")["matching_records"], 0)
+
+    def test_exception_frame_groups_are_fixed_categories_not_class_or_path_leaks(self):
+        details = safe_startup_details("IllegalStateException: private-message\n"
+            " at com.lenerd46.spotifyplus.XposedLoader.handleLoadPackage(private-path:1)\n"
+            " at com.spotify.private.name.Class.method(private-path:2)")
+        self.assertTrue(details["exception_frame_groups"]["module_entry"])
+        self.assertTrue(details["exception_frame_groups"]["spotify"])
+        self.assertFalse(details["exception_frame_groups"]["api2_bootstrap"])
+        self.assertNotIn("private", str(details))
+
     def test_diagnostics_never_return_raw_logs_urls_paths_or_messages(self):
         raw = ('UnsatisfiedLinkError: /data/private-name/file.so is for EM_AARCH64 instead of EM_X86_64 '
                'https://private.invalid/?access_token=private-value\nHost ready')

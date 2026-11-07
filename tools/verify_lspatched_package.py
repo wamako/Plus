@@ -66,7 +66,11 @@ def validate_module_identity(info, abi):
     expected = "0.10.0-api2.9.1.94.13" + ("-emulator-x86_64" if abi == "x86_64" else "")
     assert info["version"] == expected, "Module version does not match its explicit ABI profile"
 
-def verify(original, module, jar, patched, expected_module_sha=MODULE_SHA, module_abi="arm64-v8a"):
+def validate_signature_mode(config, expected):
+    assert expected in (0, 2), "Unsupported explicit signature mode"
+    assert type(config.get("sigBypassLevel")) is int and config["sigBypassLevel"] == expected, "Different patch options from this test"
+
+def verify(original, module, jar, patched, expected_module_sha=MODULE_SHA, module_abi="arm64-v8a", signature_bypass_level=0):
     with original.open("rb") as f: original_hash = digest(f)
     with module.open("rb") as f: module_hash = digest(f)
     with jar.open("rb") as f: jar_hash = digest(f)
@@ -100,7 +104,7 @@ def verify(original, module, jar, patched, expected_module_sha=MODULE_SHA, modul
         assert version["CORE_VERSION_CODE"] == 7306 and version["CORE_VERSION_NAME"] == "canary-3106"
         assert version["CORE_VERSION_HASH"] == CORE
         assert config["useManager"] is False and config["injectDex"] is False
-        assert config["sigBypassLevel"] == 0, "Different patch options from this test"
+        validate_signature_mode(config, signature_bypass_level)
         assert config["appComponentFactory"] == original_manifest["component_factory"]
         with output.open("assets/lspatch/modules/com.lenerd46.spotifyplus.apk") as f:
             assert digest(f) == module_hash, "Embedded R13 module changed"
@@ -133,5 +137,6 @@ if __name__ == "__main__":
     parser.add_argument("--module-sha256", default=MODULE_SHA,
                         help="Expected input artifact hash; defaults to delivered R13")
     parser.add_argument("--module-abi", choices=("arm64-v8a", "x86_64"), default="arm64-v8a")
+    parser.add_argument("--signature-bypass-level", type=int, choices=(0, 2), default=0)
     args = parser.parse_args()
-    print(json.dumps(verify(args.original, args.module, args.jar, args.patched, args.module_sha256, args.module_abi), indent=2))
+    print(json.dumps(verify(args.original, args.module, args.jar, args.patched, args.module_sha256, args.module_abi, args.signature_bypass_level), indent=2))

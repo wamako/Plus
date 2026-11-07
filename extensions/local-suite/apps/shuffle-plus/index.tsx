@@ -14,7 +14,8 @@ function App() {
     [reviewed, setReviewed] = useState(0), [outcome, setOutcome] = useState(""), task = useTask(), liked = useLikedSource();
   const count = Math.ceil(tracks.length / SHUFFLE_LIMIT), from = part * SHUFFLE_LIMIT,
     selected = data?.mode === "queue" ? tracks : tracks.slice(from, from + SHUFFLE_LIMIT),
-    needsReview = shuffleClient.needsReview();
+    needsReview = shuffleClient.needsReview(),
+    collectionReady = plan?.mode === "collection" && confirmation;
   function clear() { setPlan(null); setConfirmation(null); setOutcome(""); }
   function change(value: string) { input.current = value; setUri(value); clear(); setData(null); setTracks([]); setPart(0); }
   function load(value = input.current) {
@@ -27,7 +28,10 @@ function App() {
   }
   function prepare() {
     clear();
-    task.run(job => shuffleClient.collection(selected, data.uri, job), value => {
+    task.run((job, progress) => {
+      progress("Preparing shuffled playback…");
+      return shuffleClient.collection(selected, data.uri, job);
+    }, value => {
       setPlan(value); setConfirmation(`${Date.now()}:${Math.random()}`);
     });
   }
@@ -59,14 +63,17 @@ function App() {
         {count > 1 ? <View><Label muted>The entire loaded collection was randomized. Choose an explicit playback range of up to 10,000 songs.</Label>
           {Array.from({ length: count }, (_, i) => <Button key={i} title={`Playback range ${i * SHUFFLE_LIMIT + 1}–${Math.min(tracks.length, (i + 1) * SHUFFLE_LIMIT)}`} active={part === i} disabled={task.busy} onPress={() => { setPart(i); clear(); }} />)}
         </View> : null}
-        <Button title="Prepare shuffled playback" disabled={task.busy || needsReview} onPress={prepare} />
-        <Label muted>Starting this selection replaces upcoming playback and starts the first previewed song. Your source collection is not edited. Spotify's playback permissions still apply.</Label>
+        <Button title={collectionReady ? "Start shuffled playback" : "Prepare shuffled playback"} disabled={task.busy || needsReview} onPress={collectionReady ? apply : prepare} />
+        {collectionReady ? <View>
+          <Label>Ready to start this exact {plan.count}-song order. This confirmation expires after two minutes.</Label>
+          <Button title="Cancel shuffle confirmation" disabled={task.busy} onPress={clear} />
+        </View> : null}
+        <Label muted>Prepare first, then tap Start shuffled playback in the same place. Starting plays the first previewed song and replaces upcoming playback. Your source collection is not edited.</Label>
       </View> : null}
-      <Results tracks={selected} />
     </View> : null}
-    {plan && confirmation ? <View>
-      <Label>{plan.mode === "queue" ? `Reshuffle ${plan.count} upcoming songs while keeping the playing song and history?` : `Start this exact ${plan.count}-song order?`} This confirmation expires after two minutes.</Label>
-      <Button title={plan.mode === "queue" ? "Confirm upcoming shuffle" : "Start shuffled playback"} disabled={task.busy || needsReview} onPress={apply} />
+    {plan?.mode === "queue" && confirmation ? <View>
+      <Label>Reshuffle {plan.count} upcoming songs while keeping the playing song and history? This confirmation expires after two minutes.</Label>
+      <Button title="Confirm upcoming shuffle" disabled={task.busy || needsReview} onPress={apply} />
       <Button title="Cancel shuffle confirmation" disabled={task.busy} onPress={clear} />
     </View> : null}
     {needsReview ? <View>
@@ -75,6 +82,7 @@ function App() {
     </View> : null}
     <Status task={task} />
     {outcome ? <Label>{outcome}</Label> : null}
+    {tracks.length ? <Results tracks={selected} /> : null}
   </Page>;
 }
 register("Shuffle+", App, ["playlist", "album"]);

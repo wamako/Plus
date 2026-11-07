@@ -1,4 +1,12 @@
-# Shuffle+ 0.1.0 for Spotify Plus R13
+# Shuffle+ 0.1.1 for Spotify Plus R13
+
+Version 0.1.1 changes the Prepare control into Start shuffled playback in place
+and keeps confirmation, progress, errors and results above the paginated song
+cards. Previously the playback confirmation appeared below
+forty song cards and could look like the Prepare button had done nothing.
+Preparation remains read-only: tap **Start shuffled playback** to apply it.
+Replace the existing shuffle-plus folder, refresh and restart Spotify; an
+existing R13 installation does not need to be repatched for this extension update.
 
 Independent Android adaptation inspired by Spicetify's Shuffle+ (khanhas and
 Tetrax-10). This is not the desktop file or rxri's audio-feature FeatureShuffle.

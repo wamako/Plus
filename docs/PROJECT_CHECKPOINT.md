@@ -1,5 +1,30 @@
 # Spotify Plus project checkpoint
 
+## Shuffle+ 0.1.1 confirmation repair
+
+The user reported that collection inputs loaded but Prepare shuffled playback
+appeared to do nothing. The actual pinned loader reproduced a confirmation
+hidden below forty song cards. Version 0.1.1 changes Prepare into Start shuffled
+playback in the same control position and puts confirmation, progress, errors,
+uncertain-outcome review and results above the track preview. Preparation stays
+read-only; only the explicit Start action dispatches playback. No native protocol,
+phone APK, shared UI, other extension or storage-journal behavior changed.
+
+The expanded production-loader test uses a 10,000-song collection, verifies the
+actual start button precedes track cards, preparation makes no mutation, start
+sends one command, errors/results remain visible, and a delayed prepare displays
+progress with the control disabled. Cancellation, stale/lost acknowledgments and
+unload checks remain. Local npm check passed all 106 regressions, TypeScript,
+bundle builds and nine pinned loader/renderer profiles. The original layout
+failed the new long-list confirmation check before the fix. This does not claim
+authenticated phone playback acceptance; the user must test the updated bundle.
+
+Delivered ZIP: SpotifyPlus-ShufflePlus-0.1.1.zip, 26,355 bytes, SHA-256
+cd9cf0b649ebced7347503e636c816fba0caf807cf00dbd04ae8718fb89c3ee0.
+It updates the existing Shuffle+ deliverable. Replace only the shuffle-plus
+folder, refresh Developer local extensions and restart Spotify.
+Existing R13 users do not need to repatch. The four-extension suite stays 0.1.7.
+
 ## Android storage validation follow-up
 
 The normal current-source workflow now builds a separate CI-only storage probe
@@ -70,7 +95,7 @@ limitations when a later repair supersedes them.
 - Current delivered module: **R13**, version
   `0.10.0-api2.9.1.94.13`, module version code **30**.
 - Current delivered local extension suite: **0.1.7**, API **2**, plus separate
-  **Shuffle+ 0.1.0** (`com.wamako.shuffleplus`).
+  **Shuffle+ 0.1.1** (`com.wamako.shuffleplus`).
 - User reported R12 was looking good so far and would test further. **Do not
   claim R12 or the new R13 passed full physical device acceptance.**
 - The user explicitly approved building Shuffle+ after feasibility research. R13
@@ -81,9 +106,12 @@ limitations when a later repair supersedes them.
 - Current R13 APK: `SpotifyPlus-9.1.94.1929-api2-r13-arm64.apk`, SHA-256
   `97efb28001c7e05b052c29a4d63ed6186d5b12fccf8ff1ed9bd4d37d5aaaafe7`.
   Library identity `libfile_0f3bc659ca0c8191b84b3495b8654346`, version **12**.
-- Shuffle+ ZIP: `SpotifyPlus-ShufflePlus-0.1.0.zip`, SHA-256
-  `a775322a3e9d9fefaf51a1ce2b12f0a07971a418d56b3542fed033edbff1ce45`.
-  Library identity `libfile_ef80c890d7208191a3a86fe4bc56a194`, initial version **0**.
+- Shuffle+ ZIP: `SpotifyPlus-ShufflePlus-0.1.1.zip`, SHA-256
+  `cd9cf0b649ebced7347503e636c816fba0caf807cf00dbd04ae8718fb89c3ee0`.
+  Library identity `libfile_ef80c890d7208191a3a86fe4bc56a194`.
+  Previous 0.1.0 ZIP SHA-256:
+  `a775322a3e9d9fefaf51a1ce2b12f0a07971a418d56b3542fed033edbff1ce45`;
+  retained in this file's version history (initial version 0).
 - R13 executable source: `5687f27d2956a5c224dcf55611fd1bea0bd902cf`.
   Successful workflow **42263057174**, APK artifact **13526306251**, Shuffle+
   artifact **13525503134**. APK artifact ZIP SHA-256:

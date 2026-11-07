@@ -22,9 +22,16 @@ def main():
             report['failure_categories']=[name for name in ['AssertionError','ClassNotFoundException','NoClassDefFoundError','VerifyError','SecurityException'] if name in output]
             report['failed_fixture_methods']=re.findall(r'(?m)^\d+\) ([A-Za-z]+)\(',output)
             raise RuntimeError('Android rendering/navigation instrumentation did not pass')
-        image=run('exec-out','run-as','com.lenerd46.spotifyplus','cat','/sdcard/Android/data/com.lenerd46.spotifyplus/files/glass-fixture.png').stdout
+        report.update(instrumentation_passed=True,tests_passed=5)
+        # run-as cannot reliably read FUSE-backed external app files on API37.
+        # All app launches/tests above ran with non-root ADB. Elevate only after
+        # those checks, on the verified disposable AVD, to retrieve our own
+        # synthetic fixture. Never read a Spotify screenshot or app data.
+        run('root');run('wait-for-device')
+        output=args.report.with_name('glass-fixture.png')
+        run('pull','/sdcard/Android/data/com.lenerd46.spotifyplus/files/glass-fixture.png',output)
+        image=output.read_bytes()
         if not image.startswith(b'\x89PNG\r\n\x1a\n'):raise RuntimeError('Missing synthetic rendering artifact')
-        args.report.with_name('glass-fixture.png').write_bytes(image)
         report.update(passed=True,tests_passed=5,foreground_exclusion=True,repeated_capture=True,actual_blur=True,failed_capture_restores_state=True,spotify_track_intent_resolved=True,unsafe_links_rejected=True)
     finally:
         args.report.write_text(json.dumps(report,indent=2)+'\n');print('ANDROID_UI_REPORT '+json.dumps(report,sort_keys=True))

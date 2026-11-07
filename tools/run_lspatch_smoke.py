@@ -209,6 +209,25 @@ def check_environment(device, profile=NATIVE):
             "profile": profile, "arm_translation": True, "native_bridge": bridge,
             "arm64_instruction_set": instruction_set}
 
+
+def guest_capacity(device, expected_cpu=None, expected_ram_mb=None):
+    cpu = device.shell("getconf", "_NPROCESSORS_ONLN")
+    memory = re.search(r"(?m)^MemTotal:\s+(\d+)\s+kB$", device.shell("cat", "/proc/meminfo"))
+    if not re.fullmatch(r"\d{1,2}", cpu) or not 1 <= int(cpu) <= 64 or not memory:
+        raise RuntimeError("Guest capacity evidence was unavailable")
+    ram_mb = int(memory[1]) // 1024
+    if expected_cpu is not None and int(cpu) != expected_cpu:
+        raise RuntimeError("Guest CPU count differs from the declared emulator profile")
+    if expected_ram_mb is not None and ram_mb < expected_ram_mb - 512:
+        raise RuntimeError("Guest memory is below the declared emulator profile")
+    return {"guest_vcpu_count": int(cpu), "guest_memory_mib": ram_mb}
+
+def settle_guest(device):
+    device.shell("cmd", "package", "wait-for-handler", "--timeout", "30000", timeout=35)
+    device.shell("cmd", "package", "wait-for-background-handler", "--timeout", "30000", timeout=35)
+    device.shell("cmd", "activity", "wait-for-broadcast-idle", timeout=45)
+    return {"package_handler_idle": True, "package_background_handler_idle": True, "broadcasts_idle": True}
+
 def provision(device, apk, extension, profile=NATIVE):
     check_environment(device, profile)
     if device.shell("pm", "list", "packages", PACKAGE):
@@ -261,7 +280,12 @@ def launch(device, timeout, details=None):
             if not pid and time.monotonic() - began > 30:
                 raise RuntimeError("Spotify did not keep a running process after launch")
             if pid:
-                flags, errors = log_status(device.adb("logcat", "-d", "--pid=" + pid))
+                app_log = device.adb("logcat", "-d", "--pid=" + pid)
+                flags, errors = log_status(app_log)
+                from lspatch_anr import theme_symbol
+                symbol = theme_symbol(app_log)
+                if symbol:
+                    details["material_theme_symbol"] = symbol
                 details["last_observed_markers"] = flags
                 if errors:
                     raise RuntimeError("Startup error categories: " + ", ".join(errors))
@@ -373,10 +397,17 @@ def main():
     try:
         device = Device()
         report["environment"] = check_environment(device, args.device_profile)
+        expected_cpu = os.environ.get("SELECTED_EMULATOR_CORES", "")
+        expected_ram = os.environ.get("SELECTED_EMULATOR_RAM_MB", "")
+        if expected_cpu not in ("", "2", "4") or expected_ram not in ("", "3072", "4096"):
+            raise RuntimeError("Invalid declared emulator capacity")
+        report["environment"].update(guest_capacity(device, int(expected_cpu) if expected_cpu else None, int(expected_ram) if expected_ram else None))
         if not args.check_environment:
             report["stage"] = "install_and_provision"
             provision(device, args.apk, args.extension, args.device_profile)
             report["installed_app_abi"] = app_abi(args.device_profile)
+            report["stage"] = "settle_guest_after_provision"
+            report["guest_idle_checks"] = settle_guest(device)
             report["patched_host_test_executed"] = True
             for _ in range(2):
                 report["stage"] = "launch_" + str(len(report["launches"]) + 1)

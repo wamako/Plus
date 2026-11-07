@@ -26,3 +26,14 @@ class AnrTests(unittest.TestCase):
         self.assertIsNone(trace_path(text, "43"))
         self.assertIsNone(trace_path(text.replace("reason=6", "reason=4"), "42"))
         self.assertIsNone(trace_path(text.replace("/data/system/procexitstore/", "/data/private/"), "42"))
+
+    def test_theme_symbol_never_returns_log_payloads_or_paths(self):
+        from lspatch_anr import theme_symbol
+        text = ("Material theme method: public static final void p.Theme.a(p.Scheme,p.A,p.B,p.C,p.D,p.F,int)"
+                " https://private.invalid/?token=secret /data/private-name")
+        symbol = theme_symbol(text)
+        self.assertEqual(symbol["declaring_class"], "p.Theme")
+        self.assertEqual(symbol["name"], "a")
+        self.assertNotIn("secret", str(symbol))
+        self.assertNotIn("private", str(symbol))
+        self.assertIsNone(theme_symbol(text.replace("p.A", "https://private.invalid/token")))

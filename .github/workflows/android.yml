@@ -259,6 +259,8 @@ jobs:
          (github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository))))
     uses: ./.github/workflows/s24-validation.yml
     with:
+      emulator_cores: 2
+      emulator_ram_mb: 3072
       native_x86: false
       signature_bypass_level: '2'
       run_patched_host: true
@@ -277,6 +279,8 @@ jobs:
          (github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository))))
     uses: ./.github/workflows/s24-validation.yml
     with:
+      emulator_cores: 2
+      emulator_ram_mb: 3072
       api_level: '35'
       native_x86: false
       signature_bypass_level: '2'
@@ -296,6 +300,8 @@ jobs:
          (github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository))))
     uses: ./.github/workflows/s24-validation.yml
     with:
+      emulator_cores: 2
+      emulator_ram_mb: 3072
       native_x86: true
       signature_bypass_level: '0'
       run_patched_host: true

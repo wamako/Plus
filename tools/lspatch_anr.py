@@ -45,3 +45,16 @@ def collect(device, exit_info, pid):
         return {"trace_available": False}
     finally:
         device.root(False)
+
+def theme_symbol(log):
+    """Only a known reflection log's bounded Java code identifiers."""
+    if not isinstance(log, str):
+        return None
+    match = re.search(r"Material theme method: public static(?: final)? void ((?:p|androidx\.compose\.material3)\.[A-Za-z0-9_.$-]{1,140})\(([A-Za-z0-9_.$,\[\]-]{1,1200})\)", log)
+    if not match:
+        return None
+    owner, _, name = match[1].rpartition(".")
+    parameters = match[2].split(",")
+    if len(parameters) not in (6, 7) or parameters[-1] != "int":
+        return None
+    return {"declaring_class": owner, "name": name, "parameters": parameters}

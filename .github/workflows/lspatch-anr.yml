@@ -18,14 +18,23 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: '3.12'
-      - run: python3 -m unittest discover -s tools -p test_lspatch_anr.py
+      - run: |
+          python3 -m unittest discover -s tools -p test_lspatch_anr.py
+          python3 -m unittest discover -s tools -p test_lspatch_guest_capacity.py
   inspect-main-thread:
+    strategy:
+      fail-fast: false
+      matrix:
+        sample: [a, b]
     needs: check-anr-parser
     if: >-
       vars.RUN_LSPATCH_SMOKE == 'true' &&
       github.event.pull_request.head.repo.full_name == github.repository
     uses: ./.github/workflows/s24-validation.yml
     with:
+      emulator_cores: 4
+      emulator_ram_mb: 4096
+      report_tag: '-${{ matrix.sample }}'
       native_x86: true
       signature_bypass_level: '2'
       run_patched_host: true

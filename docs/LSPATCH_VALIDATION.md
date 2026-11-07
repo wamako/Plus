@@ -1,5 +1,10 @@
 # Android 17 / LSPatch validation on Linux
 
+## Verified Linux startup profile
+
+The verified default Linux profile is now Android17/API37, native x86_64, integrated official LSPatch1.2/487, signature mode2. In run42324266946 at 80035647f9d2b7f877c6dffd1799d263491e7fc8, job128258025276 passed two actual non-root launches with process-scoped loader/Plus/Node/Shuffle+ markers, fifteen seconds stable after readiness on each launch, named Node/JNI/addon mappings, and read-only extracted native code. Both modules built; 70 Python/JVM checks, 106 extension regressions, nine pinned loader profiles and Android unit/build/DEX/native checks passed. This is real logged-out startup coverage, not authenticated playback/UI/Samsung acceptance. The x86_64 APK is emulator-only; delivered ARM64 R13 and local extensions are unchanged. Android17 translated ARM with modes0/2 and native x86 mode0 failed with PID-correlated AOSP reason6 (ANR), one initial activity launch and no deep-link loop; stock controls passed. Android15 translated ARM mode0 reported host_failed. The LSPatch Android app source defaults to mode2 while its CLI defaults to0; no phone patch setting is assumed. Failed configurations remain documented and runnable as explicit diagnostics, without continue-on-error.
+
+
 The default test host is **ubuntu-24.04**, using KVM and Google's stable
 **Android 37.0 Google APIs x86_64** image. No Mac, self-hosted runner, device
 subscription or additional runner label is required. `ANDROID37_RUNNER_LABEL`
@@ -269,3 +274,12 @@ identify the precise translated-runtime failure or establish a native-x86 pass.
 
 
 The native x86_64 module compiled and passed its packaged runtime checks in [run 42322636521](https://github.com/wamako/Plus/actions/runs/42322636521), but its patched startup failed before Node/Shuffle+ readiness; the unmodified x86_64 control passed. The ARM translation profiles also failed. The next diagnostic comparison explicitly tests the patcher's documented signature mode 2 separately from mode 0 on each ABI. Reports record the actual verified setting; no setting is claimed to match the user's phone. Exit-info reports expose only bounded AOSP reason/status numbers for the launched main PID. Exception-frame categories and redirect counts contain no raw messages, paths or URLs.
+
+
+### Normal runs and optional diagnostics
+
+The existing `RUN_LSPATCH_SMOKE=true` repository variable and working `SPOTIFY_APK_URL` secret enable the default native x86_64/mode2 startup test on trusted runs. No Mac, self-hosted runner, additional secret or runner label is needed. The phone APK is still built separately with the default ARM64 ABI. The isolated emulator module is not an APK to install on the Samsung phone.
+
+The workflow's `run_lspatch_diagnostics` dispatch checkbox (alongside patched-host testing), or optional `RUN_LSPATCH_DIAGNOSTICS=true` repository variable, also runs the historically failing Android17 ARM translation and native x86/mode0 configurations, plus a separate Android15 ARM/mode2 experiment. These diagnostic jobs fail normally if they fail; no failure is converted into success. Unrequested diagnostics are explicitly reported as skipped. Previous ARM/mode0 failures do not become ARM/mode2 successes by changing the selection.
+
+For direct invocation of the preparer, pass `--signature-bypass-level 2` to reproduce the verified startup profile. The standalone helper/verifier retains its explicit mode0 default for historical package checks; the normal workflow always passes mode2. Package reports record the actual checked mode and ABI.

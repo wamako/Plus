@@ -1,5 +1,10 @@
 # Spotify Plus project checkpoint
 
+## Verified Linux startup profile
+
+The verified default Linux profile is now Android17/API37, native x86_64, integrated official LSPatch1.2/487, signature mode2. In run42324266946 at 80035647f9d2b7f877c6dffd1799d263491e7fc8, job128258025276 passed two actual non-root launches with process-scoped loader/Plus/Node/Shuffle+ markers, fifteen seconds stable after readiness on each launch, named Node/JNI/addon mappings, and read-only extracted native code. Both modules built; 70 Python/JVM checks, 106 extension regressions, nine pinned loader profiles and Android unit/build/DEX/native checks passed. This is real logged-out startup coverage, not authenticated playback/UI/Samsung acceptance. The x86_64 APK is emulator-only; delivered ARM64 R13 and local extensions are unchanged. Android17 translated ARM with modes0/2 and native x86 mode0 failed with PID-correlated AOSP reason6 (ANR), one initial activity launch and no deep-link loop; stock controls passed. Android15 translated ARM mode0 reported host_failed. The LSPatch Android app source defaults to mode2 while its CLI defaults to0; no phone patch setting is assumed. Failed configurations remain documented and runnable as explicit diagnostics, without continue-on-error.
+
+
 Updated 2026-11-06. This is the continuity record for future work. Read it with
 `spotify-9.1.94.md`, `API2_STORAGE_R11.md`, `API2_PLAYLIST_R12.md` and the local
 extension README/validation record. Do not treat earlier milestones as current

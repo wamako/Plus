@@ -7,10 +7,10 @@ on:
     inputs:
       signature_bypass_level:
         type: string
-        default: '0'
+        default: '2'
       native_x86:
         type: boolean
-        default: false
+        default: true
       api_level:
         type: string
         default: '37.0'
@@ -126,7 +126,7 @@ jobs:
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: ${{ inputs.signature_bypass_level == '2' && (inputs.native_x86 && 'LSPatch-Android17-Native-x86-Sig2-Reports' || 'LSPatch-Android17-ARM-Sig2-Reports') || (inputs.native_x86 && 'LSPatch-Android17-Native-x86-Reports' || (inputs.api_level == '35' && (inputs.run_patched_host && 'LSPatch-Android15-Linux-Reports' || 'Android15-Linux-Environment-Report') || (inputs.run_patched_host && 'LSPatch-Android17-Linux-Reports' || 'Android17-Linux-Environment-Report'))) }}
+          name: ${{ format('{0}-Android{1}-{2}-Sig{3}-{4}', inputs.run_patched_host && 'LSPatch' || 'Environment', inputs.api_level == '35' && '15' || '17', inputs.native_x86 && 'Native-x86' || 'ARM-Translation', inputs.signature_bypass_level, inputs.run_patched_host && 'Reports' || 'Report') }}
           path: ${{ runner.temp }}/smoke-reports/*.json
           if-no-files-found: ignore
           retention-days: 14

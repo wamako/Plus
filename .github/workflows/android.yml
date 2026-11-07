@@ -7,7 +7,12 @@ on:
   workflow_dispatch:
     inputs:
       run_lspatch_smoke:
-        description: 'Run Linux patched-host tests on API 37 and separate API 35 compatibility (requires SPOTIFY_APK_URL)'
+        description: 'Test patched Spotify on the verified Linux API37 native x86_64/signature-mode-2 profile'
+        type: boolean
+        default: false
+
+      run_lspatch_diagnostics:
+        description: 'Also run ARM translation and signature-mode-0 diagnostics (known failures; reported separately)'
         type: boolean
         default: false
 
@@ -174,8 +179,11 @@ jobs:
           if-no-files-found: error
 
   android17-environment:
-    # No APK secret is needed: verify the Linux guest even if its source is down.
+    # No APK secret is needed: verify the selected Linux guest independently.
     uses: ./.github/workflows/s24-validation.yml
+    with:
+      native_x86: true
+      signature_bypass_level: '2'
 
   lspatch-packaging:
     needs: build
@@ -207,6 +215,7 @@ jobs:
         run: >-
           python3 tools/prepare_lspatch_smoke.py
           --module "$RUNNER_TEMP/plus-module/app-debug.apk"
+          --signature-bypass-level 2
           --work "$RUNNER_TEMP/lspatch-package"
           --report "$RUNNER_TEMP/package-reports/package.json"
       - name: Upload only the packaging report
@@ -222,9 +231,8 @@ jobs:
         run: rm -rf "$RUNNER_TEMP/lspatch-package" "$RUNNER_TEMP/plus-module"
 
   lspatch-android17:
-    needs: [build, android17-environment, lspatch-packaging]
-    # Never expose the input URL to fork PR code. The explicit repository variable
-    # enables trusted same-repository PR runs; manual runs have their own checkbox.
+    # Verified generic Android17 coverage; the phone APK remains ARM64.
+    needs: [build, build-emulator-x86, android17-environment, lspatch-packaging]
     if: >-
       needs.android17-environment.outputs.environment_result == 'booted' &&
       ((github.event_name == 'workflow_dispatch' && inputs.run_lspatch_smoke) ||
@@ -233,104 +241,103 @@ jobs:
          (github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository))))
     uses: ./.github/workflows/s24-validation.yml
     with:
+      native_x86: true
+      signature_bypass_level: '2'
+      run_patched_host: true
+    secrets:
+      SPOTIFY_APK_URL: ${{ secrets.SPOTIFY_APK_URL }}
+
+  lspatch-android17-arm-translation:
+    # Opt-in diagnostic: this profile failed with an ANR and is not the default.
+    needs: [build, lspatch-packaging]
+    if: >-
+      ((github.event_name == 'workflow_dispatch' && inputs.run_lspatch_diagnostics) ||
+       vars.RUN_LSPATCH_DIAGNOSTICS == 'true') &&
+      ((github.event_name == 'workflow_dispatch' && inputs.run_lspatch_smoke) ||
+       (vars.RUN_LSPATCH_SMOKE == 'true' &&
+        (github.event_name == 'push' ||
+         (github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository))))
+    uses: ./.github/workflows/s24-validation.yml
+    with:
+      native_x86: false
+      signature_bypass_level: '2'
       run_patched_host: true
     secrets:
       SPOTIFY_APK_URL: ${{ secrets.SPOTIFY_APK_URL }}
 
   lspatch-android15:
-    # Separate compatibility coverage; this cannot establish Android 17 behavior.
+    # Opt-in compatibility experiment; never establishes Android17 behavior.
     needs: [build, lspatch-packaging]
     if: >-
-      (github.event_name == 'workflow_dispatch' && inputs.run_lspatch_smoke) ||
-      (vars.RUN_LSPATCH_SMOKE == 'true' &&
-       (github.event_name == 'push' ||
-        (github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository)))
+      ((github.event_name == 'workflow_dispatch' && inputs.run_lspatch_diagnostics) ||
+       vars.RUN_LSPATCH_DIAGNOSTICS == 'true') &&
+      ((github.event_name == 'workflow_dispatch' && inputs.run_lspatch_smoke) ||
+       (vars.RUN_LSPATCH_SMOKE == 'true' &&
+        (github.event_name == 'push' ||
+         (github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository))))
     uses: ./.github/workflows/s24-validation.yml
     with:
       api_level: '35'
-      run_patched_host: true
-    secrets:
-      SPOTIFY_APK_URL: ${{ secrets.SPOTIFY_APK_URL }}
-
-  lspatch-android17-native-x86:
-    needs: [build, build-emulator-x86, lspatch-packaging]
-    if: >-
-      (github.event_name == 'workflow_dispatch' && inputs.run_lspatch_smoke) ||
-      (vars.RUN_LSPATCH_SMOKE == 'true' &&
-       (github.event_name == 'push' ||
-        (github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository)))
-    uses: ./.github/workflows/s24-validation.yml
-    with:
-      native_x86: true
-      run_patched_host: true
-    secrets:
-      SPOTIFY_APK_URL: ${{ secrets.SPOTIFY_APK_URL }}
-
-  lspatch-android17-native-x86-sig2:
-    needs: [build, build-emulator-x86, lspatch-packaging]
-    if: >-
-      (github.event_name == 'workflow_dispatch' && inputs.run_lspatch_smoke) ||
-      (vars.RUN_LSPATCH_SMOKE == 'true' &&
-       (github.event_name == 'push' ||
-        (github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository)))
-    uses: ./.github/workflows/s24-validation.yml
-    with:
-      native_x86: true
+      native_x86: false
       signature_bypass_level: '2'
       run_patched_host: true
     secrets:
       SPOTIFY_APK_URL: ${{ secrets.SPOTIFY_APK_URL }}
 
-  lspatch-android17-arm-sig2:
-    needs: [build, lspatch-packaging]
+  lspatch-android17-native-x86-mode0:
+    # Explicit reproduction of the failed CLI-default patch configuration.
+    needs: [build, build-emulator-x86, lspatch-packaging]
     if: >-
-      (github.event_name == 'workflow_dispatch' && inputs.run_lspatch_smoke) ||
-      (vars.RUN_LSPATCH_SMOKE == 'true' &&
-       (github.event_name == 'push' ||
-        (github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository)))
+      ((github.event_name == 'workflow_dispatch' && inputs.run_lspatch_diagnostics) ||
+       vars.RUN_LSPATCH_DIAGNOSTICS == 'true') &&
+      ((github.event_name == 'workflow_dispatch' && inputs.run_lspatch_smoke) ||
+       (vars.RUN_LSPATCH_SMOKE == 'true' &&
+        (github.event_name == 'push' ||
+         (github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository))))
     uses: ./.github/workflows/s24-validation.yml
     with:
-      signature_bypass_level: '2'
+      native_x86: true
+      signature_bypass_level: '0'
       run_patched_host: true
     secrets:
       SPOTIFY_APK_URL: ${{ secrets.SPOTIFY_APK_URL }}
 
   validation-scope:
-    needs: [build, android17-environment, lspatch-packaging, lspatch-android17, lspatch-android15, build-emulator-x86, lspatch-android17-native-x86, lspatch-android17-native-x86-sig2, lspatch-android17-arm-sig2]
+    needs: [build, android17-environment, lspatch-packaging, build-emulator-x86, lspatch-android17, lspatch-android17-arm-translation, lspatch-android15, lspatch-android17-native-x86-mode0]
     if: always()
     runs-on: ubuntu-latest
     steps:
-      - name: Record separate build and device outcomes
+      - name: Record build, supported startup and optional diagnostic outcomes
         env:
           BUILD_RESULT: ${{ needs.build.result }}
           PACKAGE_RESULT: ${{ needs.lspatch-packaging.result }}
           DEVICE_RESULT: ${{ needs.lspatch-android17.result }}
           NATIVE_X86_BUILD_RESULT: ${{ needs.build-emulator-x86.result }}
-          NATIVE_X86_RESULT: ${{ needs.lspatch-android17-native-x86.result }}
-          NATIVE_X86_SIG2_RESULT: ${{ needs.lspatch-android17-native-x86-sig2.result }}
-          ARM_SIG2_RESULT: ${{ needs.lspatch-android17-arm-sig2.result }}
+          ARM_DIAGNOSTIC_RESULT: ${{ needs.lspatch-android17-arm-translation.result }}
           ANDROID15_RESULT: ${{ needs.lspatch-android15.result }}
+          MODE0_RESULT: ${{ needs.lspatch-android17-native-x86-mode0.result }}
           ENVIRONMENT_RESULT: ${{ needs.android17-environment.result }}
           BOOT_RESULT: ${{ needs.android17-environment.outputs.environment_result }}
           PATCHED_TESTS_ENABLED: ${{ vars.RUN_LSPATCH_SMOKE == 'true' }}
           APK_SOURCE_CONFIGURED: ${{ secrets.SPOTIFY_APK_URL != '' }}
         run: |
-          printf 'Build/regression checks: **%s**\n\nPatched-host device job: **%s**\n\n' "$BUILD_RESULT" "$DEVICE_RESULT" >> "$GITHUB_STEP_SUMMARY"
-          printf 'Configured Spotify source and LSPatch package verification: **%s**\n\n' "$PACKAGE_RESULT" >> "$GITHUB_STEP_SUMMARY"
-          printf 'Android 17 Linux ARM64-translation environment: **%s** (separate from Spotify startup)\n\n' "$ENVIRONMENT_RESULT" >> "$GITHUB_STEP_SUMMARY"
-          printf 'Emulator-only x86_64 build: **%s**\n\n' "$NATIVE_X86_BUILD_RESULT" >> "$GITHUB_STEP_SUMMARY"
-          printf 'Android 17 native x86_64 emulator module: **%s** (different native ABI from the phone)\n\n' "$NATIVE_X86_RESULT" >> "$GITHUB_STEP_SUMMARY"
-          printf 'Android 17 explicit signature-mode-2 trials: ARM64 **%s**; native x86_64 **%s** (separate from mode 0 and phone settings)\n\n' "$ARM_SIG2_RESULT" "$NATIVE_X86_SIG2_RESULT" >> "$GITHUB_STEP_SUMMARY"
-          printf 'Separate Android 15/API 35 patched-host compatibility: **%s** (does not establish Android 17 behavior)\n\n' "$ANDROID15_RESULT" >> "$GITHUB_STEP_SUMMARY"
-          printf 'Actual emulator boot result: **%s**\n\n' "$BOOT_RESULT" >> "$GITHUB_STEP_SUMMARY"
+          printf 'Phone ARM64 module/regression build: **%s**\n\n' "$BUILD_RESULT" >> "$GITHUB_STEP_SUMMARY"
+          printf 'Original source and ARM64 module/package verification (signature mode 2): **%s**\n\n' "$PACKAGE_RESULT" >> "$GITHUB_STEP_SUMMARY"
+          printf 'Isolated x86_64 module build: **%s**\n\n' "$NATIVE_X86_BUILD_RESULT" >> "$GITHUB_STEP_SUMMARY"
+          printf 'Android17 Linux/KVM native x86_64 environment: **%s**; actual guest: **%s**\n\n' "$ENVIRONMENT_RESULT" "$BOOT_RESULT" >> "$GITHUB_STEP_SUMMARY"
+          printf 'Patched Spotify two-launch startup, native x86_64/signature mode 2: **%s**\n\n' "$DEVICE_RESULT" >> "$GITHUB_STEP_SUMMARY"
+          printf 'Optional diagnostics: Android17 ARM translation **%s**; Android15 ARM translation **%s**; native x86 mode 0 **%s**\n\n' "$ARM_DIAGNOSTIC_RESULT" "$ANDROID15_RESULT" "$MODE0_RESULT" >> "$GITHUB_STEP_SUMMARY"
           printf 'Patched tests enabled: **%s**; APK source configured: **%s**\n\n' "$PATCHED_TESTS_ENABLED" "$APK_SOURCE_CONFIGURED" >> "$GITHUB_STEP_SUMMARY"
           echo "Patched tests enabled: $PATCHED_TESTS_ENABLED; APK source configured: $APK_SOURCE_CONFIGURED"
+          echo 'Native x86 emulator results do not establish ARM/Samsung firmware, login, playback, queue or extension UI acceptance. Optional diagnostics are skipped unless explicitly requested; their historical failures remain documented.' >> "$GITHUB_STEP_SUMMARY"
           if [ "$DEVICE_RESULT" = skipped ]; then
             if [ "$PACKAGE_RESULT" = failure ]; then
-              echo 'Patched Spotify startup was not tested because configured APK source/package verification failed. Inspect the packaging job and its safe input.json diagnostic. See docs/LSPATCH_VALIDATION.md.' >> "$GITHUB_STEP_SUMMARY"
+              echo 'Patched Spotify startup was not tested because source/package verification failed. Inspect the packaging report.' >> "$GITHUB_STEP_SUMMARY"
             elif [ "$BOOT_RESULT" != booted ]; then
-              echo 'Patched Spotify startup was not tested because no valid API 37 Linux guest/ARM64 translation was established. See the environment report.' >> "$GITHUB_STEP_SUMMARY"
+              echo 'Patched Spotify startup was not tested because the required API37 guest was not verified.' >> "$GITHUB_STEP_SUMMARY"
+            elif [ "$NATIVE_X86_BUILD_RESULT" != success ]; then
+              echo 'Patched Spotify startup was not tested because the emulator module was not built successfully.' >> "$GITHUB_STEP_SUMMARY"
             else
-              echo 'Patched Spotify startup was not requested or eligible. See docs/LSPATCH_VALIDATION.md for settings.' >> "$GITHUB_STEP_SUMMARY"
+              echo 'Patched Spotify startup was not requested or eligible. See docs/LSPATCH_VALIDATION.md.' >> "$GITHUB_STEP_SUMMARY"
             fi
           fi

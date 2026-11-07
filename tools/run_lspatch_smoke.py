@@ -39,6 +39,8 @@ ERRORS = {
 LIBRARIES = ("libnode.so", "libnative-lib.so", "spotifyplus_bridge.node")
 NATIVE = "native-arm64"
 TRANSLATED = "linux-x86_64-arm64-translation"
+TRANSLATED35 = "linux-x86_64-arm64-translation-api35"
+TRANSLATED_PROFILES = (TRANSLATED, TRANSLATED35)
 
 def log_status(log):
     return ({name: marker in log for name, marker in MARKERS.items()},
@@ -48,6 +50,10 @@ def activity_manager_pids(text):
     # AOSP ProcessRecord.toShortString uses pid:processName/u0a<appId>.
     # Match only this app's main user-0 process, not helpers or historical PID 0.
     return sorted(set(re.findall(r"ProcessRecord\{[0-9a-fA-F]+\s+([1-9]\d*):com\.spotify\.music/u0a\d+\}", text)), key=int)
+
+def resumed_spotify_activity(text):
+    return isinstance(text, str) and any(PACKAGE in line and
+        ("mResumedActivity" in line or "topResumedActivity" in line) for line in text.splitlines())
 
 def safe_startup_details(app_log):
     """Fixed names/booleans only; never return log lines, paths or messages."""
@@ -78,10 +84,13 @@ def collect_startup_details(device, pid, details):
         details["spotify_native_crash_reported"] = bool(re.search(r">>>\s*com\.spotify\.music\s*<<<", log))
         # Global markers are diagnostic only and can never satisfy startup.
         details["launch_log_markers"] = log_status(log)[0]
+        details["spotify_activity_resumed"] = resumed_spotify_activity(
+            device.shell("dumpsys", "activity", "activities", PACKAGE, timeout=15))
         lookup = getattr(device, "last_process_lookup", None)
         if isinstance(lookup, dict) and lookup.get("method") == "android_activity_manager":
             details["android_process_lookup"] = {key: lookup[key] for key in
-                ("method", "registered_main_processes", "live_main_processes")}
+                ("method", "registered_main_processes", "live_main_processes",
+                 "package_mentioned", "process_records_present", "main_identity_present") if key in lookup}
         details["diagnostics_collected"] = True
     except (RuntimeError, subprocess.SubprocessError):
         details["diagnostics_collected"] = False
@@ -118,21 +127,25 @@ class Device:
         live = [pid for pid in candidates if self.adb("shell",
                 "test -d /proc/" + pid + " && echo alive || true", timeout=15).strip() == "alive"]
         self.last_process_lookup = {"method": "android_activity_manager",
-                                    "registered_main_processes": len(candidates), "live_main_processes": len(live)}
+                                    "registered_main_processes": len(candidates), "live_main_processes": len(live),
+                                    "package_mentioned": PACKAGE in records,
+                                    "process_records_present": "ProcessRecord{" in records,
+                                    "main_identity_present": bool(re.search(r"\b[1-9]\d*:com\.spotify\.music/", records))}
         return live[0] if len(live) == 1 else None
 
 def check_environment(device, profile=NATIVE):
     if device.shell("getprop", "ro.kernel.qemu") != "1":
         raise RuntimeError("Only disposable Android emulators may be provisioned")
-    if device.shell("getprop", "ro.build.version.sdk") != "37":
-        raise RuntimeError("Requires API 37; no automatic API downgrade is allowed")
+    api = 35 if profile == TRANSLATED35 else 37
+    if device.shell("getprop", "ro.build.version.sdk") != str(api):
+        raise RuntimeError("Requires API " + str(api) + " for the explicit test profile; no automatic downgrade is allowed")
     abi = device.shell("getprop", "ro.product.cpu.abi")
     if profile == NATIVE:
         if abi != "arm64-v8a":
             raise RuntimeError("Requires native arm64-v8a for the native profile")
-        return {"api": 37, "abi": abi, "app_abi": "arm64-v8a", "emulator": True,
+        return {"api": api, "abi": abi, "app_abi": "arm64-v8a", "emulator": True,
                 "profile": profile, "arm_translation": False}
-    if profile != TRANSLATED:
+    if profile not in TRANSLATED_PROFILES:
         raise RuntimeError("Unknown emulator test profile")
     if abi != "x86_64":
         raise RuntimeError("Linux translation profile requires an x86_64 guest")
@@ -141,7 +154,7 @@ def check_environment(device, profile=NATIVE):
     instruction_set = device.shell("getprop", "ro.dalvik.vm.isa.arm64")
     if "arm64-v8a" not in abis or bridge != "libndk_translation.so" or instruction_set != "x86_64":
         raise RuntimeError("Google ARM64 translation is not available in this guest")
-    return {"api": 37, "abi": abi, "app_abi": "arm64-v8a", "emulator": True,
+    return {"api": api, "abi": abi, "app_abi": "arm64-v8a", "emulator": True,
             "profile": profile, "arm_translation": True, "native_bridge": bridge,
             "arm64_instruction_set": instruction_set}
 
@@ -221,33 +234,80 @@ def inspect_native_code(device, pid, profile=NATIVE):
         loaded = {name: name in maps for name in LIBRARIES}
         if not all(loaded.values()):
             raise RuntimeError("Expected Node/JNI/addon mapping is missing")
-        if profile == TRANSLATED and "libndk_translation.so" not in maps:
+        if profile in TRANSLATED_PROFILES and "libndk_translation.so" not in maps:
             raise RuntimeError("ARM64 translation library is not mapped in Spotify")
         paths = ["/data/user/0/com.spotify.music/code_cache/spotifyplus-libs/" + name
                  for name in ("libc++_shared.so", "libnode.so", "libnative-lib.so")]
         paths.append("/data/user/0/com.spotify.music/files/nodejs/spotifyplus_bridge.node")
         modes = [device.shell("stat", "-c", "%a", path) for path in paths]
         if any(not re.fullmatch(r"[0-7]{3,4}", mode) or int(mode, 8) & 0o222 for mode in modes):
-            raise RuntimeError("Extracted native code is writable on Android 17")
+            raise RuntimeError("Extracted native code is writable")
         return {"mapped": loaded, "extracted_native_code_read_only": True,
-                "arm_translation_verified": profile == TRANSLATED}
+                "arm_translation_verified": profile in TRANSLATED_PROFILES}
     finally:
         device.root(False)
+
+def original_control(device, original, profile, abi="arm64-v8a", timeout=60):
+    """Only called after this harness installed the disposable patched app."""
+    from prepare_lspatch_smoke import checksum, ORIGINAL_SHA
+    check_environment(device, profile)
+    if abi not in ("arm64-v8a", "x86_64") or (abi == "x86_64" and profile not in TRANSLATED_PROFILES):
+        raise RuntimeError("Invalid original-control ABI")
+    if checksum(original) != ORIGINAL_SHA:
+        raise RuntimeError("Original control requires the exact pinned unpatched APK")
+    result = {"test_kind": "unpatched_original_control", "app_abi": abi,
+              "passed": False, "stage": "install", "account_test_executed": False, "playback_test_executed": False}
+    pid = None
+    try:
+        device.adb("logcat", "-c")
+        device.adb("uninstall", PACKAGE, timeout=120)
+        device.adb("install", "--abi", abi, original, timeout=180)
+        package = device.shell("dumpsys", "package", PACKAGE)
+        if not re.search(r"(?m)^\s*primaryCpuAbi=" + re.escape(abi) + r"(?:\s|$)", package):
+            raise RuntimeError("Original control was not installed with its requested ABI")
+        result["stage"] = "launch"
+        device.shell("am", "start", "-W", "-n", PACKAGE + "/com.spotify.music.MainActivity", timeout=60)
+        result["stage"] = "readiness"
+        deadline, stable_until = time.monotonic() + timeout, None
+        while time.monotonic() < deadline:
+            current = device.pid()
+            if pid and current != pid:
+                raise RuntimeError("Original control process exited or restarted")
+            pid = current or pid
+            if pid:
+                if stable_until is None:
+                    stable_until = time.monotonic() + 15
+                if time.monotonic() >= stable_until:
+                    activities = device.shell("dumpsys", "activity", "activities", PACKAGE, timeout=15)
+                    resumed = resumed_spotify_activity(activities)
+                    result.update({"process_stable_seconds": 15, "resumed_activity_observed": resumed,
+                                   "passed": resumed})
+                    if not resumed:
+                        raise RuntimeError("Original control did not expose a resumed Spotify activity")
+                    return result
+            time.sleep(2)
+        raise RuntimeError("Original control did not keep a registered process")
+    except (RuntimeError, subprocess.SubprocessError) as error:
+        result["failure"] = str(error) if isinstance(error, RuntimeError) else "Original control ADB operation timed out"
+        collect_startup_details(device, pid, result)
+        return result
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--apk", type=pathlib.Path)
     parser.add_argument("--extension", type=pathlib.Path)
     parser.add_argument("--check-environment", action="store_true")
-    parser.add_argument("--device-profile", choices=(NATIVE, TRANSLATED), default=NATIVE)
+    parser.add_argument("--original-control", type=pathlib.Path,
+                        help="After a failed patched startup, compare the pinned original on this disposable guest")
+    parser.add_argument("--device-profile", choices=(NATIVE, *TRANSLATED_PROFILES), default=NATIVE)
     parser.add_argument("--report", type=pathlib.Path, required=True)
     parser.add_argument("--timeout", type=int, default=180)
     args = parser.parse_args()
     if not args.check_environment and (not args.apk or not args.extension):
         parser.error("Patched-host testing requires --apk and --extension")
-    report = {"test_kind": "android37_environment_only" if args.check_environment else "logged_out_lspatch_startup", "passed": False,
+    report = {"test_kind": ("android35_environment_only" if args.device_profile == TRANSLATED35 else "android37_environment_only") if args.check_environment else "logged_out_lspatch_startup", "passed": False,
               "emulation_mode": os.environ.get("SPOTIFYPLUS_EMULATION_MODE", "unspecified"),
-              "device_profile": args.device_profile, "required_api": 37, "required_app_abi": "arm64-v8a", "launches": [], "startup_attempts": [],
+              "device_profile": args.device_profile, "required_api": 35 if args.device_profile == TRANSLATED35 else 37, "required_app_abi": "arm64-v8a", "launches": [], "startup_attempts": [],
               "playback_test_executed": False, "account_test_executed": False,
               "shuffle_ui_test_executed": False,
               "patched_host_test_executed": False,
@@ -275,10 +335,19 @@ def main():
     except (RuntimeError, subprocess.SubprocessError) as error:
         # All RuntimeError messages above are fixed categories, not raw output.
         report["failure"] = str(error) if isinstance(error, RuntimeError) else "ADB command timed out or could not run"
+        if report["patched_host_test_executed"] and args.original_control:
+            try:
+                control = original_control(device, args.original_control, args.device_profile)
+                report["original_controls"] = [control]
+                if not control["passed"] and args.device_profile in TRANSLATED_PROFILES:
+                    report["original_controls"].append(original_control(device, args.original_control, args.device_profile, "x86_64"))
+            except (RuntimeError, subprocess.SubprocessError, OSError):
+                report["original_control_unavailable"] = True
+        # A passing control never changes the failed patched-host verdict.
         raise SystemExit(report["failure"]) from None
     finally:
         args.report.write_text(json.dumps(report, indent=2) + "\n")
-    print("PASS: Android 17 emulator environment (" + args.device_profile + ")" if args.check_environment else
+    print("PASS: Android API " + str(report["required_api"]) + " emulator environment (" + args.device_profile + ")" if args.check_environment else
           "PASS: two non-root app starts, Node/JNI loading, Shuffle+ loader and read-only native code")
 
 if __name__ == "__main__":

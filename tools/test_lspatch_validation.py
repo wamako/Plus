@@ -10,7 +10,7 @@ from unittest.mock import patch, Mock
 
 from prepare_lspatch_smoke import download, describe_input, apkmirror_file_link, HTTPSRedirects
 from google_drive_input import download_url as drive_download_url, confirmation_url as drive_confirmation_url
-from run_lspatch_smoke import Device, log_status, provision, check_environment, NATIVE, TRANSLATED, safe_startup_details, collect_startup_details, launch
+from run_lspatch_smoke import Device, log_status, provision, check_environment, NATIVE, TRANSLATED, TRANSLATED35, safe_startup_details, collect_startup_details, launch
 from verify_lspatched_package import verify_origin
 from check_android37_acceleration import assess
 from report_android37_scope import classify
@@ -18,6 +18,12 @@ from check_android37_image import inspect as inspect_image, PACKAGE as IMAGE_PAC
 
 
 class ImageInventoryTests(unittest.TestCase):
+    def test_android15_image_is_explicit_and_cannot_satisfy_android17_inventory(self):
+        text = self.fixture(path=IMAGE_PACKAGE.replace("37.0", "35").replace("arm64-v8a", "x86_64"), abi="x86_64").replace('<api-level>37.0</api-level>', '<api-level>35</api-level>')
+        self.assertEqual(inspect_image(text, "x86_64", "35")["api_level"], "35")
+        with self.assertRaises(ValueError):
+            inspect_image(text, "x86_64")
+
     def test_linux_x86_image_requires_explicit_selection(self):
         text = self.fixture(path=IMAGE_PACKAGE.replace("arm64-v8a", "x86_64"), abi="x86_64")
         report = inspect_image(text, "x86_64")
@@ -45,6 +51,16 @@ class ImageInventoryTests(unittest.TestCase):
 
 
 class BootScopeTests(unittest.TestCase):
+    def test_android15_guest_is_never_reported_as_an_android17_pass(self):
+        details = {"api": 35, "abi": "x86_64", "app_abi": "arm64-v8a", "emulator": True,
+                   "profile": TRANSLATED35, "arm_translation": True,
+                   "native_bridge": "libndk_translation.so", "arm64_instruction_set": "x86_64"}
+        env = {"passed": True, "test_kind": "android35_environment_only", "environment": details}
+        report = classify("kvm-arm64-translation", "success", env, profile=TRANSLATED35)
+        self.assertTrue(report["passed"])
+        self.assertEqual(report["guest_api"], 35)
+        self.assertFalse(classify("kvm-arm64-translation", "success", env, profile=TRANSLATED)["passed"])
+
     def test_single_shell_entry_runs_startup_only_after_successful_guest_check(self):
         script = pathlib.Path(__file__).with_name("run_android37_validation.sh")
         for requested, fail_guest, expected in (("false", False, 1), ("true", False, 2), ("true", True, 1)):
@@ -208,6 +224,39 @@ class LogTests(unittest.TestCase):
 
 
 class DeviceGuards(unittest.TestCase):
+    def test_android15_profile_requires_explicit_selection(self):
+        device = self.translation_device(**{"ro.build.version.sdk": "35"})
+        self.assertEqual(check_environment(device, TRANSLATED35)["api"], 35)
+        with self.assertRaisesRegex(RuntimeError, "API 37"):
+            check_environment(device, TRANSLATED)
+
+    def test_original_control_refuses_wrong_input_or_device_before_uninstall(self):
+        from run_lspatch_smoke import original_control
+        device = Mock()
+        with tempfile.TemporaryDirectory() as temp:
+            original = pathlib.Path(temp) / "wrong.apk"
+            original.write_bytes(b"not the original")
+            with patch("run_lspatch_smoke.check_environment"):
+                with self.assertRaisesRegex(RuntimeError, "pinned unpatched"):
+                    original_control(device, original, TRANSLATED)
+            device.adb.assert_not_called()
+            with patch("run_lspatch_smoke.check_environment", side_effect=RuntimeError("physical device")):
+                with self.assertRaisesRegex(RuntimeError, "physical"):
+                    original_control(device, original, TRANSLATED)
+            device.adb.assert_not_called()
+
+    def test_original_control_requires_stable_android_process_and_resumed_activity(self):
+        from run_lspatch_smoke import original_control
+        device = Mock()
+        device.pid.return_value = "42"
+        device.shell.side_effect = ["primaryCpuAbi=arm64-v8a", "Status: ok", "topResumedActivity=ActivityRecord{com.spotify.music/.MainActivity}"]
+        with patch("run_lspatch_smoke.check_environment"), patch("prepare_lspatch_smoke.checksum", return_value=__import__("prepare_lspatch_smoke").ORIGINAL_SHA), \
+                patch("run_lspatch_smoke.time.monotonic", side_effect=[0, 0, 0, 0, 16, 16]), patch("run_lspatch_smoke.time.sleep"):
+            result = original_control(device, pathlib.Path("original.apk"), TRANSLATED)
+        self.assertTrue(result["passed"])
+        self.assertEqual(result["test_kind"], "unpatched_original_control")
+        self.assertFalse(result["playback_test_executed"])
+
     def activity_device(self, records, alive):
         device = object.__new__(Device)
         device.shell = Mock(return_value=records)

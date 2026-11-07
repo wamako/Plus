@@ -6,6 +6,12 @@ subscription or additional runner label is required. `ANDROID37_RUNNER_LABEL`
 is no longer used. The existing `RUN_LSPATCH_SMOKE` flag and `SPOTIFY_APK_URL`
 secret still control the actual patched-Spotify test.
 
+A separately labeled **lspatch-android15** job uses Google's API **35** image
+with the same module and ARM64 translation checks. It is compatibility coverage;
+it cannot establish Android 17 behavior or satisfy the API 37 profile. Both
+profiles are explicit, with no automatic downgrade. API 35 reports use
+**LSPatch-Android15-Linux-Reports** and record required/observed API 35.
+
 The Linux environment job passed in
 [CI run 42309629517](https://github.com/wamako/Plus/actions/runs/42309629517): real
 API 37 guest boot, ARM64 bridge/ABI/ISA checks, and explicit translated/native
@@ -208,3 +214,21 @@ registered main process for user 0, verifies its `/proc` entry and refuses
 ambiguous live candidates. It records only lookup counts/method, never process
 dump content. Helper processes and other users cannot satisfy the main-process
 check. A fresh execution must determine the actual runtime outcome.
+
+Run 42316531323 at `8426fa193226e508107f1978976c1b97f1db143d` passed all 58
+checks/build/environment/package verification. Startup again observed loader
+and module entry but no ready Node/Shuffle+. ActivityManager lookup reported
+zero registered/live main processes; no known Java/native crash was recorded.
+This is not a successful app startup result.
+
+After a failed patched launch, the harness now optionally reinstalls the exact
+checksum-pinned **unmodified** APK as an isolated control on that same disposable
+guest. It first tests ARM64 and, only if that fails, the original's native
+x86_64 ABI. A control requires a registered process stable for 15 seconds and a
+resumed Spotify activity; it performs no login or playback. It can run only
+after this harness installed/provisioned the test app, and rechecks the guest
+profile/hash before uninstalling that disposable instance. Its result remains
+separate: a successful stock control never changes a failed patched verdict.
+Only fixed markers/counts/booleans are retained, including whether Spotify was
+resumed and whether process-dump identity shapes were present. Source and native
+runtime binaries are unchanged by this control coverage.

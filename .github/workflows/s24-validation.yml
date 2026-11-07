@@ -1,10 +1,13 @@
-name: LSPatch Android 17 Linux validation
+name: LSPatch Linux Android validation
 
 # Linux/KVM guest; ARM64 app code uses the Google image's native bridge.
 # This is translated ARM coverage, not a Samsung/native-ARM device result.
 on:
   workflow_call:
     inputs:
+      api_level:
+        type: string
+        default: '37.0'
       run_patched_host:
         type: boolean
         default: false
@@ -26,7 +29,7 @@ jobs:
     timeout-minutes: 30
     env:
       SPOTIFYPLUS_EMULATION_MODE: kvm-arm64-translation
-      DEVICE_PROFILE: linux-x86_64-arm64-translation
+      DEVICE_PROFILE: ${{ inputs.api_level == '35' && 'linux-x86_64-arm64-translation-api35' || 'linux-x86_64-arm64-translation' }}
       SPOTIFYPLUS_RUN_PATCHED_HOST: ${{ inputs.run_patched_host }}
     outputs:
       environment_result: ${{ steps.scope.outputs.environment_result }}
@@ -48,10 +51,10 @@ jobs:
           python-version: '3.12'
       - name: Set up official Linux Android SDK
         run: python3 tools/setup_android37_sdk.py
-      - name: Require usable KVM and the exact stable API 37 x86_64 image
+      - name: Require usable KVM and the exact selected stable x86_64 image
         run: |
           emulator -accel-check
-          python3 tools/check_android37_image.py --abi x86_64
+          python3 tools/check_android37_image.py --abi x86_64 --api-level "${{ inputs.api_level }}"
       - name: Download same-run Plus module
         if: inputs.run_patched_host
         uses: actions/download-artifact@v4
@@ -76,14 +79,14 @@ jobs:
           --module "$RUNNER_TEMP/plus-module/app-debug.apk"
           --work "$RUNNER_TEMP/lspatch-smoke"
           --report "$RUNNER_TEMP/smoke-reports/package.json"
-      - name: Boot API 37 with KVM and verify ARM64 translation
+      - name: Boot the selected API with KVM and verify ARM64 translation
         id: boot
         uses: reactivecircus/android-emulator-runner@v2
         with:
-          api-level: '37.0'
+          api-level: ${{ inputs.api_level }}
           target: google_apis
           arch: x86_64
-          avd-name: spotifyplus-api37-linux
+          avd-name: spotifyplus-api${{ inputs.api_level }}-linux
           force-avd-creation: true
           disable-animations: true
           emulator-boot-timeout: 600
@@ -104,14 +107,14 @@ jobs:
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: ${{ inputs.run_patched_host && 'LSPatch-Android17-Linux-Reports' || 'Android17-Linux-Environment-Report' }}
+          name: ${{ inputs.api_level == '35' && (inputs.run_patched_host && 'LSPatch-Android15-Linux-Reports' || 'Android15-Linux-Environment-Report') || (inputs.run_patched_host && 'LSPatch-Android17-Linux-Reports' || 'Android17-Linux-Environment-Report') }}
           path: ${{ runner.temp }}/smoke-reports/*.json
           if-no-files-found: ignore
           retention-days: 14
       - name: Explain coverage
         if: always()
         run: |
-          echo 'Linux/KVM runs an API 37 x86_64 Google APIs guest. The test requires its ARM64 native bridge and installs Spotify with --abi arm64-v8a. This is translated ARM coverage, not native ARM/Samsung firmware coverage.' >> "$GITHUB_STEP_SUMMARY"
+          echo 'Linux/KVM runs the explicitly selected API ${{ inputs.api_level }} x86_64 Google APIs guest. The test requires its ARM64 native bridge and installs Spotify with --abi arm64-v8a. This is translated ARM coverage, not native ARM/Samsung firmware coverage.' >> "$GITHUB_STEP_SUMMARY"
           echo 'Guest environment, original APK/package verification and actual Spotify startup are separate checks. No account/playback/UI result is inferred from a guest boot.' >> "$GITHUB_STEP_SUMMARY"
       - name: Remove private test inputs
         if: always()

@@ -7,7 +7,7 @@ on:
   workflow_dispatch:
     inputs:
       run_lspatch_smoke:
-        description: 'Run API 37 Linux/ARM64-translation patched-host startup (requires SPOTIFY_APK_URL secret)'
+        description: 'Run Linux patched-host tests on API 37 and separate API 35 compatibility (requires SPOTIFY_APK_URL)'
         type: boolean
         default: false
 
@@ -182,8 +182,23 @@ jobs:
     secrets:
       SPOTIFY_APK_URL: ${{ secrets.SPOTIFY_APK_URL }}
 
+  lspatch-android15:
+    # Separate compatibility coverage; this cannot establish Android 17 behavior.
+    needs: [build, lspatch-packaging]
+    if: >-
+      (github.event_name == 'workflow_dispatch' && inputs.run_lspatch_smoke) ||
+      (vars.RUN_LSPATCH_SMOKE == 'true' &&
+       (github.event_name == 'push' ||
+        (github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository)))
+    uses: ./.github/workflows/s24-validation.yml
+    with:
+      api_level: '35'
+      run_patched_host: true
+    secrets:
+      SPOTIFY_APK_URL: ${{ secrets.SPOTIFY_APK_URL }}
+
   validation-scope:
-    needs: [build, android17-environment, lspatch-packaging, lspatch-android17]
+    needs: [build, android17-environment, lspatch-packaging, lspatch-android17, lspatch-android15]
     if: always()
     runs-on: ubuntu-latest
     steps:
@@ -192,6 +207,7 @@ jobs:
           BUILD_RESULT: ${{ needs.build.result }}
           PACKAGE_RESULT: ${{ needs.lspatch-packaging.result }}
           DEVICE_RESULT: ${{ needs.lspatch-android17.result }}
+          ANDROID15_RESULT: ${{ needs.lspatch-android15.result }}
           ENVIRONMENT_RESULT: ${{ needs.android17-environment.result }}
           BOOT_RESULT: ${{ needs.android17-environment.outputs.environment_result }}
           PATCHED_TESTS_ENABLED: ${{ vars.RUN_LSPATCH_SMOKE == 'true' }}
@@ -200,6 +216,7 @@ jobs:
           printf 'Build/regression checks: **%s**\n\nPatched-host device job: **%s**\n\n' "$BUILD_RESULT" "$DEVICE_RESULT" >> "$GITHUB_STEP_SUMMARY"
           printf 'Configured Spotify source and LSPatch package verification: **%s**\n\n' "$PACKAGE_RESULT" >> "$GITHUB_STEP_SUMMARY"
           printf 'Android 17 Linux ARM64-translation environment: **%s** (separate from Spotify startup)\n\n' "$ENVIRONMENT_RESULT" >> "$GITHUB_STEP_SUMMARY"
+          printf 'Separate Android 15/API 35 patched-host compatibility: **%s** (does not establish Android 17 behavior)\n\n' "$ANDROID15_RESULT" >> "$GITHUB_STEP_SUMMARY"
           printf 'Actual emulator boot result: **%s**\n\n' "$BOOT_RESULT" >> "$GITHUB_STEP_SUMMARY"
           printf 'Patched tests enabled: **%s**; APK source configured: **%s**\n\n' "$PATCHED_TESTS_ENABLED" "$APK_SOURCE_CONFIGURED" >> "$GITHUB_STEP_SUMMARY"
           echo "Patched tests enabled: $PATCHED_TESTS_ENABLED; APK source configured: $APK_SOURCE_CONFIGURED"

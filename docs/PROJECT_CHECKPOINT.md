@@ -371,3 +371,30 @@ Helpers/other users/invalid PIDs are excluded; no arbitrary first PID is selecte
 Lookup method and counts are included in fixed-field diagnostics. Local tests:
 58 total, one prepared Java fixture skipped; Actions lint and whitespace pass.
 No app/extension executable code changed. A fresh CI run is required.
+
+Run 42316531323 at 8426fa193226e508107f1978976c1b97f1db143d passed all 58
+checks (no skips), build/environment/package verification. Startup job
+128232707040 still reported no process. Verified report ZIP SHA-256
+1060441869c7e379f343054a02ff7b5bd980ec41e0e7e58ee2c6125c7eb7c487:
+loader/module markers true, Node/Shuffle+ false, no known crashes/exceptions,
+ActivityManager registered_main_processes:0/live_main_processes:0. No ready
+host/extension or two-start pass. This does not prove an ARM phone failure.
+
+Added optional same-guest original-APK controls after failed patched startup:
+checksum/profile verified before removing this harness's disposable test app,
+original ARM64 tested for stable process/resumed activity, then original x86_64
+only if ARM64 fails. Results cannot turn the failed patched verdict into a pass.
+No accounts, playback or source collections are modified. Diagnostic identity
+shape/resumed booleans contain no dump text. Added a separate explicit API35
+(Android15) compatibility job using the same module/translation; API37 stays
+separate and API35 cannot satisfy its profile. Both official stable image paths
+were verified against Google's inventory. Local checks: 63 tests, one prepared
+Java fixture skipped, workflow/bash/whitespace lint pass. Runtime results pending.
+
+Read-only follow-up discovery: official nodejs-mobile v18.20.4 release includes
+x86_64 libnode.so matching the runtime's Node version. Downloaded archive hash
+bd7321eaa1a7602fbe0bb87302df2d79d87835cf4363fbdd17c350dbb485c2af;
+x86_64 library hash 9acba7e26a1e864f13b78f1b7121773643f3f33a4c6a2fe7d4f63eb06d4d3af1.
+Its ARM64 library hash differs from the pinned phone donor, so no library was
+replaced. An isolated native-x86 emulator build is a possible later experiment,
+not implemented or validated here. Keep the delivered ARM64 runtime unchanged.

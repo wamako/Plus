@@ -14,5 +14,6 @@ if [ "$SPOTIFYPLUS_RUN_PATCHED_HOST" = true ]; then
   python3 tools/run_lspatch_smoke.py --device-profile "$DEVICE_PROFILE" \
     --apk "$RUNNER_TEMP/lspatch-smoke/spotify-lspatched.apk" \
     --extension "$RUNNER_TEMP/shuffle-extension/shuffle-plus" \
+    --original-control "$RUNNER_TEMP/lspatch-smoke/spotify-original.apk" \
     --report "$RUNNER_TEMP/smoke-reports/startup.json" --timeout 360
 fi

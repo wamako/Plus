@@ -9,14 +9,16 @@ import java.util.*;
 public final class QueueIdentity {
     private QueueIdentity() {}
     public static String fingerprint(Object state) throws Exception {
+        return fingerprint(call(state,"track"),(List<?>)call(state,"prevTracks"),(List<?>)call(state,"nextTracks"));
+    }
+    public static String fingerprint(Object current,List<?> previous,List<?> next) throws Exception {
         ByteArrayOutputStream bytes=new ByteArrayOutputStream();
         try(DataOutputStream out=new DataOutputStream(bytes)) {
-            Object current=call(state,"track");
             boolean present=(Boolean)call(current,"c");
             out.writeBoolean(present);
             if(present) track(out,call(current,"b"));
-            tracks(out,(List<?>)call(state,"prevTracks"));
-            tracks(out,(List<?>)call(state,"nextTracks"));
+            tracks(out,previous);
+            tracks(out,next);
         }
         return Base64.getEncoder().encodeToString(MessageDigest.getInstance("SHA-256").digest(bytes.toByteArray()));
     }

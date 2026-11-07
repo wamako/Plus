@@ -94,7 +94,13 @@ public final class ShuffleEngine {
         if(current.shuffled!=plan.snapshot.shuffled) throw error("STALE_OPTIONS");
         // Revision/metadata refreshes are common without an order change. For a
         // SetQueue command, use this fresh revision as Spotify's CAS token.
-        if(plan.mode.equals("queue")) backend.replace(current,order);
+        if(plan.mode.equals("queue")) {
+            // Preserve fresh native metadata as well as the live CAS revision.
+            // The semantic identity check guarantees that indices still name
+            // the exact previewed occurrences, including duplicate songs.
+            order.clear();for(Integer index:permutation)order.add(current.next.get(index));
+            backend.replace(current,order);
+        }
         else {
             // Collection order was fixed at prepare time, so callers cannot alter it on Apply.
             for(int i=0;i<permutation.size();i++) if(permutation.get(i)!=i) throw error("INPUT");

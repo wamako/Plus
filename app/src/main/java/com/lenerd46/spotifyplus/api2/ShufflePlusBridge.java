@@ -105,12 +105,13 @@ public final class ShufflePlusBridge {
             p.watch.confirm(state -> collectionMatches(state,p.uris,p.prefix));
         }
         public void replace(ShuffleEngine.Snapshot snapshot,List<ShuffleEngine.Item> order) {
-            Method dispatch;Object command;Watch observer;List<Object> tracks;
+            Method dispatch;Object command;Watch observer;List<Object> tracks;String expected;
             try {
                 Class<?> type=type("com.spotify.player.model.command.SetQueueCommand");
                 Method factory=type.getMethod("create",String.class,List.class,List.class);
                 tracks=new ArrayList<>();for(ShuffleEngine.Item item:order) tracks.add(item.nativeTrack);
                 if(snapshot.delimiter!=null) tracks.add(snapshot.delimiter);
+                expected=QueueIdentity.fingerprint(snapshot.current,snapshot.previous,tracks);
                 command=factory.invoke(null,snapshot.revision,tracks,snapshot.previous);
                 dispatch=null;
                 for(Method m:snapshot.owner.getClass().getMethods())
@@ -127,8 +128,7 @@ public final class ShufflePlusBridge {
             String status=String.valueOf(result);
             if(status.startsWith("Failure{")) throw ShuffleEngine.error("CONFLICT");
             if(!status.startsWith("Success")) throw ShuffleEngine.error("ACK");
-            observer.confirm(state -> tracks.equals(call(state,"nextTracks")) &&
-                    snapshot.previous.equals(call(state,"prevTracks")) && Objects.equals(snapshot.current,call(state,"track")));
+            observer.confirm(state -> expected.equals(QueueIdentity.fingerprint(state)));
         }
         // Resolve a read-only observer before dispatch. A replay of the old
         // queue is filtered out; only a matching real update can confirm apply.

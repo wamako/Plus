@@ -15,7 +15,9 @@ the specific changed field on the user's phone has not been captured.
 R16 fingerprints current, previous and upcoming URI/UID occurrences, including
 duplicate ordering, delimiter position and the is_queued flag. It ignores title,
 artwork, unrelated metadata, and revision changes. Apply reads a fresh snapshot
-and uses its live revision for SetQueue's native compare-and-set. Repository,
+and uses its live revision and native track objects for SetQueue's native compare-and-set.
+Queue readback uses the same occurrence identity, so enrichment after dispatch
+also cannot masquerade as a failed reorder. Repository,
 order, shuffle-option and playback-handler changes remain rejected with separate
 STALE_OWNER / STALE_ORDER / STALE_OPTIONS / STALE_PLAYER codes. Tickets remain
 expiring and single-use, with no automatic mutation retry. Collection playback

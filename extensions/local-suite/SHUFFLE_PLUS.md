@@ -1,13 +1,13 @@
-# Shuffle+ 0.1.4 for Spotify Plus R16
+# Shuffle+ 0.1.5 for Spotify Plus R17
 
-Version 0.1.4 requires the **R16 module APK**. Repatch the original Spotify
+Version 0.1.5 requires the **R17 module APK**. Repatch the original Spotify
 9.1.94.1929 APK with this module; installing the ZIP or the module alone does not
 replace an older module embedded by LSPatch.
 
 Collection playback now uses Spotify's normal native PlayCommand handler and
 its interceptors, rather than a direct Esperanto Play request. It supplies the
 exact explicit song order and waits for the player/visible queue to match.
-Use **Check active playback adapter** to verify module R16, the binding and live
+Use **Check active playback adapter** to verify module R17, the binding and live
 player capture. If the player has not been captured, select a song from an album
 or playlist in Spotify before preparing again. Errors include a fixed stage code.
 
@@ -22,7 +22,7 @@ to understand explicit context playback; its implementation was not copied.
 
 ## Install
 
-1. Repatch Spotify **9.1.94.1929 / arm64** using the **R16** Plus module in
+1. Repatch Spotify **9.1.94.1929 / arm64** using the **R17** Plus module in
    LSPatch. A ZIP alone cannot add the native playback adapter to R12/R13.
 2. Extract this ZIP. Put the **shuffle-plus** folder beside your existing four
    local extension folders in SpotifyPlusLocal. It must directly contain
@@ -36,8 +36,9 @@ Start playback once so the native player repository is available.
 
 - **Preview shuffled upcoming queue**: turn Spotify's native shuffle off first.
   Preview a Fisher-Yates permutation of the upcoming songs and explicitly confirm
-  it. The playing song, exact native track occurrences/flags, and previous-track
-  list are preserved. A trailing native delimiter stays at the end. Non-song
+  it. The playing song, URI/UID occurrences and previous-track list are preserved.
+  Queue-editor section markers follow their resulting slots, keeping the number
+  of explicitly queued positions unchanged, as Spotify’s own editor does. A trailing native delimiter stays at the end. Non-song
   queues are refused instead of silently dropping episodes/local files.
 - **Load and shuffle collection**: load a playlist, album, track, or Liked Songs.
   The complete loaded collection is randomized, preserving duplicates. For more
@@ -78,6 +79,16 @@ class/native checks are required before delivery. Live playback and UI acceptanc
 on the user's Android 17 / LSPatch phone remain necessary. Begin with a small queue
 or album. No Last.fm key or public Spotify audio-features endpoint is required.
 
-R16 also restores the host navigation handler and closes this extension after
+R17 also restores the host navigation handler and closes this extension after
 Open track is accepted. Android instrumentation exercises production glass
 capture/drawing and intent resolution; these are not authenticated playback tests.
+
+
+R17 upcoming-queue repair uses the native queue editor's CommandOptions and starts
+its observer before dispatch. Success still requires actual observed order.
+If it fails, use **Copy last shuffle diagnostics** before restarting Spotify and
+send the copied report. It contains counts, stage/error codes and comparison
+booleans, not song IDs, titles, account names, API keys or tokens. Unknown outcomes
+still require checking playback and acknowledgement before another attempt.
+The real-Spotify-model Android fixture validates request construction without an
+account/service call; it does not prove authenticated queue mutation.

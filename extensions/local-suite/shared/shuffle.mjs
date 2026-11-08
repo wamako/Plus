@@ -16,10 +16,12 @@ export function permutation(length, rng = Math.random) {
 export function shuffleTracks(tracks, rng) { return permutation(tracks.length, rng).map(i => tracks[i]); }
 const check = job => { if (job?.cancelled) throw new Error("Operation cancelled."); };
 const known = {
+  OBSERVER_READY: "Spotify’s queue listener could not start. No command was sent. Load a new preview.",
+  QUEUE_LAYOUT: "Spotify’s queue sections could not be read safely. Open its queue, then load a new preview.",
   PLAYER_READY: "Start a song from an album or playlist in Spotify, then prepare a new Shuffle+ preview.",
   PLAY_REFUSED: "Spotify’s native player refused this playback command. Check playback permissions and prepare a new preview.",
   READY: "Start Spotify playback once, then reopen Shuffle+ and load a new preview.",
-  PREPARE: "The native playback protocol could not be prepared. Check that R16 is active.",
+  PREPARE: "The native playback protocol could not be prepared. Check that R17 is active.",
   SHUFFLE_ON: "Turn off Spotify's shuffle in the player before reshuffling the upcoming queue.",
   STALE: "Playback or the queue changed. Load a new preview before applying it.",
   STALE_ORDER: "The current song, history, or upcoming song order changed. Load a new preview before applying it.",
@@ -36,9 +38,14 @@ const known = {
 };
 export function shuffleError(error, mutation = false) {
   const code = /\bSP_SHUFFLE_([A-Z_]+)\b/.exec(String(error?.message || ""))?.[1];
-  const result = new Error((code === "UNCONFIRMED" ? "Spotify acknowledged the command, but its player and queue did not confirm the previewed order. Inspect playback before trying again." : known[code]) || (mutation
+  const unconfirmed = {
+    UNCONFIRMED_NO_CHANGE: "Spotify acknowledged the queue edit, but the observed queue stayed unchanged. Inspect playback before trying again.",
+    UNCONFIRMED_ORDER: "Spotify acknowledged the edit, but its observed song order did not match the preview. Inspect playback before trying again.",
+    UNCONFIRMED_READBACK: "The queue listener could not confirm the result. Inspect playback before trying again.",
+  };
+  const result = new Error(unconfirmed[code] || (code === "UNCONFIRMED" ? "Spotify acknowledged the command, but its player and queue did not confirm the previewed order. Inspect playback before trying again." : known[code]) || (mutation
     ? "The native shuffle did not return a confirmed result. Inspect playback before trying again."
-    : "Shuffle+ needs the R16 playback adapter. Repatch Spotify with the R16 module, then restart it."));
+    : "Shuffle+ needs the R17 playback adapter. Repatch Spotify with the R17 module, then restart it."));
   if (code) result.message += ` [SP_SHUFFLE_${code}]`;
   result.unknown = mutation && !known[code];
   return result;
@@ -50,10 +57,21 @@ export class ShuffleClient {
     let value;
     try {
       value = await this.api.ShufflePlus.capabilities();
-      if (value?.version !== 1 || !Number.isSafeInteger(value?.host) || value.host < 16 || value?.route !== "native-play-command" || value?.limit !== SHUFFLE_LIMIT) throw new Error();
+      if (value?.version !== 1 || !Number.isSafeInteger(value?.host) || value.host < 17 || value?.route !== "native-play-command" || value?.queueMode !== "native-editor-options" || value?.limit !== SHUFFLE_LIMIT) throw new Error();
     } catch (error) { throw shuffleError(error); }
     check(job);
     return value;
+  }
+  async diagnostics(job) {
+    check(job);
+    const value = await this.api.ShufflePlus.diagnostics();
+    if (!value || value.host !== 17) throw new Error("No R17 shuffle diagnostics are available yet.");
+    return value;
+  }
+  async copyDiagnostics(job) {
+    check(job);
+    if (!await this.api.ShufflePlus.copyDiagnostics()) throw new Error("Run a shuffle first, then copy its diagnostics before restarting Spotify.");
+    return true;
   }
   validate(value, count, mode) {
     if (typeof value?.ticket !== "string" || !/^[a-f0-9-]{36}$/.test(value.ticket) ||
@@ -104,6 +122,7 @@ export class ShuffleClient {
     } catch (error) {
       const failure = shuffleError(error, true);
       journal.phase = failure.unknown ? "unknown" : "stopped";
+      try { journal.diagnostics = await this.diagnostics(); } catch {}
       this.api.Platform.Storage.set("shuffle-write-v1", { ...journal });
       throw failure;
     }

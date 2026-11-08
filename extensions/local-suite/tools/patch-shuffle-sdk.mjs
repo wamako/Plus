@@ -11,12 +11,16 @@ if (!source.includes("    ShufflePlus: {")) {
     /** R13 native Shuffle+ adapter. These use requestApi, not legacy request messages. */
     ShufflePlus: {
         capabilities(): Promise<unknown>;
+        diagnostics(): Promise<unknown>;
+        copyDiagnostics(): Promise<boolean>;
         previewQueue(): Promise<unknown>;
         prepare(context: string, uris: string[]): Promise<unknown>;
         apply(ticket: string, order: number[]): Promise<unknown>;
     };`);
   source = source.replace(factory, `            ShufflePlus: {
                 capabilities: () => runtime.requestApi('shuffleplus.capabilities'),
+                diagnostics: () => runtime.requestApi('shuffleplus.diagnostics'),
+                copyDiagnostics: () => runtime.requestApi('shuffleplus.copyDiagnostics'),
                 previewQueue: () => runtime.requestApi('shuffleplus.queue'),
                 prepare: (context, uris) => runtime.requestApi('shuffleplus.prepare', { context, uris }),
                 apply: (ticket, order) => runtime.requestApi('shuffleplus.apply', { ticket, order }),
@@ -36,3 +40,10 @@ if (source.includes(before)) {
   source = source.replace(before, after);
   fs.writeFileSync(file, source);
 } else if (!source.includes(after)) throw new Error("Pinned SDK navigation shape changed");
+
+source = fs.readFileSync(file, "utf8");
+if (!source.includes("        diagnostics(): Promise<unknown>;")) {
+  source = source.replace("        capabilities(): Promise<unknown>;", "        capabilities(): Promise<unknown>;\n        diagnostics(): Promise<unknown>;\n        copyDiagnostics(): Promise<boolean>;");
+  source = source.replace("                capabilities: () => runtime.requestApi('shuffleplus.capabilities'),", "                capabilities: () => runtime.requestApi('shuffleplus.capabilities'),\n                diagnostics: () => runtime.requestApi('shuffleplus.diagnostics'),\n                copyDiagnostics: () => runtime.requestApi('shuffleplus.copyDiagnostics'),");
+  fs.writeFileSync(file, source);
+}

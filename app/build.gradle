@@ -15,8 +15,8 @@ android {
         applicationId "com.lenerd46.spotifyplus"
         minSdk 27
         targetSdk 35
-        versionCode 33
-        versionName ("0.10.0-api2.9.1.94.16" + (nativeAbi == 'x86_64' ? '-emulator-x86_64' : ''))
+        versionCode 34
+        versionName ("0.10.0-api2.9.1.94.17" + (nativeAbi == 'x86_64' ? '-emulator-x86_64' : ''))
 
         testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
         ndk { abiFilters nativeAbi }

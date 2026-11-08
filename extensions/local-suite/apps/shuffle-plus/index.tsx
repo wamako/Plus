@@ -44,9 +44,11 @@ function App() {
     });
   }
   return <Page title="Shuffle+">
-    <Label muted>Random song order without taste or artist weighting. Previewing never changes playback. Requires Spotify Plus R16.</Label>
+    <Label muted>Random song order without taste or artist weighting. Previewing never changes playback. Requires Spotify Plus R17.</Label>
     <Button title="Check active playback adapter" disabled={task.busy} onPress={() => task.run(job => shuffleClient.capabilities(job), info => setRuntime(`Active module R${info.host} · native PlayCommand · binding ${info.binding || "unknown"} · ${info.playerReady ? "player captured" : "start playback in Spotify first"}`))} />
     {runtime ? <Label>{runtime}</Label> : null}
+    <Button title="Copy last shuffle diagnostics" disabled={task.busy} onPress={() => task.run(job => shuffleClient.copyDiagnostics(job), () => setRuntime("Shuffle diagnostics copied. They contain counts/status only; no song IDs, account names or tokens."))} />
+    {shuffleClient.previous()?.diagnostics ? <Label muted>{JSON.stringify(shuffleClient.previous().diagnostics)}</Label> : null}
     <Button title="Preview shuffled upcoming queue" disabled={task.busy} onPress={() => {
       clear(); setData(null); setTracks([]); setPart(0);
       task.run(job => shuffleClient.queue(job), value => {

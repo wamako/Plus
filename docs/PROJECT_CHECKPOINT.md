@@ -599,3 +599,17 @@ No logged-in playback, native ARM or Samsung acceptance is claimed. Do not ask f
 credentials in chat; current CI has no secure interactive emulator sign-in handoff.
 R16 module and 0.1.4 ZIP both required; other extensions remain 0.1.7. Draft PR2
 stays unmerged. Wait for this revision's build/startup/instrumentation before delivery.
+
+
+## R17 / 0.1.5 upcoming-queue repair in progress
+
+User confirmed the failing action is Confirm upcoming shuffle and nothing changes.
+Original APK inspection found native editor CommandOptions absent from our bare
+request and a lazy observer subscribed only after command completion. A separate
+codex/shuffle-queue-r17 branch checkpoints the repair: native editor options/section
+metadata, real pre-dispatch subscription with disposal, and identity-free copyable
+diagnostics. See API2_R17_QUEUE.md. Actual Android model/builders are added to the
+existing CI fixtures; this is not authenticated queue playback. Do not claim a
+phone fix or distribute new files before required build/startup/model checks.
+No account credentials were requested. The draft PR remains unmerged. Both R17
+module and ZIP 0.1.5 will be required; other extensions stay 0.1.7.

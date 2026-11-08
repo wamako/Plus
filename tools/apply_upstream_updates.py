@@ -98,7 +98,7 @@ def projects(source,latest):
   s=s[:a]+new[c:d]+s[b:]
  if 'export const snapSettingValue =' not in s:s+='\n'+new[new.index('export const snapSettingValue ='):]
  p.write_text(s)
- p=source/'scripts/settings/src/app.tsx';t=p.read_text().replace("const SPOTIFY_PLUS_VERSION = '0.10.0-preview-1';","const SPOTIFY_PLUS_VERSION = '0.10.0-api2.9.1.94.16';").replace("const MARKETPLACE_VERSION = '0.1.0';","const MARKETPLACE_VERSION = '1.0.0';");p.write_text(t)
+ p=source/'scripts/settings/src/app.tsx';t=p.read_text().replace("const SPOTIFY_PLUS_VERSION = '0.10.0-preview-1';","const SPOTIFY_PLUS_VERSION = '0.10.0-api2.9.1.94.17';").replace("const MARKETPLACE_VERSION = '0.1.0';","const MARKETPLACE_VERSION = '1.0.0';");p.write_text(t)
  # Keep settings manifest/version and native-only color/theme controls on the
  # existing implementation; copied controls require no new renderer protocol.
 

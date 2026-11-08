@@ -21,7 +21,7 @@ const known = {
   PLAYER_READY: "Start a song from an album or playlist in Spotify, then prepare a new Shuffle+ preview.",
   PLAY_REFUSED: "Spotify’s native player refused this playback command. Check playback permissions and prepare a new preview.",
   READY: "Start Spotify playback once, then reopen Shuffle+ and load a new preview.",
-  PREPARE: "The native playback protocol could not be prepared. Check that R17 is active.",
+  PREPARE: "The native playback protocol could not be prepared. Check that R18 is active.",
   SHUFFLE_ON: "Turn off Spotify's shuffle in the player before reshuffling the upcoming queue.",
   STALE: "Playback or the queue changed. Load a new preview before applying it.",
   STALE_ORDER: "The current song, history, or upcoming song order changed. Load a new preview before applying it.",
@@ -45,19 +45,19 @@ export function shuffleError(error, mutation = false) {
   };
   const result = new Error(unconfirmed[code] || (code === "UNCONFIRMED" ? "Spotify acknowledged the command, but its player and queue did not confirm the previewed order. Inspect playback before trying again." : known[code]) || (mutation
     ? "The native shuffle did not return a confirmed result. Inspect playback before trying again."
-    : "Shuffle+ needs the R17 playback adapter. Repatch Spotify with the R17 module, then restart it."));
+    : "Shuffle+ needs the R18 playback adapter. Repatch Spotify with the R18 module, then restart it."));
   if (code) result.message += ` [SP_SHUFFLE_${code}]`;
   result.unknown = mutation && !known[code];
   return result;
 }
 export function safeDiagnostics(value) {
-  if (!value || value.host !== 17) throw new Error("No R17 shuffle diagnostics are available yet.");
-  const out = {host:17};
-  const enums = {mode:["queue","collection"],outcome:["not_sent","unknown","confirmed","refused"],reply:["success","refused"],readbackError:["schema","stream"]};
+  if (!value || value.host !== 18) throw new Error("No R18 shuffle diagnostics are available yet.");
+  const out = {host:18};
+  const enums = {mode:["queue","collection"],outcome:["not_sent","unknown","confirmed","refused"],requestFormat:["source-page-native-uids"],reply:["success","refused"],readbackError:["schema","stream"]};
   for (const [key, allowed] of Object.entries(enums)) if (allowed.includes(value[key])) out[key] = value[key];
-  for (const key of ["sent","nativeEditorOptions","queueUnchanged","revisionChanged","currentMatches","historyMatches","uriOrderMatches","uidOrderMatches","visibleOrderMatches","observerStartedBeforeDispatch","observerDisposed"])
+  for (const key of ["sent","nativeEditorOptions","queueUnchanged","revisionChanged","currentMatches","historyMatches","uriOrderMatches","uidOrderMatches","visibleOrderMatches","observerStartedBeforeDispatch","observerDisposed","currentPresent","currentUriMatches","currentUidAssigned"])
     if (typeof value[key] === "boolean") out[key] = value[key];
-  for (const key of ["eventsObserved","expectedTrackCount","expectedNextCount","queuedSlots","observedNextCount"])
+  for (const key of ["eventsObserved","postDispatchEvents","expectedTrackCount","expectedNextCount","queuedSlots","observedNextCount"])
     if (Number.isSafeInteger(value[key]) && value[key] >= 0 && value[key] <= 100000) out[key] = value[key];
   if (typeof value.errorCode === "string" && /^SP_SHUFFLE_[A-Z_]+$/.test(value.errorCode)) out.errorCode = value.errorCode;
   return out;
@@ -69,7 +69,7 @@ export class ShuffleClient {
     let value;
     try {
       value = await this.api.ShufflePlus.capabilities();
-      if (value?.version !== 1 || !Number.isSafeInteger(value?.host) || value.host < 17 || value?.route !== "native-play-command" || value?.queueMode !== "native-editor-options" || value?.limit !== SHUFFLE_LIMIT) throw new Error();
+      if (value?.version !== 1 || !Number.isSafeInteger(value?.host) || value.host < 18 || value?.collectionMode !== "source-page-native-uids" || value?.route !== "native-play-command" || value?.queueMode !== "native-editor-options" || value?.limit !== SHUFFLE_LIMIT) throw new Error();
     } catch (error) { throw shuffleError(error); }
     check(job);
     return value;

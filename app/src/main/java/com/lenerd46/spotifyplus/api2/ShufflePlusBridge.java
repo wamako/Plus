@@ -7,20 +7,27 @@ import org.json.*;
 import java.lang.reflect.*;
 import java.util.*;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.atomic.AtomicBoolean;
 
 /** Async API-2 operations used only when a Shuffle+ page explicitly requests them. */
 public final class ShufflePlusBridge {
     private static ShuffleEngine engine;
     private static ClassLoader engineLoader;
+    private static volatile Map<String,Object> lastReport=Map.of();
+    private static JSONObject report() throws JSONException {JSONObject value=new JSONObject();for(var entry:lastReport.entrySet())value.put(entry.getKey(),entry.getValue());return value;}
     private ShufflePlusBridge() {}
     public static synchronized Object execute(ClassLoader loader,String operation,JSONObject args) throws Exception {
-        if(operation.equals("shuffleplus.capabilities")) return new JSONObject().put("version",1).put("host",16).put("route","native-play-command").put("playerReady",PlayerHook.contextPlayer!=null).put("binding",PlayerHook.playBinding).put("limit",ShuffleEngine.LIMIT);
+        if(operation.equals("shuffleplus.diagnostics")) return report();
+        if(operation.equals("shuffleplus.copyDiagnostics")) return !lastReport.isEmpty()&&ShuffleDiagnosticsUi.copy(report().toString());
+        if(operation.equals("shuffleplus.capabilities")) return new JSONObject().put("queueMode","native-editor-options").put("version",1).put("host",17).put("route","native-play-command").put("playerReady",PlayerHook.contextPlayer!=null).put("binding",PlayerHook.playBinding).put("limit",ShuffleEngine.LIMIT);
         if(engine==null || engineLoader!=loader) {
             engineLoader=loader;
             engine=new ShuffleEngine(new NativeBackend(loader),android.os.SystemClock::elapsedRealtime);
         }
         try {
             if(operation.equals("shuffleplus.apply")) {
+                lastReport=Map.of("host",17,"outcome","not_sent");
                 JSONArray input=args.getJSONArray("order");
                 if(input.length()>ShuffleEngine.LIMIT) throw ShuffleEngine.error("LIMIT");
                 List<Integer> order=new ArrayList<>();
@@ -46,6 +53,12 @@ public final class ShufflePlusBridge {
             return new JSONObject().put("ticket",plan.ticket).put("mode",plan.mode).put("count",plan.tracks.size())
                     .put("expiresInSeconds",120).put("tracks",tracks);
         } catch(JSONException error) { throw ShuffleEngine.error("INPUT"); }
+        catch(IllegalStateException error) {
+            if(!operation.equals("shuffleplus.apply"))throw error;
+            Map<String,Object> updated=new LinkedHashMap<>(lastReport);
+            String code=error.getMessage();if(code!=null&&code.matches("SP_SHUFFLE_[A-Z_]+"))updated.put("errorCode",code);
+            lastReport=Collections.unmodifiableMap(updated);throw error;
+        }
     }
 
     private static final class NativeBackend implements ShuffleEngine.Backend {
@@ -96,58 +109,81 @@ public final class ShufflePlusBridge {
         public void play(Object value) {
             Play p=(Play)value;
             if(p.client!=PlayerHook.contextPlayer) throw ShuffleEngine.error("STALE_PLAYER");
-            Object result;
-            try {result=await(p.rpc.invoke(p.client,p.request));}
-            catch(Exception | LinkageError error){throw ShuffleEngine.error("RPC");}
-            String status=String.valueOf(result);
-            if(status.startsWith("Failure")) throw ShuffleEngine.error("PLAY_REFUSED");
-            if(!status.startsWith("Success")) throw ShuffleEngine.error("ACK");
-            p.watch.confirm(state -> collectionMatches(state,p.uris,p.prefix));
+            Audit audit=new Audit("collection");audit.put("expectedTrackCount",p.uris.size());
+            try {
+                p.watch.start(state -> {
+                    audit.put("observedNextCount",((List<?>)call(state,"nextTracks")).size());
+                    boolean matches=collectionMatches(state,p.uris,p.prefix);audit.put("visibleOrderMatches",matches);return matches;
+                },audit);
+                audit.put("sent",true);audit.put("outcome","unknown");
+                Object result;
+                try {result=await(p.rpc.invoke(p.client,p.request));}
+                catch(Exception | LinkageError error){throw ShuffleEngine.error("RPC");}
+                String status=String.valueOf(result);
+                if(status.startsWith("Failure")){audit.put("reply","refused");audit.put("outcome","refused");throw ShuffleEngine.error("PLAY_REFUSED");}
+                if(!status.startsWith("Success"))throw ShuffleEngine.error("ACK");
+                audit.put("reply","success");p.watch.confirm();audit.put("outcome","confirmed");
+            } finally {p.watch.close();audit.publish();}
         }
         public void replace(ShuffleEngine.Snapshot snapshot,List<ShuffleEngine.Item> order) {
-            Method dispatch;Object command;Watch observer;List<Object> tracks;String expected;
+            Method dispatch;Watch observer;NativeQueueCommand.Prepared prepared;String expected;int queuedSlots;
             try {
-                Class<?> type=type("com.spotify.player.model.command.SetQueueCommand");
-                Method factory=type.getMethod("create",String.class,List.class,List.class);
-                tracks=new ArrayList<>();for(ShuffleEngine.Item item:order) tracks.add(item.nativeTrack);
-                if(snapshot.delimiter!=null) tracks.add(snapshot.delimiter);
-                expected=QueueIdentity.fingerprint(snapshot.current,snapshot.previous,tracks);
-                command=factory.invoke(null,snapshot.revision,tracks,snapshot.previous);
+                List<Object> original=new ArrayList<>();for(ShuffleEngine.Item item:snapshot.next)original.add(item.nativeTrack);
+                queuedSlots=NativeQueueCommand.queuedSlots(original);
+                List<Object> tracks=new ArrayList<>();for(ShuffleEngine.Item item:order)tracks.add(item.nativeTrack);
+                prepared=NativeQueueCommand.prepare(loader,snapshot.revision,tracks,snapshot.previous,queuedSlots,snapshot.delimiter);
+                expected=QueueIdentity.fingerprint(snapshot.current,snapshot.previous,prepared.next);
+                Class<?> command=type("com.spotify.player.model.command.SetQueueCommand");
                 dispatch=null;
-                for(Method m:snapshot.owner.getClass().getMethods())
-                    if(!Modifier.isStatic(m.getModifiers()) && !m.isBridge() && Arrays.equals(m.getParameterTypes(),new Class<?>[]{type}) &&
-                            type("io.reactivex.rxjava3.core.Single").isAssignableFrom(m.getReturnType())) {
-                        if(dispatch!=null) throw new IllegalStateException();dispatch=m;
+                for(Method method:snapshot.owner.getClass().getMethods())
+                    if(!Modifier.isStatic(method.getModifiers())&&!method.isBridge()&&Arrays.equals(method.getParameterTypes(),new Class<?>[]{command})&&
+                            type("io.reactivex.rxjava3.core.Single").isAssignableFrom(method.getReturnType())) {
+                        if(dispatch!=null)throw new IllegalStateException();dispatch=method;
                     }
-                if(dispatch==null) throw new NoSuchMethodException();dispatch.setAccessible(true);
+                if(dispatch==null)throw new NoSuchMethodException();dispatch.setAccessible(true);
                 observer=watch(snapshot.owner);
-            }catch(Exception | LinkageError error){throw controlled(error,"PREPARE");}
-            Object result;
-            try {result=await(dispatch.invoke(snapshot.owner,command));}
-            catch(Exception | LinkageError error){throw ShuffleEngine.error("RPC");}
-            String status=String.valueOf(result);
-            if(status.startsWith("Failure{")) throw ShuffleEngine.error("CONFLICT");
-            if(!status.startsWith("Success")) throw ShuffleEngine.error("ACK");
-            observer.confirm(state -> expected.equals(QueueIdentity.fingerprint(state)));
+            } catch(Exception | LinkageError error){throw controlled(error,"PREPARE");}
+            Audit audit=new Audit("queue");audit.put("expectedNextCount",prepared.next.size());audit.put("queuedSlots",queuedSlots);
+            audit.put("nativeEditorOptions",true);
+            try {
+                observer.start(state -> {
+                    String identity=QueueIdentity.fingerprint(state);
+                    List<?> observed=(List<?>)call(state,"nextTracks");
+                    audit.put("observedNextCount",observed.size());
+                    audit.put("queueUnchanged",snapshot.fingerprint.equals(identity));
+                    audit.put("revisionChanged",!snapshot.revision.equals(call(state,"revision")));
+                    audit.put("currentMatches",QueueIdentity.fingerprint(snapshot.current,List.of(),List.of()).equals(QueueIdentity.fingerprint(call(state,"track"),List.of(),List.of())));
+                    audit.put("historyMatches",QueueIdentity.fingerprint(snapshot.current,snapshot.previous,List.of()).equals(QueueIdentity.fingerprint(snapshot.current,(List<?>)call(state,"prevTracks"),List.of())));
+                    audit.put("uriOrderMatches",sameField(prepared.next,observed,"uri"));
+                    audit.put("uidOrderMatches",sameField(prepared.next,observed,"uid"));
+                    boolean matches=expected.equals(identity);audit.put("visibleOrderMatches",matches);return matches;
+                },audit);
+                audit.put("sent",true);audit.put("outcome","unknown");
+                Object result;
+                try {result=await(dispatch.invoke(snapshot.owner,prepared.command));}
+                catch(Exception | LinkageError error){throw ShuffleEngine.error("RPC");}
+                String status=String.valueOf(result);
+                if(status.startsWith("Failure")){audit.put("reply","refused");audit.put("outcome","refused");throw ShuffleEngine.error("CONFLICT");}
+                if(!status.startsWith("Success"))throw ShuffleEngine.error("ACK");
+                audit.put("reply","success");observer.confirm();audit.put("outcome","confirmed");
+            } finally {observer.close();audit.publish();}
         }
-        // Resolve a read-only observer before dispatch. A replay of the old
-        // queue is filtered out; only a matching real update can confirm apply.
-        private Watch watch(Object repo) throws Exception {
-            Class<?> flow=type("io.reactivex.rxjava3.core.Flowable"), predicate=type("io.reactivex.rxjava3.functions.Predicate");
-            Object stream=uniqueField(repo,flow);
-            Method filter=null,first=null;
-            for(Method method:flow.getMethods()) {
-                if(Modifier.isStatic(method.getModifiers()) || method.isBridge()) continue;
-                if(Arrays.equals(method.getParameterTypes(),new Class<?>[]{predicate}) && flow.isAssignableFrom(method.getReturnType())) {
-                    if(filter!=null) throw new IllegalStateException();filter=method;
-                }
-                if(method.getParameterCount()==0 && type("io.reactivex.rxjava3.core.Single").isAssignableFrom(method.getReturnType())) {
-                    if(first!=null) throw new IllegalStateException();first=method;
-                }
+        private static boolean sameField(List<?> expected,List<?> observed,String name) throws Exception {
+            if(expected.size()!=observed.size())return false;
+            for(int i=0;i<expected.size();i++)if(!Objects.equals(call(expected.get(i),name),call(observed.get(i),name)))return false;
+            return true;
+        }
+        // A real subscription starts before dispatch, rather than a lazy read afterward.
+        private Watch watch(Object repository) throws Exception {
+            Class<?> flow=type("io.reactivex.rxjava3.core.Flowable"),consumer=type("io.reactivex.rxjava3.functions.Consumer");
+            Object stream=uniqueField(repository,flow);Method subscribe=null;
+            for(Method method:flow.getMethods()) if(!Modifier.isStatic(method.getModifiers())&&!method.isBridge()&&
+                    Arrays.equals(method.getParameterTypes(),new Class<?>[]{consumer,consumer})&&
+                    type("io.reactivex.rxjava3.disposables.Disposable").isAssignableFrom(method.getReturnType())) {
+                if(subscribe!=null)throw new IllegalStateException();subscribe=method;
             }
-            if(filter==null || first==null) throw new NoSuchMethodException();
-            type("io.reactivex.rxjava3.core.Single").getMethod("timeout",long.class,TimeUnit.class);
-            return new Watch(stream,predicate,filter,first);
+            if(subscribe==null)throw new NoSuchMethodException();subscribe.setAccessible(true);
+            return new Watch(stream,consumer,subscribe);
         }
         private static boolean collectionMatches(Object state,List<String> uris,String prefix) throws Exception {
             Object optional=call(state,"track");
@@ -170,25 +206,55 @@ public final class ShufflePlusBridge {
         private static boolean occurrence(Object track,String uri,String uid) throws Exception {
             return uri.equals(call(track,"uri")) && uid.equals(call(track,"uid"));
         }
-        private interface Match { boolean test(Object state) throws Exception; }
+        private interface Match {boolean test(Object state) throws Exception;}
+        private static final class Audit {
+            final Map<String,Object> values=new LinkedHashMap<>();
+            Audit(String mode){put("host",17);put("mode",mode);put("sent",false);put("outcome","not_sent");put("eventsObserved",0);}
+            synchronized void put(String key,Object value){values.put(key,value);}
+            synchronized Object get(String key){return values.get(key);}
+            synchronized void event(){values.put("eventsObserved",((Number)values.get("eventsObserved")).intValue()+1);}
+            synchronized void publish(){lastReport=Collections.unmodifiableMap(new LinkedHashMap<>(values));}
+        }
         private final class Watch {
-            final Object stream;final Class<?> predicate;final Method filter,first;
-            Watch(Object stream,Class<?> predicate,Method filter,Method first) {this.stream=stream;this.predicate=predicate;this.filter=filter;this.first=first;}
-            void confirm(Match match) {
+            final Object stream;final Class<?> consumer;final Method subscribe;
+            final CountDownLatch ready=new CountDownLatch(1);final AtomicBoolean matched=new AtomicBoolean(),failed=new AtomicBoolean();
+            Object disposable;Audit audit;
+            Watch(Object stream,Class<?> consumer,Method subscribe){this.stream=stream;this.consumer=consumer;this.subscribe=subscribe;}
+            Object callback(java.util.function.Consumer<Object> action) {
+                return Proxy.newProxyInstance(loader,new Class<?>[]{consumer},(proxy,method,args)->{
+                    if(method.getName().equals("accept")){action.accept(args[0]);return null;}
+                    if(method.getName().equals("toString"))return "SpotifyPlusShuffleObserver";
+                    if(method.getName().equals("hashCode"))return System.identityHashCode(proxy);
+                    if(method.getName().equals("equals"))return proxy==args[0];
+                    throw new UnsupportedOperationException();
+                });
+            }
+            void start(Match match,Audit audit) {
+                this.audit=audit;
                 try {
-                    Object callback=Proxy.newProxyInstance(loader,new Class<?>[]{predicate},(proxy,method,args)->{
-                        if(method.getName().equals("test")) return match.test(args[0]);
-                        if(method.getName().equals("toString")) return "SpotifyPlusShuffleObserver";
-                        if(method.getName().equals("hashCode")) return System.identityHashCode(proxy);
-                        if(method.getName().equals("equals")) return proxy==args[0];
-                        throw new UnsupportedOperationException();
+                    Object next=callback(state->{
+                        audit.event();
+                        try {if(match.test(state)){matched.set(true);ready.countDown();}}
+                        catch(Exception | LinkageError error){failed.set(true);audit.put("readbackError","schema");ready.countDown();}
                     });
-                    Object filtered=filter.invoke(stream,callback);
-                    Object single=first.invoke(filtered);
-                    Class<?> rx=type("io.reactivex.rxjava3.core.Single");
-                    Object limited=rx.getMethod("timeout",long.class,TimeUnit.class).invoke(single,5L,TimeUnit.SECONDS);
-                    rx.getMethod("blockingGet").invoke(limited);
-                } catch(Exception | LinkageError error) {throw ShuffleEngine.error("UNCONFIRMED");}
+                    Object error=callback(ignored->{failed.set(true);audit.put("readbackError","stream");ready.countDown();});
+                    disposable=subscribe.invoke(stream,next,error);
+                    if(disposable==null||failed.get())throw new IllegalStateException();
+                    audit.put("observerStartedBeforeDispatch",true);
+                } catch(Exception | LinkageError error){close();throw ShuffleEngine.error("OBSERVER_READY");}
+            }
+            void confirm() {
+                try {ready.await(5L,TimeUnit.SECONDS);}catch(InterruptedException error){Thread.currentThread().interrupt();throw ShuffleEngine.error("UNCONFIRMED_READBACK");}
+                if(matched.get())return;
+                if(failed.get()||((Number)audit.get("eventsObserved")).intValue()==0)throw ShuffleEngine.error("UNCONFIRMED_READBACK");
+                if(Boolean.TRUE.equals(audit.get("queueUnchanged")))throw ShuffleEngine.error("UNCONFIRMED_NO_CHANGE");
+                throw ShuffleEngine.error("UNCONFIRMED_ORDER");
+            }
+            void close() {
+                if(disposable==null)return;
+                try {type("io.reactivex.rxjava3.disposables.Disposable").getMethod("dispose").invoke(disposable);if(audit!=null)audit.put("observerDisposed",true);}
+                catch(Exception | LinkageError error){if(audit!=null)audit.put("observerDisposed",false);}
+                disposable=null;
             }
         }
         private Class<?> type(String name) throws Exception{return Class.forName(name,true,loader);}

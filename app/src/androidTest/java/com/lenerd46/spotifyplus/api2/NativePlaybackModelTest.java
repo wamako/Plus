@@ -18,10 +18,11 @@ public class NativePlaybackModelTest {
         Method m=owner.getClass().getMethod(name,parameters);m.setAccessible(true);return m.invoke(owner,args);
     }
     private static Object get(Object owner,String name)throws Exception{return call(owner,name,new Class<?>[]{});}
+    private static Object invoke(Method method,Object... args)throws Exception{method.setAccessible(true);return method.invoke(null,args);}
     private static Object value(Object optional)throws Exception{assertEquals(true,get(optional,"c"));return get(optional,"b");}
     private static byte[] contextWire(ClassLoader loader,Object context)throws Exception {
         Class<?> model=loader.loadClass("com.spotify.player.model.Context");
-        Object proto=loader.loadClass("p.pkm1").getMethod("i",model).invoke(null,context);
+        Object proto=invoke(loader.loadClass("p.pkm1").getMethod("i",model),context);
         return (byte[])get(proto,"toByteArray");
     }
     private static long varint(byte[] data,int[] offset) {
@@ -50,8 +51,8 @@ public class NativePlaybackModelTest {
         Class<?> model=loader.loadClass("com.spotify.player.model.Context");Method factory=null;
         for(Method m:model.getMethods())if(m.getName().equals("fromTrackUris"))factory=m;
         assertNotNull(factory);Class<?> immutable=factory.getParameterTypes()[1];
-        Object list=immutable.getMethod("p",Collection.class).invoke(null,uris);
-        Object expected=factory.invoke(null,source,list);
+        Object list=invoke(immutable.getMethod("p",Collection.class),uris);
+        Object expected=invoke(factory,source,list);
         byte[] wire=contextWire(loader,supplied);assertArrayEquals(contextWire(loader,expected),wire);
         var encoded=fields(wire);assertEquals(source,string(encoded,3));assertEquals("",string(encoded,4));
         assertEquals(1,encoded.get(1).size());var page=fields(blob(encoded,1));assertEquals(uris.size(),page.get(1).size());
@@ -59,7 +60,7 @@ public class NativePlaybackModelTest {
         Object options=value(get(command,"options"));assertEquals(false,value(get(options,"initiallyPaused")));assertEquals(false,get(get(options,"alwaysPlaySomething"),"c"));
         Object skip=value(get(options,"skipTo"));assertEquals(0L,value(get(skip,"trackIndex")));assertEquals(0L,value(get(skip,"pageIndex")));
         Object overrides=value(get(options,"playerOptionsOverride"));assertEquals(false,value(get(overrides,"shufflingContext")));
-        Object encodedOptions=loader.loadClass("p.x7e0").getMethod("r",loader.loadClass("com.spotify.player.model.command.options.PreparePlayOptions")).invoke(null,options);
+        Object encodedOptions=invoke(loader.loadClass("p.x7e0").getMethod("r",loader.loadClass("com.spotify.player.model.command.options.PreparePlayOptions")),options);
         var optionFields=fields((byte[])get(encodedOptions,"toByteArray"));
         assertNotNull(blob(fields(blob(optionFields,3)),5));
         assertNotNull(blob(fields(blob(optionFields,7)),1));

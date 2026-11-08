@@ -12,6 +12,7 @@ def verify(path):
   model+'Context$Builder;':('pages','(Ljava/util/List;)'),
   model+'ContextPage$Builder;':('tracks','(Ljava/util/List;)'),
   model+'ContextTrack$Builder;':('uid','(Ljava/lang/String;)'),
+  model+'command/options/PreparePlayOptions$Builder;':('initiallyPaused','(Z)'),
   model+'PlayOrigin$Builder;':('viewUri','(Ljava/lang/String;)'),
   model+'command/options/PlayerOptionOverrides$Builder;':('shufflingContext','(Ljava/lang/Boolean;)'),
   model+'command/options/SkipToTrack;':('fromIndices','(Ljava/lang/Long;Ljava/lang/Long;)'),

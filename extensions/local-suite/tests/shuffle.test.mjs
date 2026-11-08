@@ -68,6 +68,8 @@ test('cancellation, missing adapter and failed durable journal prevent playback 
 test('old host and count-only success replies cannot claim verified playback',async()=>{
  const f=fixture();f.api.ShufflePlus.capabilities=async()=>({version:1,host:13,limit:10000});
  await assert.rejects(f.client.capabilities({}),/R18/);assert.equal(f.calls.length,0);
+ const incomplete=fixture();incomplete.api.ShufflePlus.capabilities=async()=>({version:1,host:18,route:"native-play-command",queueMode:"native-editor-options",limit:10000});
+ await assert.rejects(incomplete.client.capabilities({}),/R18/);assert.equal(incomplete.calls.length,0);
  const g=fixture(),p=await g.client.queue({});g.respond({applied:3});
  await assert.rejects(g.client.apply(p,'ok','ok',{}));assert.equal(g.client.previous().phase,'unknown');
  assert.equal(g.calls.filter(c=>c.op==='shuffleplus.apply').length,1);

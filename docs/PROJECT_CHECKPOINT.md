@@ -613,3 +613,17 @@ existing CI fixtures; this is not authenticated queue playback. Do not claim a
 phone fix or distribute new files before required build/startup/model checks.
 No account credentials were requested. The draft PR remains unmerged. Both R17
 module and ZIP 0.1.5 will be required; other extensions stay 0.1.7.
+
+## R18 / Shuffle+ 0.1.6: collection playback stopped
+
+The user supplied the R17 collection report (success reply, two queue events,
+14 requested songs, zero observed upcoming, unconfirmed order) and confirmed
+playback stopped. The listener was ready/disposed; this is a collection request
+issue, not evidence that the SetQueue repair failed. Native factory/serializer
+inspection supports source-identified explicit pages with empty resolver URL and
+native-assigned UIDs. R18 replaces the failed anonymous-context experiment with
+that shape, retains the native handler, and confirms only the latest post-send
+state. A seventh real-APK serialization fixture compares to Spotify's own factory.
+See API2_R18_COLLECTION.md for evidence, regression guards and testing limits.
+No account credentials or authenticated playback were used. Both new files will
+be required; preserve unknown journals and do not automatically retry mutations.

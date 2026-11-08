@@ -28,7 +28,7 @@ class AndroidUiRunnerTests(unittest.TestCase):
         roots=[i for i,c in enumerate(calls) if c==('root',)];self.assertEqual(len(roots),2);self.assertLess(roots[0],instrument);self.assertGreater(roots[1],instrument)
         self.assertLess(calls.index(('unroot',)),instrument)
         self.assertIn(('shell','chmod','0444','/data/user/0/com.lenerd46.spotifyplus/files/spotify-model.apk'),calls)
-        self.assertTrue(report['spotify_model_queue_command_verified']);self.assertFalse(report['authenticated_playback_tested']);self.assertFalse(report['samsung_rendering_tested'])
+        self.assertTrue(report['spotify_model_playback_serialization_verified']);self.assertTrue(report['spotify_model_queue_command_verified']);self.assertFalse(report['authenticated_playback_tested']);self.assertFalse(report['samsung_rendering_tested'])
     def test_failed_checks_cannot_pass_or_retrieve_the_rendering_fixture(self):
         calls,report,error=self.execute(instrument='FAILURES!!!\nTests run: 6, Failures: 1')
         self.assertIsNotNone(error);self.assertFalse(report['passed']);self.assertEqual(calls.count(('root',)),1);self.assertFalse(any(c[0]=='pull' for c in calls))

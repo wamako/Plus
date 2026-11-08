@@ -113,7 +113,8 @@ public final class ShufflePlusBridge {
                     Object current=call(state,"track");boolean present=(Boolean)call(current,"c");
                     audit.put("currentPresent",present);
                     audit.put("currentUriMatches",present&&p.uris.get(0).equals(call(call(current,"b"),"uri")));
-                    audit.put("currentUidAssigned",present&&!String.valueOf(call(call(current,"b"),"uid")).isEmpty());
+                    Object uid=present?call(call(current,"b"),"uid"):null;
+                    audit.put("currentUidAssigned",uid instanceof String&&!((String)uid).isEmpty());
                     boolean matches=collectionMatches(state,p.uris);audit.put("visibleOrderMatches",matches);return matches;
                 },audit);
                 audit.put("sent",true);audit.put("outcome","unknown");

@@ -27,12 +27,12 @@ test('Shuffle+ bundle through real pinned loader: no writes on preview, native a
   callApiSync(op){if(op==='player.state')return {contextUri:context,trackUri:uri(1)};throw new Error(op)},
   requestApi:async(op,args)=>{
    calls.push({op,args});
-   if(op==='shuffleplus.capabilities')return {version:1,host:18,collectionMode:"source-page-native-uids",route:"native-play-command",queueMode:"native-editor-options",playerReady:true,limit:10000};
-   if(op==='shuffleplus.diagnostics')return {host:18,mode:'queue',outcome:'unknown',queueUnchanged:true};
+   if(op==='shuffleplus.capabilities')return {version:1,host:19,collectionVerification:"provider-aware-autoplay",collectionMode:"source-page-native-uids",route:"native-play-command",queueMode:"native-editor-options",playerReady:true,limit:10000};
+   if(op==='shuffleplus.diagnostics')return {host:19,mode:'queue',outcome:'unknown',queueUnchanged:true};
    if(op==='shuffleplus.copyDiagnostics')return true;
    if(op==='shuffleplus.queue')return {mode:'queue',ticket,count:3,tracks:[1,1,2].map(n=>({uri:uri(n),title:'Song '+n,artist:'Artist'}))};
    if(op==='shuffleplus.prepare'){if(prepareHold)await prepareHold;if(failPrepare)throw new Error(failPrepare);return {mode:'collection',ticket,count:args.uris.length};}
-   if(op==='shuffleplus.apply'){if(fail)throw new Error(fail);return {verification:"visible-order",applied:args.order.length}}
+   if(op==='shuffleplus.apply'){if(fail)throw new Error(fail);return {verification:"visible-order",autoplayTailCount:args.order.length===10000?2:0,selectionCompleteInWindow:true,applied:args.order.length}}
    if(op==='album.get')return {uri:args.uri,name:'Album',disc:[{number:1,track:Array.from({length:args.uri===largeAlbum?10000:2},(_,i)=>({gid:(i+1).toString(16).padStart(32,'0')}))}]};
    throw new Error(op);
   },
@@ -56,7 +56,7 @@ test('Shuffle+ bundle through real pinned loader: no writes on preview, native a
   loader.loadScript(path.join(root,'build/SpotifyPlus-ShufflePlus/shuffle-plus'),'user');
   assert.equal(registry.getScripts().length,1);assert.equal(calls.length,0);
   const entry=[...registry.getSideDrawerItems().values()][0];registry.emitSideDrawerPress(entry.scriptId,entry.id);await until(()=>read().includes('Load and shuffle collection'));
-  press('Check active playback adapter');await until(()=>read().includes('Active module R18'));assert.equal(mutations().length,0);
+  press('Check active playback adapter');await until(()=>read().includes('Active module R19'));assert.equal(mutations().length,0);
   press('Preview shuffled upcoming queue');await until(()=>read().includes('Confirm upcoming shuffle'));
   assert.equal(mutations().length,0);assert.match(read(),/3 tracks in preview/);
   press('Cancel shuffle confirmation');assert.equal(mutations().length,0);
@@ -84,6 +84,7 @@ test('Shuffle+ bundle through real pinned loader: no writes on preview, native a
   assert.equal(largePrepared.args.uris.length,10000);
   assert.equal(new Set(largePrepared.args.uris).size,10000);
   press('Start shuffled playback');await until(()=>read().includes('Started the 10000-song selection'));
+  assert.match(read(),/2 Spotify Autoplay recommendations follow the complete selection/);
   assert.equal(mutations().length,4,'explicit start sends exactly one playback command');
   beforePreview('Started the 10000-song selection');
   fail='SP_SHUFFLE_UNCONFIRMED';press('Prepare shuffled playback');await until(()=>button('Start shuffled playback'));press('Start shuffled playback');

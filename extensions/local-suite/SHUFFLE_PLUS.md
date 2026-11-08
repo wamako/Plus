@@ -1,13 +1,13 @@
-# Shuffle+ 0.1.6 for Spotify Plus R18
+# Shuffle+ 0.1.7 for Spotify Plus R19
 
-Version 0.1.6 requires the **R18 module APK**. Repatch the original Spotify
+Version 0.1.7 requires the **R19 module APK**. Repatch the original Spotify
 9.1.94.1929 APK with this module; installing the ZIP or the module alone does not
 replace an older module embedded by LSPatch.
 
 Collection playback now uses Spotify's normal native PlayCommand handler and
 its interceptors, rather than a direct Esperanto Play request. It supplies the
 exact explicit song order and waits for the player/visible queue to match.
-Use **Check active playback adapter** to verify module R18, the binding and live
+Use **Check active playback adapter** to verify module R19, the binding and live
 player capture. If the player has not been captured, select a song from an album
 or playlist in Spotify before preparing again. Errors include a fixed stage code.
 
@@ -22,7 +22,7 @@ to understand explicit context playback; its implementation was not copied.
 
 ## Install
 
-1. Repatch Spotify **9.1.94.1929 / arm64** using the **R18** Plus module in
+1. Repatch Spotify **9.1.94.1929 / arm64** using the **R19** Plus module in
    LSPatch. A ZIP alone cannot add the native playback adapter to R12/R13.
 2. Extract this ZIP. Put the **shuffle-plus** folder beside your existing four
    local extension folders in SpotifyPlusLocal. It must directly contain
@@ -79,7 +79,7 @@ class/native checks are required before delivery. Live playback and UI acceptanc
 on the user's Android 17 / LSPatch phone remain necessary. Begin with a small queue
 or album. No Last.fm key or public Spotify audio-features endpoint is required.
 
-R18 also restores the host navigation handler and closes this extension after
+R19 also restores the host navigation handler and closes this extension after
 Open track is accepted. Android instrumentation exercises production glass
 capture/drawing and intent resolution; these are not authenticated playback tests.
 
@@ -93,7 +93,7 @@ still require checking playback and acknowledgement before another attempt.
 The real-Spotify-model Android fixture validates request construction without an
 account/service call; it does not prove authenticated queue mutation.
 
-R18 collection playback keeps the source URI and supplies the shuffled songs as an
+R19 collection playback keeps the source URI and supplies the shuffled songs as an
 explicit page with no context resolver URL, matching Spotify's native track-list
 factory. Spotify assigns fresh occurrence UIDs. Collection readback compares the
 current URI and each visible upcoming URI in sequence, retaining duplicate
@@ -103,3 +103,12 @@ different queue before acknowledgment is not success. Diagnostics now include
 post-dispatch event counts and current-track presence/match flags. The seventh
 Android fixture verifies the actual serialized native context against Spotify's
 own factory, including source identity, page order, duplicates and unset UIDs.
+
+R19 preserves Spotify Autoplay. It verifies selected songs in their exact preview
+positions and permits additional tracks only after the complete selection when
+Spotify labels them autoplay, they are music tracks and they are not manually
+queued. Other/unclassified extras and wrong selected positions still fail. The
+success message separately reports the Autoplay tail; large-selection checks
+remain limited to the visible selected window. The eighth Android fixture checks
+Spotify's real ProvidedTrack decoding and provider-aware verification. The R18
+playback request and all global Spotify preferences remain unchanged.

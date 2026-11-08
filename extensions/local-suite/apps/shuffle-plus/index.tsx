@@ -40,11 +40,11 @@ function App() {
     const selectedPlan = plan, token = confirmation;
     clear();
     task.run((job, progress) => { progress("Applying through Spotify’s native player and checking the queue…"); return shuffleClient.apply(selectedPlan, token, token, job); }, value => {
-      setOutcome(selectedPlan.mode === "queue" ? `Verified: ${value.applied} upcoming songs reordered. The playing song and history were kept.` : `Started the ${value.applied}-song selection. The current song and visible queue match the preview.`);
+      setOutcome(selectedPlan.mode === "queue" ? `Verified: ${value.applied} upcoming songs reordered. The playing song and history were kept.` : `Started the ${value.applied}-song selection. Its current song and visible selected songs match the preview.${value.autoplayTailCount ? ` ${value.autoplayTailCount} Spotify Autoplay recommendations follow the complete selection.` : ""}`);
     });
   }
   return <Page title="Shuffle+">
-    <Label muted>Random song order without taste or artist weighting. Previewing never changes playback. Requires Spotify Plus R18.</Label>
+    <Label muted>Random song order without taste or artist weighting. Previewing never changes playback. Requires Spotify Plus R19.</Label>
     <Button title="Check active playback adapter" disabled={task.busy} onPress={() => task.run(job => shuffleClient.capabilities(job), info => setRuntime(`Active module R${info.host} · native PlayCommand · binding ${info.binding || "unknown"} · ${info.playerReady ? "player captured" : "start playback in Spotify first"}`))} />
     {runtime ? <Label>{runtime}</Label> : null}
     <Button title="Copy last shuffle diagnostics" disabled={task.busy} onPress={() => task.run(job => shuffleClient.copyDiagnostics(job), () => setRuntime("Shuffle diagnostics copied. They contain counts/status only; no song IDs, account names or tokens."))} />
@@ -72,7 +72,7 @@ function App() {
           <Label>Ready to start this exact {plan.count}-song order. This confirmation expires after two minutes.</Label>
           <Button title="Cancel shuffle confirmation" disabled={task.busy} onPress={clear} />
         </View> : null}
-        <Label muted>Prepare first, then tap Start shuffled playback in the same place. Starting plays the first previewed song and replaces upcoming playback. Your source collection is not edited.</Label>
+        <Label muted>Prepare first, then tap Start shuffled playback in the same place. Starting plays the first previewed song in the selected order. Spotify may append Autoplay recommendations after the selection, following your Spotify preference. Your source collection is not edited.</Label>
       </View> : null}
     </View> : null}
     {plan?.mode === "queue" && confirmation ? <View>

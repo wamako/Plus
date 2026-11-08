@@ -40,7 +40,7 @@ def verify(path, abi='arm64-v8a'):
         assert "Lcom/lenerd/spotifyplus/module/hooks/SystemHook;" in host_classes, "Missing API-2 navigation handler"
         assert "Lcom/lenerd46/spotifyplus/features/GlassBackdrop;" in host_classes, "Missing foreground-excluding glass capture"
         assert "Lcom/lenerd46/spotifyplus/api2/NativePlaylistWriter;" in host_classes, "Missing 9.1.94 playlist writer"
-        for name in ["ShuffleEngine", "QueueIdentity", "NavigationIntents", "NativePlaybackCommand", "NativeQueueCommand", "ShuffleDiagnosticsUi", "ShufflePlusBridge"]:
+        for name in ["ShuffleEngine", "QueueIdentity", "NavigationIntents", "NativePlaybackCommand", "NativeQueueCommand", "CollectionOrder", "ShuffleDiagnosticsUi", "ShufflePlusBridge"]:
             assert "Lcom/lenerd46/spotifyplus/api2/"+name+";" in host_classes, "Missing Shuffle+ native adapter: "+name
         sdk=apk.read('assets/nodejs/loader/script-api.js')
         for name in [b'ShufflePlus:', b'shuffleplus.capabilities', b'shuffleplus.queue', b'shuffleplus.prepare', b'shuffleplus.apply']:

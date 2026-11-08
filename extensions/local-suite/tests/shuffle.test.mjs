@@ -9,13 +9,13 @@ function fixture(){
  const api={Platform:{Storage:{get:k=>values.get(k),set:(k,v)=>values.set(k,structuredClone(v))}},
   request:async(op,args)=>{
    calls.push({op,args});
-   if(op==='shuffleplus.capabilities')return {version:1,host:18,collectionMode:"source-page-native-uids",route:"native-play-command",queueMode:"native-editor-options",playerReady:true,limit:10000};
-   if(op==='shuffleplus.diagnostics')return {host:18,mode:'queue',outcome:'unknown',queueUnchanged:true,privateUri:uri(1),token:'private-token'};
+   if(op==='shuffleplus.capabilities')return {version:1,host:19,collectionVerification:"provider-aware-autoplay",collectionMode:"source-page-native-uids",route:"native-play-command",queueMode:"native-editor-options",playerReady:true,limit:10000};
+   if(op==='shuffleplus.diagnostics')return {host:19,mode:'queue',outcome:'unknown',queueUnchanged:true,privateUri:uri(1),token:'private-token'};
    if(op==='shuffleplus.copyDiagnostics')return true;
    if(op==='shuffleplus.queue')return {mode:'queue',ticket,count:3,tracks};
    if(op==='shuffleplus.prepare')return {mode:'collection',ticket,count:args.uris.length};
    assert.equal(op,'shuffleplus.apply');assert.equal(values.get('shuffle-write-v1').phase,'pending');
-   if(failure)throw failure;return response||{applied:args.order.length,verification:"visible-order"};
+   if(failure)throw failure;return response||{applied:args.order.length,verification:"visible-order",autoplayTailCount:0,selectionCompleteInWindow:true};
   }};
  api.ShufflePlus={diagnostics:()=>api.request('shuffleplus.diagnostics'),copyDiagnostics:()=>api.request('shuffleplus.copyDiagnostics'),capabilities:()=>api.request('shuffleplus.capabilities'),previewQueue:()=>api.request('shuffleplus.queue'),prepare:(context,uris)=>api.request('shuffleplus.prepare',{context,uris}),apply:(ticket,order)=>api.request('shuffleplus.apply',{ticket,order})};
  return {values,calls,api,client:new ShuffleClient(api),fail:e=>failure=e,respond:r=>response=r};
@@ -61,26 +61,36 @@ test('cancellation, missing adapter and failed durable journal prevent playback 
  const p=await f.client.queue({});await assert.rejects(f.client.apply(p,'ok','ok',{cancelled:true}),/cancelled/);
  f.api.Platform.Storage.set=()=>{};await assert.rejects(f.client.apply(p,'ok','ok',{}),/Nothing was sent/);
  assert.equal(f.calls.filter(c=>c.op==='shuffleplus.apply').length,0);
- const old=new ShuffleClient({request:async()=>{throw new Error('Unknown operation')},Platform:f.api.Platform});await assert.rejects(old.queue({}),/R18/);
+ const old=new ShuffleClient({request:async()=>{throw new Error('Unknown operation')},Platform:f.api.Platform});await assert.rejects(old.queue({}),/R19/);
  assert.equal(shuffleError(new Error('SP_SHUFFLE_RPC'),true).unknown,true);
 });
 
 test('old host and count-only success replies cannot claim verified playback',async()=>{
  const f=fixture();f.api.ShufflePlus.capabilities=async()=>({version:1,host:13,limit:10000});
- await assert.rejects(f.client.capabilities({}),/R18/);assert.equal(f.calls.length,0);
- const incomplete=fixture();incomplete.api.ShufflePlus.capabilities=async()=>({version:1,host:18,route:"native-play-command",queueMode:"native-editor-options",limit:10000});
- await assert.rejects(incomplete.client.capabilities({}),/R18/);assert.equal(incomplete.calls.length,0);
+ await assert.rejects(f.client.capabilities({}),/R19/);assert.equal(f.calls.length,0);
+ const incomplete=fixture();incomplete.api.ShufflePlus.capabilities=async()=>({version:1,host:19,route:"native-play-command",queueMode:"native-editor-options",limit:10000});
+ await assert.rejects(incomplete.client.capabilities({}),/R19/);assert.equal(incomplete.calls.length,0);
  const g=fixture(),p=await g.client.queue({});g.respond({applied:3});
  await assert.rejects(g.client.apply(p,'ok','ok',{}));assert.equal(g.client.previous().phase,'unknown');
  assert.equal(g.calls.filter(c=>c.op==='shuffleplus.apply').length,1);
 });
 
 test('diagnostics whitelist drops private fields and copying never starts playback',async()=>{
- const f=fixture();assert.deepEqual(await f.client.diagnostics(),{host:18,mode:'queue',outcome:'unknown',queueUnchanged:true});
+ const f=fixture();assert.deepEqual(await f.client.diagnostics(),{host:19,mode:'queue',outcome:'unknown',queueUnchanged:true});
  await f.client.copyDiagnostics();assert.equal(f.calls.filter(c=>c.op==='shuffleplus.apply').length,0);
  const p=await f.client.queue({});f.fail(new Error('SP_SHUFFLE_UNCONFIRMED_NO_CHANGE'));
  await assert.rejects(f.client.apply(p,'ok','ok',{}),/stayed unchanged/);
  assert.equal(f.client.previous().phase,'unknown');assert.ok(f.client.previous().diagnostics.queueUnchanged);
  assert.ok(!JSON.stringify(f.client.previous()).includes('private-token'));
- assert.deepEqual(safeDiagnostics({host:18,mode:'private',token:'secret',eventsObserved:-1,errorCode:'secret'}),{host:18});
+ assert.deepEqual(safeDiagnostics({host:19,mode:'private',token:'secret',eventsObserved:-1,errorCode:'secret'}),{host:19});
+});
+
+test('confirmed Autoplay tail requires complete selection and survives safe diagnostics without private fields',async()=>{
+ const f=fixture(),p=await f.client.collection(tracks,'spotify:collection:tracks',{});
+ f.respond({applied:3,verification:'visible-order',selectionCompleteInWindow:true,autoplayTailCount:45});
+ assert.equal((await f.client.apply(p,'ok','ok',{})).autoplayTailCount,45);assert.equal(f.client.previous().phase,'complete');
+ for(const reply of [{selectionCompleteInWindow:false,autoplayTailCount:45},{selectionCompleteInWindow:true,autoplayTailCount:-1},{selectionCompleteInWindow:true,autoplayTailCount:'45'}]){
+  const g=fixture(),plan=await g.client.collection(tracks,'spotify:collection:tracks',{});g.respond({applied:3,verification:'visible-order',...reply});await assert.rejects(g.client.apply(plan,'ok','ok',{}));assert.equal(g.client.previous().phase,'unknown');
+ }
+ assert.deepEqual(safeDiagnostics({host:19,selectionCompleteInWindow:true,autoplayTailOnly:true,autoplayTailCount:45,matchingUpcomingPrefixCount:13,otherTailCount:0,token:'secret'}),{host:19,selectionCompleteInWindow:true,autoplayTailOnly:true,matchingUpcomingPrefixCount:13,autoplayTailCount:45,otherTailCount:0});
 });

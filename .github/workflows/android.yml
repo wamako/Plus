@@ -95,7 +95,7 @@ jobs:
       - name: Upload Shuffle+ local extension
         uses: actions/upload-artifact@v4
         with:
-          name: SpotifyPlus-ShufflePlus-0.1.6
+          name: SpotifyPlus-ShufflePlus-0.1.7
           path: extensions/local-suite/build/SpotifyPlus-ShufflePlus
           if-no-files-found: error
 

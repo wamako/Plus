@@ -40,10 +40,13 @@ public class NativePlaybackModelTest {
     }
     private static byte[] blob(Map<Integer,List<Object>> data,int number){assertTrue("Missing wire field "+number,data.containsKey(number));return (byte[])data.get(number).get(0);}
     private static String string(Map<Integer,List<Object>> data,int number){return data.containsKey(number)?new String(blob(data,number),StandardCharsets.UTF_8):"";}
-    @Test public void explicitPlaybackSerializesLikeNativeTrackListFactory()throws Exception {
+    private static ClassLoader models()throws Exception {
         var context=InstrumentationRegistry.getInstrumentation().getTargetContext();
         File apk=new File(context.getFilesDir(),"spotify-model.apk");assertTrue(apk.isFile());assertFalse(apk.canWrite());
-        ClassLoader loader=new DexClassLoader(apk.getAbsolutePath(),context.getCodeCacheDir().getAbsolutePath(),null,context.getClassLoader());
+        return new DexClassLoader(apk.getAbsolutePath(),context.getCodeCacheDir().getAbsolutePath(),null,context.getClassLoader());
+    }
+    @Test public void explicitPlaybackSerializesLikeNativeTrackListFactory()throws Exception {
+        ClassLoader loader=models();
         String source="spotify:album:0000000000000000000009";
         List<String> uris=List.of("spotify:track:0000000000000000000002","spotify:track:0000000000000000000001","spotify:track:0000000000000000000002");
         Object command=NativePlaybackCommand.prepare(loader,source,uris), supplied=get(command,"context");
@@ -64,5 +67,29 @@ public class NativePlaybackModelTest {
         var optionFields=fields((byte[])get(encodedOptions,"toByteArray"));
         assertNotNull(blob(fields(blob(optionFields,3)),5));
         assertNotNull(blob(fields(blob(optionFields,7)),1));
+    }
+    private static Object providedTrack(ClassLoader loader,String uri,String provider,boolean queued)throws Exception {
+        Class<?> model=loader.loadClass("com.spotify.player.model.ContextTrack");
+        Object builder=invoke(model.getMethod("builder",String.class),uri);
+        call(builder,"metadata",new Class<?>[]{Map.class},Map.of("is_queued",Boolean.toString(queued)));
+        Object proto=invoke(loader.loadClass("p.xam").getMethod("b",model),get(builder,"build"));
+        Class<?> supplied=loader.loadClass("com.spotify.player.esperanto.proto.EsProvidedTrack$ProvidedTrack");
+        Object wrapper=invoke(supplied.getMethod("r"));
+        call(wrapper,"n",new Class<?>[]{proto.getClass()},proto);call(wrapper,"q",new Class<?>[]{String.class},provider);
+        return invoke(loader.loadClass("p.xam").getMethod("a",supplied),get(wrapper,"build"));
+    }
+    @Test public void verifiesAutoplayOnlyAfterCompleteSelectionUsingActualProviderDecode()throws Exception {
+        ClassLoader loader=models();String a="spotify:track:0000000000000000000001",b="spotify:track:0000000000000000000002",extra="spotify:track:0000000000000000000009";
+        List<String> expected=List.of(a,b,a);
+        Object current=providedTrack(loader,a,"context",false),first=providedTrack(loader,b,"context",false),second=providedTrack(loader,a,"context",false),tail=providedTrack(loader,extra,"autoplay",false);
+        assertEquals("autoplay",get(tail,"provider"));
+        var result=CollectionOrder.inspect(current,List.of(first,second,tail),expected);
+        assertTrue(result.matches);assertTrue(result.selectionCompleteInWindow);assertEquals(1,result.autoplayTailCount);
+        for(String provider:List.of("context","queue","unknown"))assertFalse(CollectionOrder.inspect(current,List.of(first,second,providedTrack(loader,extra,provider,false)),expected).matches);
+        assertFalse(CollectionOrder.inspect(current,List.of(first,second,providedTrack(loader,extra,"autoplay",true)),expected).matches);
+        result=CollectionOrder.inspect(current,List.of(first,providedTrack(loader,a,"autoplay",false),tail),expected);
+        assertTrue(result.matches);assertEquals(1,result.autoplayInSelectionCount);
+        assertFalse(CollectionOrder.inspect(current,List.of(first,tail,second),expected).matches);
+        assertFalse(CollectionOrder.inspect(current,List.of(second,first,tail),expected).matches);
     }
 }

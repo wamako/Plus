@@ -627,3 +627,16 @@ state. A seventh real-APK serialization fixture compares to Spotify's own factor
 See API2_R18_COLLECTION.md for evidence, regression guards and testing limits.
 No account credentials or authenticated playback were used. Both new files will
 be required; preserve unknown journals and do not automatically retry mutations.
+
+## R19 / Shuffle+ 0.1.7: preserve Autoplay after the verified selection
+
+R18 diagnostics: correct first URI, 14 requested, 58 upcoming, four post-send
+events and unconfirmed order. User confirmed previewed songs followed by extras
+and explicitly chose Keep Autoplay. R19 retains the working R18 request; it
+verifies requested URI positions and classifies only post-selection extras.
+Only native provider=autoplay music without queued flags may follow; context,
+manual or unknown extras still fail. Success/diagnostics distinguish the selected
+window and recommendation tail. No global Autoplay settings or extra mutations.
+See API2_R19_AUTOPLAY.md. An eighth real-APK provider-decoding fixture and the
+14+45 simulation cover this boundary; authenticated phone classification remains
+unverified until the new report arrives. Both files will be required.

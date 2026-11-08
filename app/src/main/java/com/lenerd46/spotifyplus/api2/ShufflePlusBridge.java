@@ -18,14 +18,14 @@ public final class ShufflePlusBridge {
     public static synchronized Object execute(ClassLoader loader,String operation,JSONObject args) throws Exception {
         if(operation.equals("shuffleplus.diagnostics")) return report();
         if(operation.equals("shuffleplus.copyDiagnostics")) return !lastReport.isEmpty()&&ShuffleDiagnosticsUi.copy(report().toString());
-        if(operation.equals("shuffleplus.capabilities")) return new JSONObject().put("queueMode","native-editor-options").put("version",1).put("host",18).put("collectionMode","source-page-native-uids").put("route","native-play-command").put("playerReady",PlayerHook.contextPlayer!=null).put("binding",PlayerHook.playBinding).put("limit",ShuffleEngine.LIMIT);
+        if(operation.equals("shuffleplus.capabilities")) return new JSONObject().put("queueMode","native-editor-options").put("version",1).put("host",19).put("collectionVerification","provider-aware-autoplay").put("collectionMode","source-page-native-uids").put("route","native-play-command").put("playerReady",PlayerHook.contextPlayer!=null).put("binding",PlayerHook.playBinding).put("limit",ShuffleEngine.LIMIT);
         if(engine==null || engineLoader!=loader) {
             engineLoader=loader;
             engine=new ShuffleEngine(new NativeBackend(loader),android.os.SystemClock::elapsedRealtime);
         }
         try {
             if(operation.equals("shuffleplus.apply")) {
-                lastReport=Map.of("host",18,"outcome","not_sent");
+                lastReport=Map.of("host",19,"outcome","not_sent");
                 JSONArray input=args.getJSONArray("order");
                 if(input.length()>ShuffleEngine.LIMIT) throw ShuffleEngine.error("LIMIT");
                 List<Integer> order=new ArrayList<>();
@@ -34,7 +34,9 @@ public final class ShufflePlusBridge {
                     if(!(value instanceof Number) || ((Number)value).doubleValue()!=((Number)value).intValue()) throw ShuffleEngine.error("INPUT");
                     order.add(((Number)value).intValue());
                 }
-                return new JSONObject().put("applied",engine.apply(args.getString("ticket"),order)).put("verification","visible-order");
+                JSONObject result=new JSONObject().put("applied",engine.apply(args.getString("ticket"),order)).put("verification","visible-order");
+                if("collection".equals(lastReport.get("mode")))result.put("autoplayTailCount",lastReport.get("autoplayTailCount")).put("selectionCompleteInWindow",lastReport.get("selectionCompleteInWindow"));
+                return result;
             }
             ShuffleEngine.Plan plan;
             if(operation.equals("shuffleplus.queue")) plan=engine.queue();
@@ -115,7 +117,13 @@ public final class ShufflePlusBridge {
                     audit.put("currentUriMatches",present&&p.uris.get(0).equals(call(call(current,"b"),"uri")));
                     Object uid=present?call(call(current,"b"),"uid"):null;
                     audit.put("currentUidAssigned",uid instanceof String&&!((String)uid).isEmpty());
-                    boolean matches=collectionMatches(state,p.uris);audit.put("visibleOrderMatches",matches);return matches;
+                    CollectionOrder.Assessment order=CollectionOrder.inspect(present?call(current,"b"):null,(List<?>)call(state,"nextTracks"),p.uris);
+                    audit.put("selectionPrefixMatches",order.prefixMatches);audit.put("selectionCompleteInWindow",order.selectionCompleteInWindow);
+                    audit.put("autoplayInSelectionCount",order.autoplayInSelectionCount);audit.put("expectedUpcomingCount",order.expectedUpcomingCount);audit.put("matchingUpcomingPrefixCount",order.matchingUpcomingPrefixCount);
+                    audit.put("autoplayTailCount",order.autoplayTailCount);audit.put("contextTailCount",order.contextTailCount);
+                    audit.put("queuedTailCount",order.queuedTailCount);audit.put("otherTailCount",order.otherTailCount);audit.put("delimiterTailCount",order.delimiterTailCount);
+                    audit.put("autoplayTailOnly",order.autoplayTailOnly);
+                    audit.put("visibleOrderMatches",order.matches);return order.matches;
                 },audit);
                 audit.put("sent",true);audit.put("outcome","unknown");
                 Object result;
@@ -187,28 +195,10 @@ public final class ShufflePlusBridge {
             if(subscribe==null)throw new NoSuchMethodException();subscribe.setAccessible(true);
             return new Watch(stream,consumer,subscribe);
         }
-        private static boolean collectionMatches(Object state,List<String> uris) throws Exception {
-            Object optional=call(state,"track");
-            if(!(Boolean)call(optional,"c")) return false;
-            Object current=call(optional,"b");
-            if(!uris.get(0).equals(call(current,"uri"))) return false;
-            List<?> next=(List<?>)call(state,"nextTracks");
-            int index=1;
-            for(int i=0;i<next.size();i++) {
-                Object track=next.get(i);
-                if("spotify:delimiter".equals(call(track,"uri")) && i==next.size()-1) break;
-                if(index>=uris.size() || !uris.get(index).equals(call(track,"uri"))) return false;
-                index++;
-            }
-            // Spotify exposes a window, not necessarily the full 10,000-song
-            // context. Verify every exposed occurrence and require an upcoming
-            // song for multi-song playback; never claim full-list readback.
-            return uris.size()==1 || index>1;
-        }
         private interface Match {boolean test(Object state) throws Exception;}
         private static final class Audit {
             final Map<String,Object> values=new LinkedHashMap<>();
-            Audit(String mode){put("host",18);put("mode",mode);put("sent",false);put("outcome","not_sent");put("eventsObserved",0);put("postDispatchEvents",0);}
+            Audit(String mode){put("host",19);put("mode",mode);put("sent",false);put("outcome","not_sent");put("eventsObserved",0);put("postDispatchEvents",0);}
             synchronized void put(String key,Object value){values.put(key,value);}
             synchronized Object get(String key){return values.get(key);}
             synchronized void event(){values.put("eventsObserved",((Number)values.get("eventsObserved")).intValue()+1);if(Boolean.TRUE.equals(values.get("sent")))values.put("postDispatchEvents",((Number)values.get("postDispatchEvents")).intValue()+1);}

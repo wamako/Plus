@@ -141,6 +141,8 @@ public final class ShufflePlusBridge {
                 Object firstState=first.latest();Object firstCurrent=current(firstState);
                 audit.put("firstTrackConfirmed",true);first.close();
                 ShuffleEngine.Snapshot fresh=read(2L);
+                Object freshCurrent=currentFromOptional(fresh.current);
+                if(fresh.shuffled||freshCurrent==null||!p.uris.get(0).equals(call(freshCurrent,"uri"))||String.valueOf(call(freshCurrent,"uid")).isEmpty())throw ShuffleEngine.error("SEQUENCE_CHANGED");
                 if(fresh.owner!=p.owner||p.client!=PlayerHook.contextPlayer||
                         !QueueIdentity.fingerprint(fresh.current,List.of(),List.of()).equals(QueueIdentity.fingerprint(call(firstState,"track"),List.of(),List.of())))
                     throw ShuffleEngine.error("SEQUENCE_CHANGED");
@@ -177,7 +179,10 @@ public final class ShufflePlusBridge {
             finally {if(first!=null)first.close();if(queue!=null)queue.close();audit.publish();}
         }
         private static Object current(Object state) throws Exception {
-            Object optional=call(state,"track");return (Boolean)call(optional,"c")?call(optional,"b"):null;
+            return currentFromOptional(call(state,"track"));
+        }
+        private static Object currentFromOptional(Object optional) throws Exception {
+            return (Boolean)call(optional,"c")?call(optional,"b"):null;
         }
         private static boolean assess(Object current,List<?> next,List<String> uris,Audit audit) throws Exception {
             audit.put("observedNextCount",next.size());

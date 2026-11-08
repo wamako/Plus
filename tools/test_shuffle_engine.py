@@ -94,9 +94,9 @@ public class AdapterHarness {
  public static class Options {public boolean shuffled;public boolean shufflingContext(){return shuffled;}}
  public static class PlayerState {final Options options=new Options();public Options options(){return options;}}
  static Repo repo;static Handler handler;static PlayerState player;
- public static class Repo {final Flowable stream;int writes;SetQueueCommand last;boolean rejected,noOp,changeCurrent,lose,stopAfterWrite,failSecondSubscribe;Repo(State s){stream=new Flowable(s);}
+ public static class Repo {final Flowable stream;int writes;SetQueueCommand last;boolean rejected,noOp,silentNoOp,changeCurrent,lose,stopAfterWrite,failSecondSubscribe;Repo(State s){stream=new Flowable(s);}
  public Single renamedDispatch(SetQueueCommand c){return new Single(()->{writes++;last=c;ok(c.options.override&&!stream.listeners.isEmpty());
- State original=(State)stream.value;State s=new State();s.current=original.current;s.prev=original.prev;s.rev=original.rev+"queue";s.next=original.next;
+ if(silentNoOp)return "Success{}";State original=(State)stream.value;State s=new State();s.current=original.current;s.prev=original.prev;s.rev=original.rev+"queue";s.next=original.next;
  if(!rejected&&!noOp){s.next=new ArrayList<>();int i=0;for(Object o:c.next){ContextTrack t=(ContextTrack)o;ContextTrack v=t.toBuilder().uid(t.uid.isEmpty()?"assigned-"+(i++):t.uid).build();s.next.add(v);}}
  if(changeCurrent)s.current=new Opt(track(8,"user-skip","context",false));stream.emit(s,true);
  if(stopAfterWrite){s=new State();s.current=new Opt(null);s.next=List.of();stream.emit(s,true);}
@@ -139,6 +139,8 @@ public class AdapterHarness {
  reset();handler.contextTail=true;p=prepare(1,2);fail("apply",order(p,0,1),"SEQUENCE_CHANGED");ok(repo.writes==0);stopped();
  // A single song needs no queue write. Autoplay remains unchanged.
  reset();p=prepare(2);apply(p,0);ok(handler.writes==1&&repo.writes==0);stopped();
+ // An exact-order initial replay still cannot confirm the second operation.
+ reset();repo.silentNoOp=true;p=prepare(2,8,9);fail("apply",order(p,0,1,2),"UNCONFIRMED_READBACK");ok(repo.writes==1&&diag().get("postDispatchEvents").equals(1)&&diag().get("outcome").equals("unknown"));stopped();
  // Initial replay of stage two cannot prove its write; a no-op stays unknown.
  reset();repo.noOp=true;p=prepare(2,1,1);fail("apply",order(p,0,1,2),"UNCONFIRMED_ORDER");ok(repo.writes==1&&handler.writes==1&&diag().get("outcome").equals("unknown"));stopped();
  reset();repo.rejected=true;p=prepare(2,1);fail("apply",order(p,0,1),"SEQUENCE_REFUSED");ok(diag().get("outcome").equals("unknown"));stopped();

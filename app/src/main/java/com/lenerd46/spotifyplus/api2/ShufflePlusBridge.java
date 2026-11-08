@@ -18,14 +18,14 @@ public final class ShufflePlusBridge {
     public static synchronized Object execute(ClassLoader loader,String operation,JSONObject args) throws Exception {
         if(operation.equals("shuffleplus.diagnostics")) return report();
         if(operation.equals("shuffleplus.copyDiagnostics")) return !lastReport.isEmpty()&&ShuffleDiagnosticsUi.copy(report().toString());
-        if(operation.equals("shuffleplus.capabilities")) return new JSONObject().put("queueMode","native-editor-options").put("version",1).put("host",19).put("collectionVerification","provider-aware-autoplay").put("collectionMode","source-page-native-uids").put("route","native-play-command").put("playerReady",PlayerHook.contextPlayer!=null).put("binding",PlayerHook.playBinding).put("limit",ShuffleEngine.LIMIT);
+        if(operation.equals("shuffleplus.capabilities")) return new JSONObject().put("queueMode","native-editor-options").put("version",1).put("host",20).put("collectionVerification","provider-aware-autoplay").put("collectionMode","first-track-explicit-queue").put("route","native-play-and-setqueue").put("playerReady",PlayerHook.contextPlayer!=null).put("binding",PlayerHook.playBinding).put("limit",ShuffleEngine.LIMIT);
         if(engine==null || engineLoader!=loader) {
             engineLoader=loader;
             engine=new ShuffleEngine(new NativeBackend(loader),android.os.SystemClock::elapsedRealtime);
         }
         try {
             if(operation.equals("shuffleplus.apply")) {
-                lastReport=Map.of("host",19,"outcome","not_sent");
+                lastReport=Map.of("host",20,"outcome","not_sent");
                 JSONArray input=args.getJSONArray("order");
                 if(input.length()>ShuffleEngine.LIMIT) throw ShuffleEngine.error("LIMIT");
                 List<Integer> order=new ArrayList<>();
@@ -64,7 +64,8 @@ public final class ShufflePlusBridge {
     private static final class NativeBackend implements ShuffleEngine.Backend {
         final ClassLoader loader;
         NativeBackend(ClassLoader loader){this.loader=loader;}
-        public ShuffleEngine.Snapshot read() {
+        public ShuffleEngine.Snapshot read() {return read(5L);}
+        private ShuffleEngine.Snapshot read(long seconds) {
             try {
                 Object repo=NextUpQueue.currentRepository();
                 if(repo==null || Utils.playerState==null) throw new IllegalStateException();
@@ -76,7 +77,7 @@ public final class ShufflePlusBridge {
                         if(reader!=null) throw new IllegalStateException(); reader=m;
                     }
                 if(reader==null) throw new NoSuchMethodException();
-                Object state=await(reader.invoke(stream),5L);
+                Object state=await(reader.invoke(stream),seconds);
                 String revision=(String)call(state,"revision");
                 if(revision==null || revision.isEmpty()) throw new IllegalStateException();
                 List<?> next=(List<?>)call(state,"nextTracks"), previous=(List<?>)call(state,"prevTracks");
@@ -84,7 +85,7 @@ public final class ShufflePlusBridge {
                 List<ShuffleEngine.Item> items=new ArrayList<>();Object delimiter=null;
                 for(int i=0;i<next.size();i++) {
                     Object t=next.get(i);String uri=(String)call(t,"uri");
-                    if("spotify:delimiter".equals(uri) && i==next.size()-1){delimiter=t;continue;}
+                    if(("spotify:delimiter".equals(uri)||"spotify:meta:delimiter".equals(uri)) && i==next.size()-1){delimiter=t;continue;}
                     Map<?,?> metadata=(Map<?,?>)call(t,"metadata");
                     items.add(new ShuffleEngine.Item(uri,label(metadata.get("title"),uri,180),label(metadata.get("artist_name"),"",140),t));
                 }
@@ -102,38 +103,90 @@ public final class ShufflePlusBridge {
                 Method dispatch=NativePlaybackCommand.dispatcher(loader,target.getClass());
                 type("io.reactivex.rxjava3.core.Single").getMethod("timeout",long.class,TimeUnit.class);
                 type("io.reactivex.rxjava3.core.Single").getMethod("blockingGet");
-                return new Play(target,dispatch,request,watch(snapshot.owner),List.copyOf(uris));
+                List<Object> existing=new ArrayList<>();for(var item:snapshot.next)existing.add(item.nativeTrack);
+                NativeQueueCommand.requireNoManual(existing);
+                // Resolve both dispatchers/builders before starting any audio.
+                Method queueRpc=NativeQueueCommand.dispatcher(loader,snapshot.owner.getClass());
+                if(uris.size()>1)NativeQueueCommand.prepareSelection(loader,snapshot.revision,uris.subList(1,uris.size()),snapshot.previous,List.of(),null);
+                return new Play(target,dispatch,queueRpc,request,snapshot,List.copyOf(uris));
             } catch(Exception | LinkageError error){throw controlled(error,"PREPARE");}
         }
         public void play(Object value) {
             Play p=(Play)value;
-            if(p.client!=PlayerHook.contextPlayer) throw ShuffleEngine.error("STALE_PLAYER");
-            Audit audit=new Audit("collection");audit.put("expectedTrackCount",p.uris.size());audit.put("requestFormat","source-page-native-uids");
+            if(p.client!=PlayerHook.contextPlayer)throw ShuffleEngine.error("STALE_PLAYER");
+            Audit audit=new Audit("collection");audit.put("expectedTrackCount",p.uris.size());audit.put("requestFormat","first-track-explicit-queue");
+            Watch first=null,queue=null;
             try {
-                p.watch.start(state -> {
-                    audit.put("observedNextCount",((List<?>)call(state,"nextTracks")).size());
-                    Object current=call(state,"track");boolean present=(Boolean)call(current,"c");
-                    audit.put("currentPresent",present);
-                    audit.put("currentUriMatches",present&&p.uris.get(0).equals(call(call(current,"b"),"uri")));
-                    Object uid=present?call(call(current,"b"),"uid"):null;
-                    audit.put("currentUidAssigned",uid instanceof String&&!((String)uid).isEmpty());
-                    CollectionOrder.Assessment order=CollectionOrder.inspect(present?call(current,"b"):null,(List<?>)call(state,"nextTracks"),p.uris);
-                    audit.put("selectionPrefixMatches",order.prefixMatches);audit.put("selectionCompleteInWindow",order.selectionCompleteInWindow);
-                    audit.put("autoplayInSelectionCount",order.autoplayInSelectionCount);audit.put("expectedUpcomingCount",order.expectedUpcomingCount);audit.put("matchingUpcomingPrefixCount",order.matchingUpcomingPrefixCount);
-                    audit.put("autoplayTailCount",order.autoplayTailCount);audit.put("contextTailCount",order.contextTailCount);
-                    audit.put("queuedTailCount",order.queuedTailCount);audit.put("otherTailCount",order.otherTailCount);audit.put("delimiterTailCount",order.delimiterTailCount);
-                    audit.put("autoplayTailOnly",order.autoplayTailOnly);
-                    audit.put("visibleOrderMatches",order.matches);return order.matches;
+                // Recheck the manual queue at apply time, not just preview time.
+                ShuffleEngine.Snapshot before=read(2L);
+                if(before.owner!=p.owner)throw ShuffleEngine.error("STALE_OWNER");
+                if(!before.fingerprint.equals(p.snapshot.fingerprint))throw ShuffleEngine.error("STALE_ORDER");
+                if(before.shuffled!=p.snapshot.shuffled)throw ShuffleEngine.error("STALE_OPTIONS");
+                List<Object> existing=new ArrayList<>();for(var item:before.next)existing.add(item.nativeTrack);
+                NativeQueueCommand.requireNoManual(existing);
+                audit.put("stage","first-track");first=watch(p.owner);
+                first.start(state -> {
+                    Object current=current(state);boolean matches=current!=null&&p.uris.get(0).equals(call(current,"uri"))&&!String.valueOf(call(current,"uid")).isEmpty();
+                    audit.put("currentPresent",current!=null);audit.put("currentUriMatches",current!=null&&p.uris.get(0).equals(call(current,"uri")));
+                    audit.put("currentUidAssigned",current!=null&&!String.valueOf(call(current,"uid")).isEmpty());return matches;
                 },audit);
-                audit.put("sent",true);audit.put("outcome","unknown");
+                first.dispatching();audit.put("playSent",true);audit.put("outcome","unknown");
                 Object result;
-                try {result=await(p.rpc.invoke(p.client,p.request));}
+                try {result=await(p.rpc.invoke(p.client,p.request),6L);}
                 catch(Exception | LinkageError error){throw ShuffleEngine.error("RPC");}
                 String status=String.valueOf(result);
-                if(status.startsWith("Failure")){audit.put("reply","refused");audit.put("outcome","refused");throw ShuffleEngine.error("PLAY_REFUSED");}
+                if(status.startsWith("Failure")){audit.put("playReply","refused");audit.put("outcome","refused");throw ShuffleEngine.error("PLAY_REFUSED");}
                 if(!status.startsWith("Success"))throw ShuffleEngine.error("ACK");
-                audit.put("reply","success");p.watch.confirm();audit.put("outcome","confirmed");
-            } finally {p.watch.close();audit.publish();}
+                audit.put("playReply","success");first.confirm(3L);
+                Object firstState=first.latest();Object firstCurrent=current(firstState);
+                audit.put("firstTrackConfirmed",true);first.close();
+                ShuffleEngine.Snapshot fresh=read(2L);
+                if(fresh.owner!=p.owner||p.client!=PlayerHook.contextPlayer||
+                        !QueueIdentity.fingerprint(fresh.current,List.of(),List.of()).equals(QueueIdentity.fingerprint(call(firstState,"track"),List.of(),List.of())))
+                    throw ShuffleEngine.error("SEQUENCE_CHANGED");
+                List<Object> tail=new ArrayList<>();for(var item:fresh.next)tail.add(item.nativeTrack);
+                NativeQueueCommand.requireAutoplayTail(tail);
+                if(p.uris.size()==1) {
+                    if(!assess(firstCurrent,tail,p.uris,audit))throw ShuffleEngine.error("UNCONFIRMED_ORDER");
+                    audit.put("stage","complete");audit.put("outcome","confirmed");return;
+                }
+                NativeQueueCommand.Prepared prepared=NativeQueueCommand.prepareSelection(loader,fresh.revision,p.uris.subList(1,p.uris.size()),fresh.previous,tail,fresh.delimiter);
+                audit.put("queuedRequestCount",p.uris.size()-1);audit.put("nativeEditorOptions",true);
+                audit.put("stage","selected-queue");queue=watch(p.owner);
+                queue.start(state -> {
+                    boolean currentMatches=QueueIdentity.fingerprint(fresh.current,List.of(),List.of()).equals(QueueIdentity.fingerprint(call(state,"track"),List.of(),List.of()));
+                    boolean historyMatches=QueueIdentity.fingerprint(fresh.current,fresh.previous,List.of()).equals(QueueIdentity.fingerprint(fresh.current,(List<?>)call(state,"prevTracks"),List.of()));
+                    audit.put("currentMatches",currentMatches);audit.put("historyMatches",historyMatches);
+                    boolean matches=assess(current(state),(List<?>)call(state,"nextTracks"),p.uris,audit);
+                    return currentMatches&&historyMatches&&matches;
+                },audit);
+                // Initial replay is not confirmation. Reject concurrent edits before dispatch.
+                if(!fresh.fingerprint.equals(QueueIdentity.fingerprint(queue.latest())))throw ShuffleEngine.error("SEQUENCE_CHANGED");
+                queue.dispatching();audit.put("queueSent",true);
+                try {result=await(p.queueRpc.invoke(p.owner,prepared.command),6L);}
+                catch(Exception | LinkageError error){throw ShuffleEngine.error("RPC");}
+                status=String.valueOf(result);
+                if(status.startsWith("Failure")){audit.put("queueReply","refused");throw ShuffleEngine.error("SEQUENCE_REFUSED");}
+                if(!status.startsWith("Success"))throw ShuffleEngine.error("ACK");
+                audit.put("queueReply","success");queue.confirm(3L);audit.put("stage","complete");audit.put("outcome","confirmed");
+            } catch(IllegalStateException error){
+                if(Boolean.TRUE.equals(audit.get("sent"))&&Set.of("SP_SHUFFLE_OBSERVER_READY","SP_SHUFFLE_READY","SP_SHUFFLE_PREPARE").contains(error.getMessage()))throw ShuffleEngine.error("UNCONFIRMED_READBACK");
+                throw error;
+            }
+            catch(Exception | LinkageError error){throw controlled(error,"SEQUENCE_CHANGED");}
+            finally {if(first!=null)first.close();if(queue!=null)queue.close();audit.publish();}
+        }
+        private static Object current(Object state) throws Exception {
+            Object optional=call(state,"track");return (Boolean)call(optional,"c")?call(optional,"b"):null;
+        }
+        private static boolean assess(Object current,List<?> next,List<String> uris,Audit audit) throws Exception {
+            audit.put("observedNextCount",next.size());
+            CollectionOrder.Assessment order=CollectionOrder.inspect(current,next,uris);
+            audit.put("selectionPrefixMatches",order.prefixMatches);audit.put("selectionCompleteInWindow",order.selectionCompleteInWindow);
+            audit.put("autoplayInSelectionCount",order.autoplayInSelectionCount);audit.put("expectedUpcomingCount",order.expectedUpcomingCount);audit.put("matchingUpcomingPrefixCount",order.matchingUpcomingPrefixCount);
+            audit.put("autoplayTailCount",order.autoplayTailCount);audit.put("contextTailCount",order.contextTailCount);
+            audit.put("queuedTailCount",order.queuedTailCount);audit.put("otherTailCount",order.otherTailCount);audit.put("delimiterTailCount",order.delimiterTailCount);
+            audit.put("autoplayTailOnly",order.autoplayTailOnly);audit.put("visibleOrderMatches",order.matches);return order.matches;
         }
         public void replace(ShuffleEngine.Snapshot snapshot,List<ShuffleEngine.Item> order) {
             Method dispatch;Watch observer;NativeQueueCommand.Prepared prepared;String expected;int queuedSlots;
@@ -143,14 +196,7 @@ public final class ShufflePlusBridge {
                 List<Object> tracks=new ArrayList<>();for(ShuffleEngine.Item item:order)tracks.add(item.nativeTrack);
                 prepared=NativeQueueCommand.prepare(loader,snapshot.revision,tracks,snapshot.previous,queuedSlots,snapshot.delimiter);
                 expected=QueueIdentity.fingerprint(snapshot.current,snapshot.previous,prepared.next);
-                Class<?> command=type("com.spotify.player.model.command.SetQueueCommand");
-                dispatch=null;
-                for(Method method:snapshot.owner.getClass().getMethods())
-                    if(!Modifier.isStatic(method.getModifiers())&&!method.isBridge()&&Arrays.equals(method.getParameterTypes(),new Class<?>[]{command})&&
-                            type("io.reactivex.rxjava3.core.Single").isAssignableFrom(method.getReturnType())) {
-                        if(dispatch!=null)throw new IllegalStateException();dispatch=method;
-                    }
-                if(dispatch==null)throw new NoSuchMethodException();dispatch.setAccessible(true);
+                dispatch=NativeQueueCommand.dispatcher(loader,snapshot.owner.getClass());
                 observer=watch(snapshot.owner);
             } catch(Exception | LinkageError error){throw controlled(error,"PREPARE");}
             Audit audit=new Audit("queue");audit.put("expectedNextCount",prepared.next.size());audit.put("queuedSlots",queuedSlots);
@@ -168,7 +214,7 @@ public final class ShufflePlusBridge {
                     audit.put("uidOrderMatches",sameField(prepared.next,observed,"uid"));
                     boolean matches=expected.equals(identity);audit.put("visibleOrderMatches",matches);return matches;
                 },audit);
-                audit.put("sent",true);audit.put("outcome","unknown");
+                observer.dispatching();audit.put("outcome","unknown");
                 Object result;
                 try {result=await(dispatch.invoke(snapshot.owner,prepared.command));}
                 catch(Exception | LinkageError error){throw ShuffleEngine.error("RPC");}
@@ -198,15 +244,15 @@ public final class ShufflePlusBridge {
         private interface Match {boolean test(Object state) throws Exception;}
         private static final class Audit {
             final Map<String,Object> values=new LinkedHashMap<>();
-            Audit(String mode){put("host",19);put("mode",mode);put("sent",false);put("outcome","not_sent");put("eventsObserved",0);put("postDispatchEvents",0);}
+            Audit(String mode){put("host",20);put("mode",mode);put("sent",false);put("outcome","not_sent");put("eventsObserved",0);put("postDispatchEvents",0);}
             synchronized void put(String key,Object value){values.put(key,value);}
             synchronized Object get(String key){return values.get(key);}
-            synchronized void event(){values.put("eventsObserved",((Number)values.get("eventsObserved")).intValue()+1);if(Boolean.TRUE.equals(values.get("sent")))values.put("postDispatchEvents",((Number)values.get("postDispatchEvents")).intValue()+1);}
+            synchronized void event(boolean dispatched){values.put("eventsObserved",((Number)values.get("eventsObserved")).intValue()+1);if(dispatched)values.put("postDispatchEvents",((Number)values.get("postDispatchEvents")).intValue()+1);}
             synchronized void publish(){lastReport=Collections.unmodifiableMap(new LinkedHashMap<>(values));}
         }
         private final class Watch {
             final Object stream;final Class<?> consumer;final Method subscribe;
-            final Object monitor=new Object();boolean matched,failed,closed;
+            final Object monitor=new Object();boolean matched,failed,closed,dispatched;int postEvents;Object latest;
             Object disposable;Audit audit;
             Watch(Object stream,Class<?> consumer,Method subscribe){this.stream=stream;this.consumer=consumer;this.subscribe=subscribe;}
             Object callback(java.util.function.Consumer<Object> action) {
@@ -223,11 +269,11 @@ public final class ShufflePlusBridge {
                 try {
                     Object next=callback(state->{synchronized(monitor) {
                         if(closed)return;
-                        audit.event();
+                        audit.event(dispatched);latest=state;if(dispatched)postEvents++;
                         try {
                             boolean matches=match.test(state);
                             // An initial replay is not evidence of the requested edit.
-                            if(Boolean.TRUE.equals(audit.get("sent")))matched=matches;
+                            if(dispatched)matched=matches;
                         } catch(Exception | LinkageError error){failed=true;audit.put("readbackError","schema");}
                         monitor.notifyAll();
                     }});
@@ -237,16 +283,19 @@ public final class ShufflePlusBridge {
                     audit.put("observerStartedBeforeDispatch",true);
                 } catch(Exception | LinkageError error){close();throw ShuffleEngine.error("OBSERVER_READY");}
             }
-            void confirm() {
+            void dispatching(){synchronized(monitor){if(failed||closed)throw ShuffleEngine.error("OBSERVER_READY");dispatched=true;audit.put("sent",true);}}
+            Object latest(){synchronized(monitor){if(latest==null||failed)throw ShuffleEngine.error("UNCONFIRMED_READBACK");return latest;}}
+            void confirm(){confirm(5L);}
+            void confirm(long seconds) {
                 synchronized(monitor) {
-                    long deadline=System.nanoTime()+TimeUnit.SECONDS.toNanos(5L);
+                    long deadline=System.nanoTime()+TimeUnit.SECONDS.toNanos(seconds);
                     while(!matched&&!failed) {
                         long remaining=deadline-System.nanoTime();if(remaining<=0)break;
                         try {TimeUnit.NANOSECONDS.timedWait(monitor,remaining);}
                         catch(InterruptedException error){Thread.currentThread().interrupt();throw ShuffleEngine.error("UNCONFIRMED_READBACK");}
                     }
                     if(matched&&!failed)return;
-                    if(failed||((Number)audit.get("postDispatchEvents")).intValue()==0)throw ShuffleEngine.error("UNCONFIRMED_READBACK");
+                    if(failed||postEvents==0)throw ShuffleEngine.error("UNCONFIRMED_READBACK");
                     if(Boolean.TRUE.equals(audit.get("queueUnchanged")))throw ShuffleEngine.error("UNCONFIRMED_NO_CHANGE");
                     throw ShuffleEngine.error("UNCONFIRMED_ORDER");
                 }
@@ -286,9 +335,8 @@ public final class ShufflePlusBridge {
             return ShuffleEngine.error(fallback);
         }
         private static final class Play {
-            final Object client,request;final Method rpc;
-            final Watch watch;final List<String> uris;
-            Play(Object c,Method r,Object q,Watch watch,List<String> uris){client=c;rpc=r;request=q;this.watch=watch;this.uris=uris;}
+            final Object client,request,owner;final Method rpc,queueRpc;final List<String> uris;final ShuffleEngine.Snapshot snapshot;
+            Play(Object c,Method r,Method q,Object request,ShuffleEngine.Snapshot snapshot,List<String> uris){client=c;rpc=r;queueRpc=q;this.request=request;this.snapshot=snapshot;owner=snapshot.owner;this.uris=uris;}
         }
     }
 }

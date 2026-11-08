@@ -18,20 +18,24 @@ public final class NativePlaybackCommand {
     }
     public static Object prepare(ClassLoader loader,String source,List<String> uris) throws Exception {
         List<Object> tracks=new ArrayList<>();
-        for(int i=0;i<uris.size();i++) {
+        if(uris.isEmpty())throw ShuffleEngine.error("INPUT");
+        for(int i=0;i<1;i++) {
             Object b=staticCall(type(loader,"ContextTrack"),"builder",new Class<?>[]{String.class},uris.get(i));
             // As in Context.fromTrackUris: native core assigns fresh occurrence UIDs.
             tracks.add(call(b,"build",new Class<?>[]{}));
         }
         Object page=staticCall(type(loader,"ContextPage"),"builder",new Class<?>[]{});
         call(page,"tracks",new Class<?>[]{List.class},tracks);
-        // Keep the source identity, but no resolver URL: the explicit page is authoritative.
-        Object context=staticCall(type(loader,"Context"),"builder",new Class<?>[]{String.class},source);
+        // Start a single-track context. Album/playlist contexts can resolve back to
+        // their canonical order even when supplied an explicit shuffled page.
+        Object context=staticCall(type(loader,"Context"),"builder",new Class<?>[]{String.class},uris.get(0));
         call(context,"pages",new Class<?>[]{List.class},List.of(call(page,"build",new Class<?>[]{})));
         Object origin=staticCall(type(loader,"PlayOrigin"),"builder",new Class<?>[]{String.class},"spotifyplus");
         call(origin,"viewUri",new Class<?>[]{String.class},source);
         Object overrides=staticCall(type(loader,"command.options.PlayerOptionOverrides"),"builder",new Class<?>[]{});
         call(overrides,"shufflingContext",new Class<?>[]{Boolean.class},Boolean.FALSE);
+        call(overrides,"repeatingTrack",new Class<?>[]{Boolean.class},Boolean.FALSE);
+        call(overrides,"repeatingContext",new Class<?>[]{Boolean.class},Boolean.FALSE);
         Object options=staticCall(type(loader,"command.options.PreparePlayOptions"),"builder",new Class<?>[]{});
         call(options,"initiallyPaused",new Class<?>[]{boolean.class},false);
         Object skip=staticCall(type(loader,"command.options.SkipToTrack"),"fromIndices",new Class<?>[]{Long.class,Long.class},0L,0L);

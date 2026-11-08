@@ -52,4 +52,25 @@ public class NativeQueueModelTest {
         assertEquals("true",((Map<?,?>)get(a,"metadata")).get("is_queued"));
         assertEquals("false",((Map<?,?>)get(b,"metadata")).get("is_queued"));
     }
+    @Test public void explicitSelectionUsesRealQueueProviderSerializationAndKeepsAutoplay() throws Exception {
+        Context context=InstrumentationRegistry.getInstrumentation().getTargetContext();
+        File apk=new File(context.getFilesDir(),"spotify-model.apk");assertTrue(apk.isFile());assertFalse(apk.canWrite());
+        ClassLoader loader=new DexClassLoader(apk.getAbsolutePath(),context.getCodeCacheDir().getAbsolutePath(),null,context.getClassLoader());
+        String uri="spotify:track:0000000000000000000001";
+        Object tail=track(loader,"spotify:track:0000000000000000000009","native-autoplay",false);
+        Object b=get(tail,"toBuilder");call(b,"provider",new Class<?>[]{String.class},"autoplay");tail=get(b,"build");
+        Object prev=track(loader,uri,"history",false);
+        var result=NativeQueueCommand.prepareSelection(loader,"42",List.of(uri,uri),List.of(prev),List.of(tail),null);
+        assertEquals("42",get(result.command,"queueRevision"));assertEquals(List.of(prev),get(result.command,"prevTracks"));assertEquals(3,result.next.size());assertSame(tail,result.next.get(2));
+        Class<?> track=loader.loadClass("com.spotify.player.model.ContextTrack");
+        for(int i=0;i<2;i++) {
+            Object selected=result.next.get(i);assertEquals(uri,get(selected,"uri"));assertEquals("",get(selected,"uid"));assertEquals("queue",get(selected,"provider"));assertEquals("true",((Map<?,?>)get(selected,"metadata")).get("is_queued"));
+            // Actual queue serializer and reverse decoder, not a fixture substitute.
+            Method encode=loader.loadClass("p.xam").getMethod("c",track);encode.setAccessible(true);Object proto=encode.invoke(null,selected);
+            Method decode=loader.loadClass("p.xam").getMethod("a",proto.getClass());decode.setAccessible(true);Object decoded=decode.invoke(null,proto);
+            assertEquals(uri,get(decoded,"uri"));assertEquals("queue",get(decoded,"provider"));assertEquals("true",((Map<?,?>)get(decoded,"metadata")).get("is_queued"));
+        }
+        assertTrue(CollectionOrder.inspect(track(loader,uri,"current",false),result.next,List.of(uri,uri,uri)).matches);
+    }
+
 }

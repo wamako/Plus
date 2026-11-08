@@ -44,8 +44,8 @@ function App() {
     });
   }
   return <Page title="Shuffle+">
-    <Label muted>Random song order without taste or artist weighting. Previewing never changes playback. Requires Spotify Plus R19.</Label>
-    <Button title="Check active playback adapter" disabled={task.busy} onPress={() => task.run(job => shuffleClient.capabilities(job), info => setRuntime(`Active module R${info.host} · native PlayCommand · binding ${info.binding || "unknown"} · ${info.playerReady ? "player captured" : "start playback in Spotify first"}`))} />
+    <Label muted>Random song order without taste or artist weighting. Previewing never changes playback. Requires Spotify Plus R20.</Label>
+    <Button title="Check active playback adapter" disabled={task.busy} onPress={() => task.run(job => shuffleClient.capabilities(job), info => setRuntime(`Active module R${info.host} · native Play + explicit queue · binding ${info.binding || "unknown"} · ${info.playerReady ? "player captured" : "start playback in Spotify first"}`))} />
     {runtime ? <Label>{runtime}</Label> : null}
     <Button title="Copy last shuffle diagnostics" disabled={task.busy} onPress={() => task.run(job => shuffleClient.copyDiagnostics(job), () => setRuntime("Shuffle diagnostics copied. They contain counts/status only; no song IDs, account names or tokens."))} />
     {shuffleClient.previous()?.diagnostics ? <Label muted>{JSON.stringify(shuffleClient.previous().diagnostics)}</Label> : null}
@@ -69,10 +69,10 @@ function App() {
         </View> : null}
         <Button title={collectionReady ? "Start shuffled playback" : "Prepare shuffled playback"} disabled={task.busy || needsReview} onPress={collectionReady ? apply : prepare} />
         {collectionReady ? <View>
-          <Label>Ready to start this exact {plan.count}-song order. This confirmation expires after two minutes.</Label>
+          <Label>Ready to start the first song, then explicitly queue the remaining {plan.count - 1} songs. Spotify shuffle and repeat will be off for this playback. This confirmation expires after two minutes.</Label>
           <Button title="Cancel shuffle confirmation" disabled={task.busy} onPress={clear} />
         </View> : null}
-        <Label muted>Prepare first, then tap Start shuffled playback in the same place. Starting plays the first previewed song in the selected order. Spotify may append Autoplay recommendations after the selection, following your Spotify preference. Your source collection is not edited.</Label>
+        <Label muted>Prepare first, then tap Start shuffled playback in the same place. Starting plays the first previewed song, then installs the remaining preview as queued songs. If the second step fails, the first song may still be playing; inspect the queue before another attempt. Manually queued songs must be cleared first. Spotify may append Autoplay recommendations after the selection, following your Spotify preference. Your source collection is not edited.</Label>
       </View> : null}
     </View> : null}
     {plan?.mode === "queue" && confirmation ? <View>

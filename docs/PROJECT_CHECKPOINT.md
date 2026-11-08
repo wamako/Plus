@@ -640,3 +640,13 @@ window and recommendation tail. No global Autoplay settings or extra mutations.
 See API2_R19_AUTOPLAY.md. An eighth real-APK provider-decoding fixture and the
 14+45 simulation cover this boundary; authenticated phone classification remains
 unverified until the new report arrives. Both files will be required.
+
+## R20 / Shuffle+ 0.1.8: explicit remaining selection
+
+R19 phone counters disprove a complete selected prefix: current correct, 14
+requested, 51 upcoming, matching prefix zero, 12 Autoplay within selection and
+38 after it. R20 starts a single-track context then installs the remaining
+selection explicitly as queued items, preserving only typed Autoplay extras.
+Per-observer dispatch gates, fresh CAS and partial-outcome reporting are required.
+See [R20 evidence and limits](API2_R20_EXPLICIT_QUEUE.md). CI and artifact hashes
+are recorded in PR2 after validation. This checkpoint does not claim live playback.

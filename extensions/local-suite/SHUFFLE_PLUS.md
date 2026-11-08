@@ -1,13 +1,13 @@
-# Shuffle+ 0.1.7 for Spotify Plus R19
+# Shuffle+ 0.1.8 for Spotify Plus R20
 
-Version 0.1.7 requires the **R19 module APK**. Repatch the original Spotify
+Version 0.1.8 requires the **R20 module APK**. Repatch the original Spotify
 9.1.94.1929 APK with this module; installing the ZIP or the module alone does not
 replace an older module embedded by LSPatch.
 
 Collection playback now uses Spotify's normal native PlayCommand handler and
 its interceptors, rather than a direct Esperanto Play request. It supplies the
 exact explicit song order and waits for the player/visible queue to match.
-Use **Check active playback adapter** to verify module R19, the binding and live
+Use **Check active playback adapter** to verify module R20, the binding and live
 player capture. If the player has not been captured, select a song from an album
 or playlist in Spotify before preparing again. Errors include a fixed stage code.
 
@@ -22,7 +22,7 @@ to understand explicit context playback; its implementation was not copied.
 
 ## Install
 
-1. Repatch Spotify **9.1.94.1929 / arm64** using the **R19** Plus module in
+1. Repatch Spotify **9.1.94.1929 / arm64** using the **R20** Plus module in
    LSPatch. A ZIP alone cannot add the native playback adapter to R12/R13.
 2. Extract this ZIP. Put the **shuffle-plus** folder beside your existing four
    local extension folders in SpotifyPlusLocal. It must directly contain
@@ -56,8 +56,10 @@ native SetQueue revision additionally protects upcoming-queue edits at the serve
 Starting a collection uses normal Play, which does not provide a queue-revision
 compare-and-set: it is an explicit user-requested playback replacement.
 
-Each apply is one native command, with no clear/add loop, Web API fallback, or
-automatic retry. A timeout, unmatched queue or malformed acknowledgment is uncertain: inspect
+Upcoming-queue reshuffling uses one native SetQueue command. Collection playback
+uses a planned two-step sequence: start one song, then install the remaining
+selection using SetQueue. There is no clear/add loop, Web API fallback or retry.
+These two steps are not atomic; a failure may leave only the first song playing. A timeout, unmatched queue or malformed acknowledgment is uncertain: inspect
 Spotify's player and queue, then use **I checked playback; allow another shuffle**
 before starting another action. This does not undo or repeat the earlier action.
 Normal Spotify playback/account restrictions remain in effect.
@@ -79,7 +81,7 @@ class/native checks are required before delivery. Live playback and UI acceptanc
 on the user's Android 17 / LSPatch phone remain necessary. Begin with a small queue
 or album. No Last.fm key or public Spotify audio-features endpoint is required.
 
-R19 also restores the host navigation handler and closes this extension after
+The retained R16 repair restores the host navigation handler and closes this extension after
 Open track is accepted. Android instrumentation exercises production glass
 capture/drawing and intent resolution; these are not authenticated playback tests.
 
@@ -93,22 +95,29 @@ still require checking playback and acknowledgement before another attempt.
 The real-Spotify-model Android fixture validates request construction without an
 account/service call; it does not prove authenticated queue mutation.
 
-R19 collection playback keeps the source URI and supplies the shuffled songs as an
-explicit page with no context resolver URL, matching Spotify's native track-list
-factory. Spotify assigns fresh occurrence UIDs. Collection readback compares the
-current URI and each visible upcoming URI in sequence, retaining duplicate
-positions/counts; upcoming-queue edits still compare their existing UIDs too.
-An initial replay cannot confirm an action, and a match followed by an empty or
-different queue before acknowledgment is not success. Diagnostics now include
-post-dispatch event counts and current-track presence/match flags. The seventh
-Android fixture verifies the actual serialized native context against Spotify's
-own factory, including source identity, page order, duplicates and unset UIDs.
+R20 replaces the collection request after R19 phone diagnostics showed the first
+song matched but none of the upcoming prefix did. It starts a **single-track
+context** for the first previewed song, keeping the original source only as the
+play origin. Once a post-dispatch event confirms its URI and assigned occurrence
+UID, a fresh native queue revision is used to install the remaining preview as
+explicit queued tracks (`provider=queue`, `is_queued=true`, native-assigned UIDs).
+Only a typed Spotify Autoplay tail and an existing terminal delimiter are carried
+forward. Context/unknown/manual additions are rejected, not silently removed.
+Starting a collection refuses an existing manual queue. Spotify shuffle and
+repeat are off for this playback; the global Autoplay setting is preserved.
 
-R19 preserves Spotify Autoplay. It verifies selected songs in their exact preview
-positions and permits additional tracks only after the complete selection when
-Spotify labels them autoplay, they are music tracks and they are not manually
-queued. Other/unclassified extras and wrong selected positions still fail. The
-success message separately reports the Autoplay tail; large-selection checks
-remain limited to the visible selected window. The eighth Android fixture checks
-Spotify's real ProvidedTrack decoding and provider-aware verification. The R18
-playback request and all global Spotify preferences remain unchanged.
+Both operations resolve their builders/dispatchers before starting audio. Each
+observer has its own dispatch gate, so the second operation's initial replay
+cannot confirm its result. Current occurrence/history and full exposed URI order
+must still match; duplicate positions are retained. Failed second steps remain
+unknown, not safely stopped, and are never retried automatically. Native queue
+revision checks protect against concurrent edits between snapshot and dispatch.
+The operation is bounded within the host's 30-second request timeout.
+
+The real-model Android fixtures compare the single-track context serialization
+with Spotify's own factory, round-trip manual queue entries through its actual
+ProvidedTrack serializer/decoder, and validate the provider-aware Autoplay
+boundary. JVM choreography tests model a player which starts **only the first
+song**, including wrong-order/no-op/refusal, lost acknowledgements, observer
+failures and partial outcomes. These fixtures are not authenticated Spotify
+playback or a proof of behavior on the Samsung ARM64 device.

@@ -51,7 +51,7 @@ FIXTURES={
 'org/json/JSONException.java': r'''package org.json;public class JSONException extends RuntimeException {}''',
 'org/json/JSONObject.java': r'''package org.json;public class JSONObject {final java.util.Map<String,Object> data=new java.util.HashMap<>();public JSONObject put(String k,Object v){data.put(k,v);return this;}public Object get(String k){if(!data.containsKey(k))throw new JSONException();return data.get(k);}public String getString(String k){Object v=get(k);if(!(v instanceof String))throw new JSONException();return (String)v;}public JSONArray getJSONArray(String k){return (JSONArray)get(k);}public int getInt(String k){return ((Number)get(k)).intValue();}}''',
 'org/json/JSONArray.java': r'''package org.json;public class JSONArray {final java.util.List<Object> data=new java.util.ArrayList<>();public JSONArray put(Object v){data.add(v);return this;}public int length(){return data.size();}public Object get(int i){return data.get(i);}public String getString(int i){Object v=get(i);if(!(v instanceof String))throw new JSONException();return (String)v;}}''',
-'io/reactivex/rxjava3/core/Single.java': r'''package io.reactivex.rxjava3.core;public class Single {final java.util.function.Supplier<Object> value;public static boolean lost;public Single(Object value){this.value=()->value;}public Single(java.util.function.Supplier<Object> value){this.value=value;}public Single timeout(long n,java.util.concurrent.TimeUnit unit){if(n!=15&&n!=5)throw new AssertionError();return this;}public Object blockingGet(){if(lost)throw new IllegalStateException("private error");return value.get();}}''',
+'io/reactivex/rxjava3/core/Single.java': r'''package io.reactivex.rxjava3.core;public class Single {final java.util.function.Supplier<Object> value;public static boolean lost;public Single(Object value){this.value=()->value;}public Single(java.util.function.Supplier<Object> value){this.value=value;}public Single timeout(long n,java.util.concurrent.TimeUnit unit){if(n!=15&&n!=5&&n!=6&&n!=3&&n!=2)throw new AssertionError();return this;}public Object blockingGet(){if(lost)throw new IllegalStateException("private error");return value.get();}}''',
 'io/reactivex/rxjava3/core/Flowable.java': r'''package io.reactivex.rxjava3.core;
 import java.util.*;import java.util.concurrent.CopyOnWriteArrayList;import io.reactivex.rxjava3.functions.Consumer;import io.reactivex.rxjava3.disposables.Disposable;
 public class Flowable {public Object value;public boolean failSubscribe;public final List<Consumer> listeners=new CopyOnWriteArrayList<>();
@@ -68,75 +68,96 @@ public static Builder builder(String rev,List<?> next,List<?> prev){Builder b=ne
 public static SetQueueCommand create(String rev,List<?> next,List<?> prev){return builder(rev,next,prev).build();}
 public static class Builder {final SetQueueCommand v=new SetQueueCommand();public Builder options(CommandOptions options){v.options=options;return this;}public SetQueueCommand build(){return v;}}}''',
 'com/lenerd/spotifyplus/module/hooks/PlayerHook.java': r'''package com.lenerd.spotifyplus.module.hooks;public class PlayerHook {public static Object contextPlayer;public static String playBinding="installed";}''',
-'com/spotify/player/model/ContextTrack.java': r'''package com.spotify.player.model;public class ContextTrack {public String uri,uid="";public static Builder builder(String uri){Builder b=new Builder();b.v.uri=uri;return b;}public static class Builder {final ContextTrack v=new ContextTrack();public Builder uid(String uid){v.uid=uid;return this;}public ContextTrack build(){return v;}}}''',
+'com/spotify/player/model/ContextTrack.java': r'''package com.spotify.player.model;import java.util.*;
+public class ContextTrack {public String uri,uid="",provider="context";public Map<String,String> meta=new HashMap<>();
+public String uri(){return uri;}public String uid(){return uid;}public String provider(){return provider;}public Map<String,String> metadata(){return meta;}
+public static Builder builder(String uri){Builder b=new Builder();b.v.uri=uri;return b;}public Builder toBuilder(){Builder b=builder(uri);b.v.uid=uid;b.v.provider=provider;b.v.meta.putAll(meta);return b;}
+public static class Builder {final ContextTrack v=new ContextTrack();public Builder uid(String uid){v.uid=uid;return this;}public Builder provider(String p){v.provider=p;return this;}public Builder metadata(Map<String,String> m){v.meta=new HashMap<>(m);return this;}public ContextTrack build(){return v;}}}''',
 'com/spotify/player/model/ContextPage.java': r'''package com.spotify.player.model;public class ContextPage {public java.util.List<ContextTrack> tracks;public static Builder builder(){return new Builder();}public static class Builder {final ContextPage v=new ContextPage();public Builder tracks(java.util.List<ContextTrack> tracks){v.tracks=tracks;return this;}public ContextPage build(){return v;}}}''',
 'com/spotify/player/model/Context.java': r'''package com.spotify.player.model;public class Context {public String uri;public java.util.List<ContextPage> pages;public static Builder builder(String uri){Builder b=new Builder();b.v.uri=uri;return b;}public static class Builder {final Context v=new Context();public Builder pages(java.util.List<ContextPage> pages){v.pages=pages;return this;}public Context build(){return v;}}}''',
 'com/spotify/player/model/PlayOrigin.java': r'''package com.spotify.player.model;public class PlayOrigin {public String feature,view;public static Builder builder(String feature){Builder b=new Builder();b.v.feature=feature;return b;}public static class Builder {final PlayOrigin v=new PlayOrigin();public Builder viewUri(String view){v.view=view;return this;}public PlayOrigin build(){return v;}}}''',
 'com/spotify/player/model/command/options/SkipToTrack.java': r'''package com.spotify.player.model.command.options;public class SkipToTrack {public Long track,page;public static SkipToTrack fromIndices(Long track,Long page){SkipToTrack v=new SkipToTrack();v.track=track;v.page=page;return v;}}''',
-'com/spotify/player/model/command/options/PlayerOptionOverrides.java': r'''package com.spotify.player.model.command.options;public class PlayerOptionOverrides {public Boolean shuffled;public static Builder builder(){return new Builder();}public static class Builder {final PlayerOptionOverrides v=new PlayerOptionOverrides();public Builder shufflingContext(Boolean shuffled){v.shuffled=shuffled;return this;}public PlayerOptionOverrides build(){return v;}}}''',
+'com/spotify/player/model/command/options/PlayerOptionOverrides.java': r'''package com.spotify.player.model.command.options;public class PlayerOptionOverrides {public Boolean shuffled,repeatTrack,repeatContext;public static Builder builder(){return new Builder();}public static class Builder {final PlayerOptionOverrides v=new PlayerOptionOverrides();public Builder shufflingContext(Boolean shuffled){v.shuffled=shuffled;return this;}public Builder repeatingTrack(Boolean x){v.repeatTrack=x;return this;}public Builder repeatingContext(Boolean x){v.repeatContext=x;return this;}public PlayerOptionOverrides build(){return v;}}}''',
 'com/spotify/player/model/command/options/PreparePlayOptions.java': r'''package com.spotify.player.model.command.options;public class PreparePlayOptions {public Boolean always,paused;public SkipToTrack skip;public PlayerOptionOverrides overrides;public static Builder builder(){return new Builder();}public static class Builder {final PreparePlayOptions v=new PreparePlayOptions();public Builder alwaysPlaySomething(boolean always){v.always=always;return this;}public Builder initiallyPaused(boolean paused){v.paused=paused;return this;}public Builder skipTo(SkipToTrack skip){v.skip=skip;return this;}public Builder playerOptionsOverride(PlayerOptionOverrides overrides){v.overrides=overrides;return this;}public PreparePlayOptions build(){return v;}}}''',
 'com/spotify/player/model/command/PlayCommand.java': r'''package com.spotify.player.model.command;public class PlayCommand {public com.spotify.player.model.Context context;public com.spotify.player.model.PlayOrigin origin;public com.spotify.player.model.command.options.PreparePlayOptions options;public static Builder builder(com.spotify.player.model.Context context,com.spotify.player.model.PlayOrigin origin){Builder b=new Builder();b.v.context=context;b.v.origin=origin;return b;}public static class Builder {final PlayCommand v=new PlayCommand();public Builder options(com.spotify.player.model.command.options.PreparePlayOptions options){v.options=options;return this;}public PlayCommand build(){return v;}}}''',
 'io/reactivex/rxjava3/disposables/Disposable.java': r'''package io.reactivex.rxjava3.disposables;public interface Disposable {void dispose();boolean isDisposed();}''',
 'io/reactivex/rxjava3/functions/Consumer.java': r'''package io.reactivex.rxjava3.functions;public interface Consumer {void accept(Object value)throws Exception;}''',
 'com/spotify/player/model/command/options/CommandOptions.java': r'''package com.spotify.player.model.command.options;public class CommandOptions {public boolean override;public static Builder builder(){return new Builder();}public static class Builder {final CommandOptions v=new CommandOptions();public Builder overrideRestrictions(boolean value){v.override=value;return this;}public CommandOptions build(){return v;}}}''',
 'com/lenerd46/spotifyplus/api2/ShuffleDiagnosticsUi.java': r'''package com.lenerd46.spotifyplus.api2;public class ShuffleDiagnosticsUi {public static String copied;public static boolean copy(String report){copied=report;return true;}}''',
-'AdapterHarness.java': r'''import org.json.*;import java.util.*;import com.lenerd46.spotifyplus.api2.*;import com.spotify.player.model.command.*;import io.reactivex.rxjava3.core.*;
+'AdapterHarness.java': r'''import org.json.*;import java.util.*;import com.lenerd46.spotifyplus.api2.*;import com.spotify.player.model.*;import com.spotify.player.model.command.*;import io.reactivex.rxjava3.core.*;
 public class AdapterHarness {
  static void ok(boolean b){if(!b)throw new AssertionError();}
  static String uri(int n){return "spotify:track:"+String.format("%022d",n);}
- public static class Track {final String uri,uid;String provider="context";public String provider(){return provider;}final Map<String,String> meta=new HashMap<>();Track(int n,String u){uri=AdapterHarness.uri(n);uid=u;}public String uri(){return uri;}public String uid(){return uid;}public Map<String,String> metadata(){return meta;}public Builder toBuilder(){return new Builder(this);}public static class Builder {final Track value;Builder(Track source){value=new Track(Integer.parseInt(source.uri.substring(source.uri.lastIndexOf(':')+1)),source.uid);value.meta.putAll(source.meta);}public Builder metadata(Map<String,String> metadata){value.meta.clear();value.meta.putAll(metadata);return this;}public Track build(){return value;}}public String toString(){return uri+uid;}}
- public static class Opt {final Track value;Opt(Track t){value=t;}public boolean c(){return value!=null;}public Track b(){return value;}public String toString(){return String.valueOf(value);}}
- public static class State {String rev="r";final Track a=new Track(1,"a"),b=new Track(1,"b"),c=new Track(2,"c"),old=new Track(3,"old");List<Track> next=List.of(a,b,c),prev=List.of(old);Opt current=new Opt(old);public Opt track(){return current;}public String revision(){return rev;}public List<Track> nextTracks(){return next;}public List<Track> prevTracks(){return prev;}public String toString(){return rev+next+prev+current;}}
+ static ContextTrack track(int n,String uid,String provider,boolean queued){return ContextTrack.builder(uri(n)).uid(uid).provider(provider).metadata(Map.of("is_queued",Boolean.toString(queued))).build();}
+ public static class Opt {final ContextTrack value;Opt(ContextTrack t){value=t;}public boolean c(){return value!=null;}public ContextTrack b(){return value;}}
+ public static class State {String rev="r";List<ContextTrack> next=List.of(AdapterHarness.track(1,"a","context",false),AdapterHarness.track(1,"b","context",false),AdapterHarness.track(2,"c","context",false)),prev=List.of(AdapterHarness.track(3,"old","context",false));Opt current=new Opt(AdapterHarness.track(3,"current","context",false));public Opt track(){return current;}public String revision(){return rev;}public List<ContextTrack> nextTracks(){return next;}public List<ContextTrack> prevTracks(){return prev;}}
  public static class Options {public boolean shuffled;public boolean shufflingContext(){return shuffled;}}
  public static class PlayerState {final Options options=new Options();public Options options(){return options;}}
- public static class Repo {final Flowable stream;int writes;SetQueueCommand last;boolean rejected,noOp,enrich,eventOnly;Repo(State s){stream=new Flowable(s);}
-public Single renamedDispatch(SetQueueCommand c){writes++;last=c;
- // Models the reported acknowledgement/no-op; not a real server reproduction.
- if(c.options==null||!c.options.override)return new Single("Success{}");
- ok(!stream.listeners.isEmpty());
- if(!rejected&&!noOp){State original=(State)stream.value;State s=original;
- if(eventOnly){s=new State();s.current=original.current;s.prev=original.prev;}
- s.next=(List<Track>)c.next;if(enrich){List<Track> hydrated=new ArrayList<>();for(Track t:s.next){Track copy=new Track(Integer.parseInt(t.uri.substring(t.uri.lastIndexOf(':')+1)),t.uid);copy.meta.putAll(t.meta);copy.meta.put("title","fresh title");hydrated.add(copy);}s.next=hydrated;Track t=s.current.b();s.current=new Opt(new Track(Integer.parseInt(t.uri.substring(t.uri.lastIndexOf(':')+1)),t.uid));}
- s.rev+="queue";stream.emit(s,!eventOnly);}
- if(noOp)stream.emit(stream.value,true);return new Single(rejected?"Failure{}":"Success{}");}}
- // The pipeline fixture requires subscribing to its lazy result. A direct
- // Esperanto request cannot invoke it or run its interceptors.
- public static class Handler {final State state;int interceptors,writes;boolean noOp,loseAfterWrite,stopAfterWrite;String tailProvider;String status="Success{}";PlayCommand last;Handler(State s){state=s;}public Single obfuscatedPlay(PlayCommand c){return new Single(()->{interceptors++;writes++;last=c;if(status.startsWith("Success")&&!noOp){List<Track> ordered=new ArrayList<>();ok(!c.context.uri.isEmpty());int i=0;for(var t:c.context.pages.get(0).tracks){ok(t.uid.isEmpty());ordered.add(new Track(Integer.parseInt(t.uri.substring(t.uri.lastIndexOf(':')+1)),"core-"+writes+"-"+(i++)));}state.current=new Opt(ordered.get(0));state.next=new ArrayList<>(ordered.subList(1,ordered.size()));if(tailProvider!=null){for(int n:new int[]{8,9}){Track t=new Track(n,"tail-"+n);t.provider=tailProvider;state.next.add(t);}}state.rev+="play";((Repo)com.lenerd46.spotifyplus.player.NextUpQueue.repo).stream.emit(state,true);if(stopAfterWrite){state.current=new Opt(null);state.next=List.of();((Repo)com.lenerd46.spotifyplus.player.NextUpQueue.repo).stream.emit(state,true);}}if(loseAfterWrite)throw new IllegalStateException("private error");return status;});}}
- static Object call(String operation,JSONObject args)throws Exception{return ShufflePlusBridge.execute(AdapterHarness.class.getClassLoader(),"shuffleplus."+operation,args);}
- static void fail(String operation,JSONObject args,String code)throws Exception{try{call(operation,args);throw new AssertionError("missing "+code);}catch(IllegalStateException e){ok(e.getMessage().equals("SP_SHUFFLE_"+code));}}
- static JSONObject order(String ticket,int... values){JSONArray a=new JSONArray();for(int i:values)a.put(i);return new JSONObject().put("ticket",ticket).put("order",a);}
- public static void main(String[] args)throws Exception{
-  State state=new State();Repo repo=new Repo(state);PlayerState player=new PlayerState();Handler handler=new Handler(state);com.lenerd46.spotifyplus.player.NextUpQueue.repo=repo;com.lenerd.spotifyplus.module.Utils.playerState=player;com.lenerd.spotifyplus.module.hooks.PlayerHook.contextPlayer=handler;
-  ok(((JSONObject)call("capabilities",new JSONObject())).getInt("host")==19);
-  JSONObject p=(JSONObject)call("queue",new JSONObject());ok(p.getInt("count")==3&&repo.writes==0);String ticket=p.getString("ticket");call("apply",order(ticket,2,0,1));ok(((Track)repo.last.next.get(0)).uid.equals("c")&&((Track)repo.last.next.get(1)).uid.equals("a")&&((Track)repo.last.next.get(2)).uid.equals("b")&&repo.last.previous.equals(state.prev));fail("apply",order(ticket,2,0,1),"USED");
-  p=(JSONObject)call("queue",new JSONObject());state.rev="changed";state.a.meta.put("title","enriched title");state.a.meta.put("image_url","new artwork");repo.enrich=true;call("apply",order(p.getString("ticket"),0,1,2));ok(repo.last.revision.equals("changed"));repo.enrich=false;
-  p=(JSONObject)call("queue",new JSONObject());state.current=new Opt(new Track(3,"different-occurrence"));fail("apply",order(p.getString("ticket"),0,1,2),"STALE_ORDER");
-  p=(JSONObject)call("queue",new JSONObject());state.next.get(1).meta.put("is_queued","true");fail("apply",order(p.getString("ticket"),0,1,2),"STALE_ORDER");state.next.get(1).meta.remove("is_queued");player.options.shuffled=true;fail("queue",new JSONObject(),"SHUFFLE_ON");player.options.shuffled=false;
-  JSONObject source=new JSONObject().put("context","spotify:collection:tracks").put("uris",new JSONArray().put(uri(2)).put(uri(1)).put(uri(1)));
-  com.lenerd.spotifyplus.module.hooks.PlayerHook.contextPlayer=null;fail("prepare",source,"PLAYER_READY");ok(handler.writes==0);com.lenerd.spotifyplus.module.hooks.PlayerHook.contextPlayer=handler;
-  p=(JSONObject)call("prepare",source);ok(handler.writes==0);call("apply",order(p.getString("ticket"),0,1,2));ok(handler.writes==1&&handler.interceptors==1);
-  PlayCommand c=handler.last;ok(c.context.uri.equals("spotify:collection:tracks")&&c.context.pages.size()==1&&c.context.pages.get(0).tracks.size()==3);ok(c.options.always==null&&!c.options.paused&&!c.options.overrides.shuffled&&c.options.skip.track==0L&&c.options.skip.page==0L);ok(c.origin.feature.equals("spotifyplus")&&c.origin.view.equals("spotify:collection:tracks"));ok(state.current.b().uri().equals(uri(2))&&state.next.size()==2&&!state.next.get(0).uid().equals(state.next.get(1).uid()));
-  handler.noOp=true;p=(JSONObject)call("prepare",source);ticket=p.getString("ticket");fail("apply",order(ticket,0,1,2),"UNCONFIRMED_READBACK");fail("apply",order(ticket,0,1,2),"USED");ok(handler.writes==2);handler.noOp=false;
-  p=(JSONObject)call("prepare",source);com.lenerd.spotifyplus.module.hooks.PlayerHook.contextPlayer=new Handler(state);fail("apply",order(p.getString("ticket"),0,1,2),"STALE_PLAYER");ok(handler.writes==2);com.lenerd.spotifyplus.module.hooks.PlayerHook.contextPlayer=handler;
-  handler.status="Failure{}";p=(JSONObject)call("prepare",source);fail("apply",order(p.getString("ticket"),0,1,2),"PLAY_REFUSED");handler.status="unexpected";p=(JSONObject)call("prepare",source);fail("apply",order(p.getString("ticket"),0,1,2),"ACK");handler.status="Success{}";
-  handler.loseAfterWrite=true;p=(JSONObject)call("prepare",source);ticket=p.getString("ticket");fail("apply",order(ticket,0,1,2),"RPC");int writes=handler.writes;fail("apply",order(ticket,0,1,2),"USED");ok(handler.writes==writes);handler.loseAfterWrite=false;
-  repo.noOp=true;p=(JSONObject)call("queue",new JSONObject());fail("apply",order(p.getString("ticket"),1,0),"UNCONFIRMED_NO_CHANGE");repo.noOp=false;repo.rejected=true;p=(JSONObject)call("queue",new JSONObject());fail("apply",order(p.getString("ticket"),0,1),"CONFLICT");
-  repo.rejected=false;repo.eventOnly=true;p=(JSONObject)call("queue",new JSONObject());call("apply",order(p.getString("ticket"),1,0));ok(repo.stream.listeners.isEmpty());
-  JSONObject diagnostics=(JSONObject)call("diagnostics",new JSONObject());ok(diagnostics.get("observerStartedBeforeDispatch").equals(true)&&diagnostics.get("observerDisposed").equals(true)&&diagnostics.get("visibleOrderMatches").equals(true));
-  repo.eventOnly=false;repo.stream.failSubscribe=true;p=(JSONObject)call("queue",new JSONObject());int before=repo.writes;fail("apply",order(p.getString("ticket"),1,0),"OBSERVER_READY");ok(repo.writes==before&&repo.stream.listeners.isEmpty());repo.stream.failSubscribe=false;
-  handler.tailProvider="autoplay";p=(JSONObject)call("prepare",source);JSONObject applied=(JSONObject)call("apply",order(p.getString("ticket"),0,1,2));ok(applied.getInt("autoplayTailCount")==2&&applied.get("selectionCompleteInWindow").equals(true));
-  handler.tailProvider="context";p=(JSONObject)call("prepare",source);fail("apply",order(p.getString("ticket"),0,1,2),"UNCONFIRMED_ORDER");handler.tailProvider=null;
-  handler.stopAfterWrite=true;p=(JSONObject)call("prepare",source);fail("apply",order(p.getString("ticket"),0,1,2),"UNCONFIRMED_ORDER");handler.stopAfterWrite=false;
-  diagnostics=(JSONObject)call("diagnostics",new JSONObject());ok(diagnostics.get("currentPresent").equals(false)&&diagnostics.get("observedNextCount").equals(0)&&diagnostics.get("postDispatchEvents").equals(2));
-  state.current=new Opt(state.old);state.next=List.of(state.a,state.b,state.c);
-  Object left=state.next.get(0),right=state.next.get(1);((Track)left).meta.put("is_queued","true");((Track)right).meta.put("is_queued","false");
-  var normalized=NativeQueueCommand.prepare(AdapterHarness.class.getClassLoader(),"42",List.of(right,left),state.prev,1,null);
-  ok(((Track)normalized.next.get(0)).meta.get("is_queued").equals("true")&&((Track)normalized.next.get(1)).meta.get("is_queued").equals("false"));
-  ok(((Track)left).meta.get("is_queued").equals("true")&&((Track)right).meta.get("is_queued").equals("false"));
-  ok(((SetQueueCommand)normalized.command).options.override);
-  System.out.println("PASS real command adapter: lazy native pipeline, exact order/duplicates, no-op rejection, handler lifetime, refusal and lost-result no retry");
+ static Repo repo;static Handler handler;static PlayerState player;
+ public static class Repo {final Flowable stream;int writes;SetQueueCommand last;boolean rejected,noOp,changeCurrent,lose,stopAfterWrite,failSecondSubscribe;Repo(State s){stream=new Flowable(s);}
+ public Single renamedDispatch(SetQueueCommand c){return new Single(()->{writes++;last=c;ok(c.options.override&&!stream.listeners.isEmpty());
+ State original=(State)stream.value;State s=new State();s.current=original.current;s.prev=original.prev;s.rev=original.rev+"queue";s.next=original.next;
+ if(!rejected&&!noOp){s.next=new ArrayList<>();int i=0;for(Object o:c.next){ContextTrack t=(ContextTrack)o;ContextTrack v=t.toBuilder().uid(t.uid.isEmpty()?"assigned-"+(i++):t.uid).build();s.next.add(v);}}
+ if(changeCurrent)s.current=new Opt(track(8,"user-skip","context",false));stream.emit(s,true);
+ if(stopAfterWrite){s=new State();s.current=new Opt(null);s.next=List.of();stream.emit(s,true);}
+ if(lose)throw new IllegalStateException("private");return rejected?"Failure{}":"Success{}";});}}
+ // Reproduces the R19 failure shape: starting playback accepts only the first
+ // requested song; it does NOT conveniently install the entire shuffled page.
+ public static class Handler {int writes;PlayCommand last;boolean noOp,lose,stop,contextTail,manualTail,failRead,failSecondSubscribe;String status="Success{}";
+ public Single obfuscatedPlay(PlayCommand c){return new Single(()->{writes++;last=c;ok(!repo.stream.listeners.isEmpty());
+ if(status.startsWith("Success")&&!noOp){State s=new State();s.rev="play-"+writes;s.current=new Opt(track(Integer.parseInt(c.context.pages.get(0).tracks.get(0).uri.substring(14)),"core-"+writes,"context",false));
+ s.next=List.of(track(8,"tail8",contextTail?"context":manualTail?"queue":"autoplay",manualTail),track(9,"tail9","autoplay",false));repo.stream.emit(s,true);
+ if(stop){s=new State();s.current=new Opt(null);s.next=List.of();repo.stream.emit(s,true);}
+ if(failSecondSubscribe)repo.stream.failSubscribe=true;if(failRead)Single.lost=true;}
+ if(lose)throw new IllegalStateException("private");return status;});}}
+ static void reset(){Single.lost=false;State s=new State();repo=new Repo(s);handler=new Handler();player=new PlayerState();com.lenerd46.spotifyplus.player.NextUpQueue.repo=repo;com.lenerd.spotifyplus.module.Utils.playerState=player;com.lenerd.spotifyplus.module.hooks.PlayerHook.contextPlayer=handler;}
+ static Object call(String op,JSONObject args)throws Exception{return ShufflePlusBridge.execute(AdapterHarness.class.getClassLoader(),"shuffleplus."+op,args);}
+ static JSONObject source(int... values){JSONArray a=new JSONArray();for(int n:values)a.put(uri(n));return new JSONObject().put("context","spotify:album:0000000000000000000099").put("uris",a);}
+ static JSONObject prepare(int... values)throws Exception{return (JSONObject)call("prepare",source(values));}
+ static JSONObject order(JSONObject p,int... values){JSONArray a=new JSONArray();for(int i:values)a.put(i);return new JSONObject().put("ticket",p.getString("ticket")).put("order",a);}
+ static JSONObject apply(JSONObject p,int... values)throws Exception{return (JSONObject)call("apply",order(p,values));}
+ static void fail(String op,JSONObject args,String code)throws Exception{try{call(op,args);throw new AssertionError("missing "+code);}catch(IllegalStateException e){if(!e.getMessage().equals("SP_SHUFFLE_"+code))throw new AssertionError("expected "+code+" got "+e.getMessage());}}
+ static JSONObject diag()throws Exception{return (JSONObject)call("diagnostics",new JSONObject());}
+ static void stopped(){ok(repo.stream.listeners.isEmpty());}
+ public static void main(String[] args)throws Exception {
+ reset();ok(((JSONObject)call("capabilities",new JSONObject())).getInt("host")==20);
+ JSONObject p=(JSONObject)call("queue",new JSONObject());ok(repo.writes==0);apply(p,2,0,1);ok(((ContextTrack)repo.last.next.get(0)).uid.equals("c"));stopped();
+ p=(JSONObject)call("queue",new JSONObject());((State)repo.stream.value).rev="metadata-only";apply(p,1,2,0);ok(repo.last.revision.equals("metadata-only"));
+ p=(JSONObject)call("queue",new JSONObject());((State)repo.stream.value).current=new Opt(track(3,"new-current","context",false));fail("apply",order(p,0,1,2),"STALE_ORDER");
+ reset();p=prepare(2,1,1);ok(handler.writes==0&&repo.writes==0);JSONObject result=apply(p,0,1,2);
+ ok(handler.writes==1&&repo.writes==1&&result.getInt("autoplayTailCount")==2&&result.get("selectionCompleteInWindow").equals(true));
+ PlayCommand c=handler.last;ok(c.context.uri.equals(uri(2))&&c.context.pages.size()==1&&c.context.pages.get(0).tracks.size()==1&&c.context.pages.get(0).tracks.get(0).uid.isEmpty());
+ ok(!c.options.paused&&!c.options.overrides.shuffled&&!c.options.overrides.repeatTrack&&!c.options.overrides.repeatContext&&c.options.skip.track==0L&&c.options.skip.page==0L&&c.origin.view.equals("spotify:album:0000000000000000000099"));
+ State state=(State)repo.stream.value;ok(state.next.size()==4&&state.next.get(0).uri.equals(uri(1))&&state.next.get(1).uri.equals(uri(1))&&!state.next.get(0).uid.equals(state.next.get(1).uid));
+ ok(repo.last.next.size()==4&&((ContextTrack)repo.last.next.get(0)).uid.isEmpty()&&((ContextTrack)repo.last.next.get(0)).provider.equals("queue")&&((ContextTrack)repo.last.next.get(0)).meta.get("is_queued").equals("true"));
+ ok(state.next.get(2).uid.equals("tail8")&&state.next.get(2).provider.equals("autoplay"));
+ ok(diag().get("playSent").equals(true)&&diag().get("queueSent").equals(true)&&diag().get("firstTrackConfirmed").equals(true)&&diag().get("stage").equals("complete"));stopped();fail("apply",order(p,0,1,2),"USED");
+ // Existing/manual additions cannot be silently discarded.
+ fail("prepare",source(1,2),"MANUAL_QUEUE");
+ reset();p=prepare(1,2);((State)repo.stream.value).next=List.of(track(8,"manual","queue",true));fail("apply",order(p,0,1),"STALE_ORDER");ok(handler.writes==0&&repo.writes==0);
+ reset();handler.manualTail=true;p=prepare(1,2);fail("apply",order(p,0,1),"SEQUENCE_CHANGED");ok(handler.writes==1&&repo.writes==0&&diag().get("outcome").equals("unknown"));stopped();
+ reset();handler.contextTail=true;p=prepare(1,2);fail("apply",order(p,0,1),"SEQUENCE_CHANGED");ok(repo.writes==0);stopped();
+ // A single song needs no queue write. Autoplay remains unchanged.
+ reset();p=prepare(2);apply(p,0);ok(handler.writes==1&&repo.writes==0);stopped();
+ // Initial replay of stage two cannot prove its write; a no-op stays unknown.
+ reset();repo.noOp=true;p=prepare(2,1,1);fail("apply",order(p,0,1,2),"UNCONFIRMED_ORDER");ok(repo.writes==1&&handler.writes==1&&diag().get("outcome").equals("unknown"));stopped();
+ reset();repo.rejected=true;p=prepare(2,1);fail("apply",order(p,0,1),"SEQUENCE_REFUSED");ok(diag().get("outcome").equals("unknown"));stopped();
+ reset();repo.changeCurrent=true;p=prepare(2,1);fail("apply",order(p,0,1),"UNCONFIRMED_ORDER");stopped();
+ reset();repo.stopAfterWrite=true;p=prepare(2,1);fail("apply",order(p,0,1),"UNCONFIRMED_ORDER");stopped();
+ reset();repo.lose=true;p=prepare(2,1);fail("apply",order(p,0,1),"RPC");fail("apply",order(p,0,1),"USED");ok(repo.writes==1&&handler.writes==1);stopped();
+ reset();handler.noOp=true;p=prepare(2,1);fail("apply",order(p,0,1),"UNCONFIRMED_READBACK");ok(repo.writes==0);stopped();
+ reset();handler.stop=true;p=prepare(2,1);fail("apply",order(p,0,1),"UNCONFIRMED_ORDER");ok(repo.writes==0);stopped();
+ reset();handler.status="Failure{}";p=prepare(2,1);fail("apply",order(p,0,1),"PLAY_REFUSED");ok(repo.writes==0&&diag().get("outcome").equals("refused"));stopped();
+ reset();handler.lose=true;p=prepare(2,1);fail("apply",order(p,0,1),"RPC");ok(repo.writes==0);stopped();
+ reset();handler.failSecondSubscribe=true;p=prepare(2,1);fail("apply",order(p,0,1),"UNCONFIRMED_READBACK");ok(repo.writes==0&&diag().get("outcome").equals("unknown"));stopped();
+ reset();handler.failRead=true;p=prepare(2,1);fail("apply",order(p,0,1),"UNCONFIRMED_READBACK");Single.lost=false;ok(repo.writes==0&&diag().get("outcome").equals("unknown"));stopped();
+ reset();repo.stream.failSubscribe=true;p=prepare(2,1);fail("apply",order(p,0,1),"OBSERVER_READY");ok(handler.writes==0&&repo.writes==0);stopped();
+ reset();p=prepare(2,1);com.lenerd.spotifyplus.module.hooks.PlayerHook.contextPlayer=new Handler();fail("apply",order(p,0,1),"STALE_PLAYER");ok(handler.writes==0);
+ reset();List<String> max=Collections.nCopies(9999,uri(1));var prepared=NativeQueueCommand.prepareSelection(AdapterHarness.class.getClassLoader(),"42",max,List.of(),List.of(track(9,"keep","autoplay",false)),null);ok(prepared.next.size()==10000);
+ System.out.println("PASS staged adapter: first-track only, explicit queue, duplicate occurrences, preserved Autoplay, safe manual/concurrent changes, no-op/refusal/lost-result and observer cleanup");
  }
-}''',
+}
+''',
 }
 class ShuffleTests(unittest.TestCase):
  def test_engine_and_native_command(self):

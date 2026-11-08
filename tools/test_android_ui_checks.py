@@ -3,7 +3,7 @@ from unittest.mock import patch
 import run_android_ui_checks as checks
 
 class AndroidUiRunnerTests(unittest.TestCase):
-    def execute(self,*,guest='1',instrument='OK (8 tests)\n',valid_source=True):
+    def execute(self,*,guest='1',instrument='OK (9 tests)\n',valid_source=True):
         with tempfile.TemporaryDirectory() as directory:
             report=pathlib.Path(directory)/'report.json';model=pathlib.Path(directory)/'model.apk';model.write_bytes(b'fixture model');calls=[]
             def command(*args,**kwargs):
@@ -22,13 +22,13 @@ class AndroidUiRunnerTests(unittest.TestCase):
                 try:checks.main();error=None
                 except RuntimeError as caught:error=caught
             return calls,json.loads(report.read_text()),error
-    def test_models_are_sealed_and_adb_unrooted_before_eight_checks_and_fixture_retrieval(self):
-        calls,report,error=self.execute();self.assertIsNone(error);self.assertTrue(report['passed']);self.assertEqual(report['tests_passed'],8)
+    def test_models_are_sealed_and_adb_unrooted_before_nine_checks_and_fixture_retrieval(self):
+        calls,report,error=self.execute();self.assertIsNone(error);self.assertTrue(report['passed']);self.assertEqual(report['tests_passed'],9)
         instrument=next(i for i,c in enumerate(calls) if c[:3]==('shell','am','instrument'))
         roots=[i for i,c in enumerate(calls) if c==('root',)];self.assertEqual(len(roots),2);self.assertLess(roots[0],instrument);self.assertGreater(roots[1],instrument)
         self.assertLess(calls.index(('unroot',)),instrument)
         self.assertIn(('shell','chmod','0444','/data/user/0/com.lenerd46.spotifyplus/files/spotify-model.apk'),calls)
-        self.assertTrue(report['spotify_autoplay_provider_readback_verified']);self.assertTrue(report['spotify_model_playback_serialization_verified']);self.assertTrue(report['spotify_model_queue_command_verified']);self.assertFalse(report['authenticated_playback_tested']);self.assertFalse(report['samsung_rendering_tested'])
+        self.assertTrue(report['spotify_explicit_selection_queue_verified']);self.assertTrue(report['spotify_autoplay_provider_readback_verified']);self.assertTrue(report['spotify_model_playback_serialization_verified']);self.assertTrue(report['spotify_model_queue_command_verified']);self.assertFalse(report['authenticated_playback_tested']);self.assertFalse(report['samsung_rendering_tested'])
     def test_failed_checks_cannot_pass_or_retrieve_the_rendering_fixture(self):
         calls,report,error=self.execute(instrument='FAILURES!!!\nTests run: 6, Failures: 1')
         self.assertIsNotNone(error);self.assertFalse(report['passed']);self.assertEqual(calls.count(('root',)),1);self.assertFalse(any(c[0]=='pull' for c in calls))

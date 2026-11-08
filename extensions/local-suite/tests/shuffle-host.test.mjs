@@ -28,6 +28,8 @@ test('Shuffle+ bundle through real pinned loader: no writes on preview, native a
   requestApi:async(op,args)=>{
    calls.push({op,args});
    if(op==='shuffleplus.capabilities')return {version:1,host:17,route:"native-play-command",queueMode:"native-editor-options",playerReady:true,limit:10000};
+   if(op==='shuffleplus.diagnostics')return {host:17,mode:'queue',outcome:'unknown',queueUnchanged:true};
+   if(op==='shuffleplus.copyDiagnostics')return true;
    if(op==='shuffleplus.queue')return {mode:'queue',ticket,count:3,tracks:[1,1,2].map(n=>({uri:uri(n),title:'Song '+n,artist:'Artist'}))};
    if(op==='shuffleplus.prepare'){if(prepareHold)await prepareHold;if(failPrepare)throw new Error(failPrepare);return {mode:'collection',ticket,count:args.uris.length};}
    if(op==='shuffleplus.apply'){if(fail)throw new Error(fail);return {verification:"visible-order",applied:args.order.length}}
@@ -66,6 +68,7 @@ test('Shuffle+ bundle through real pinned loader: no writes on preview, native a
   const prepared=calls.find(c=>c.op==='shuffleplus.prepare');assert.deepEqual([...prepared.args.uris].sort(),[uri(1),uri(2)].sort());assert.equal(prepared.args.uris.length,2);
   fail='SP_SHUFFLE_STALE';press('Start shuffled playback');await until(()=>read().includes('Playback or the queue changed'));
   assert.equal(values.get('com.wamako.shuffleplus:shuffle-write-v1').phase,'stopped');assert.equal(mutations().length,2);
+  press('Copy last shuffle diagnostics');await until(()=>read().includes('Shuffle diagnostics copied'));assert.equal(mutations().length,2);
   fail='SP_SHUFFLE_RPC';press('Prepare shuffled playback');await until(()=>button('Start shuffled playback'));press('Start shuffled playback');await until(()=>read().includes('I checked playback; allow another shuffle'));
   assert.equal(mutations().length,3);assert.equal(values.get('com.wamako.shuffleplus:shuffle-write-v1').phase,'unknown');
   press('I checked playback; allow another shuffle');assert.equal(values.get('com.wamako.shuffleplus:shuffle-write-v1').phase,'reviewed');

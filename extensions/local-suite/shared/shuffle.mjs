@@ -50,6 +50,18 @@ export function shuffleError(error, mutation = false) {
   result.unknown = mutation && !known[code];
   return result;
 }
+export function safeDiagnostics(value) {
+  if (!value || value.host !== 17) throw new Error("No R17 shuffle diagnostics are available yet.");
+  const out = {host:17};
+  const enums = {mode:["queue","collection"],outcome:["not_sent","unknown","confirmed","refused"],reply:["success","refused"],readbackError:["schema","stream"]};
+  for (const [key, allowed] of Object.entries(enums)) if (allowed.includes(value[key])) out[key] = value[key];
+  for (const key of ["sent","nativeEditorOptions","queueUnchanged","revisionChanged","currentMatches","historyMatches","uriOrderMatches","uidOrderMatches","visibleOrderMatches","observerStartedBeforeDispatch","observerDisposed"])
+    if (typeof value[key] === "boolean") out[key] = value[key];
+  for (const key of ["eventsObserved","expectedTrackCount","expectedNextCount","queuedSlots","observedNextCount"])
+    if (Number.isSafeInteger(value[key]) && value[key] >= 0 && value[key] <= 100000) out[key] = value[key];
+  if (typeof value.errorCode === "string" && /^SP_SHUFFLE_[A-Z_]+$/.test(value.errorCode)) out.errorCode = value.errorCode;
+  return out;
+}
 export class ShuffleClient {
   constructor(api) { this.api = api; }
   async capabilities(job) {
@@ -65,8 +77,7 @@ export class ShuffleClient {
   async diagnostics(job) {
     check(job);
     const value = await this.api.ShufflePlus.diagnostics();
-    if (!value || value.host !== 17) throw new Error("No R17 shuffle diagnostics are available yet.");
-    return value;
+    return safeDiagnostics(value);
   }
   async copyDiagnostics(job) {
     check(job);

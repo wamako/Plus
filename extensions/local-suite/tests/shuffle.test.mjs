@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {permutation,shuffleTracks,ShuffleClient,shuffleError} from '../shared/shuffle.mjs';
+import {permutation,shuffleTracks,ShuffleClient,shuffleError,safeDiagnostics} from '../shared/shuffle.mjs';
 const uri=n=>'spotify:track:'+String(n).padStart(22,'0');
 const tracks=[1,1,2].map((n,i)=>({uri:uri(n),title:'Song '+n,artist:'Artist',occurrence:i}));
 const ticket='12345678-1234-1234-1234-123456789abc';
@@ -10,12 +10,14 @@ function fixture(){
   request:async(op,args)=>{
    calls.push({op,args});
    if(op==='shuffleplus.capabilities')return {version:1,host:17,route:"native-play-command",queueMode:"native-editor-options",playerReady:true,limit:10000};
+   if(op==='shuffleplus.diagnostics')return {host:17,mode:'queue',outcome:'unknown',queueUnchanged:true,privateUri:uri(1),token:'private-token'};
+   if(op==='shuffleplus.copyDiagnostics')return true;
    if(op==='shuffleplus.queue')return {mode:'queue',ticket,count:3,tracks};
    if(op==='shuffleplus.prepare')return {mode:'collection',ticket,count:args.uris.length};
    assert.equal(op,'shuffleplus.apply');assert.equal(values.get('shuffle-write-v1').phase,'pending');
    if(failure)throw failure;return response||{applied:args.order.length,verification:"visible-order"};
   }};
- api.ShufflePlus={capabilities:()=>api.request('shuffleplus.capabilities'),previewQueue:()=>api.request('shuffleplus.queue'),prepare:(context,uris)=>api.request('shuffleplus.prepare',{context,uris}),apply:(ticket,order)=>api.request('shuffleplus.apply',{ticket,order})};
+ api.ShufflePlus={diagnostics:()=>api.request('shuffleplus.diagnostics'),copyDiagnostics:()=>api.request('shuffleplus.copyDiagnostics'),capabilities:()=>api.request('shuffleplus.capabilities'),previewQueue:()=>api.request('shuffleplus.queue'),prepare:(context,uris)=>api.request('shuffleplus.prepare',{context,uris}),apply:(ticket,order)=>api.request('shuffleplus.apply',{ticket,order})};
  return {values,calls,api,client:new ShuffleClient(api),fail:e=>failure=e,respond:r=>response=r};
 }
 test('Fisher-Yates reaches all six 3-item permutations with equal branch weights and no weighting',()=>{
@@ -43,7 +45,7 @@ test('collection prepare preserves already shuffled URIs including duplicates, a
  await f.client.apply(p,'ok','ok',{});assert.equal(f.client.previous().phase,'complete');
 });
 test('native stale/rejection errors are stopped; RPC/lost/malformed acknowledgments remain unknown and are not retried',async()=>{
- for(const [message,phase] of [['SP_SHUFFLE_STALE_ORDER','stopped'],['SP_SHUFFLE_STALE_OWNER','stopped'],['SP_SHUFFLE_STALE_OPTIONS','stopped'],['SP_SHUFFLE_STALE_PLAYER','stopped'],['SP_SHUFFLE_STALE','stopped'],['SP_SHUFFLE_FORBIDDEN','stopped'],['SP_SHUFFLE_RPC','unknown'],['SP_SHUFFLE_ACK','unknown'],['SP_SHUFFLE_UNCONFIRMED','unknown'],['SP_SHUFFLE_USED','unknown'],['private-token and private-account','unknown']]){
+ for(const [message,phase] of [['SP_SHUFFLE_UNCONFIRMED_NO_CHANGE','unknown'],['SP_SHUFFLE_UNCONFIRMED_ORDER','unknown'],['SP_SHUFFLE_UNCONFIRMED_READBACK','unknown'],['SP_SHUFFLE_OBSERVER_READY','stopped'],['SP_SHUFFLE_QUEUE_LAYOUT','stopped'],['SP_SHUFFLE_STALE_ORDER','stopped'],['SP_SHUFFLE_STALE_OWNER','stopped'],['SP_SHUFFLE_STALE_OPTIONS','stopped'],['SP_SHUFFLE_STALE_PLAYER','stopped'],['SP_SHUFFLE_STALE','stopped'],['SP_SHUFFLE_FORBIDDEN','stopped'],['SP_SHUFFLE_RPC','unknown'],['SP_SHUFFLE_ACK','unknown'],['SP_SHUFFLE_UNCONFIRMED','unknown'],['SP_SHUFFLE_USED','unknown'],['private-token and private-account','unknown']]){
   const f=fixture(),p=await f.client.queue({});f.fail(new Error(message));
   await assert.rejects(f.client.apply(p,'ok','ok',{}),e=>!e.message.includes('private-token'));
   assert.equal(f.client.previous().phase,phase);assert.equal(f.calls.filter(c=>c.op==='shuffleplus.apply').length,1);
@@ -69,4 +71,14 @@ test('old host and count-only success replies cannot claim verified playback',as
  const g=fixture(),p=await g.client.queue({});g.respond({applied:3});
  await assert.rejects(g.client.apply(p,'ok','ok',{}));assert.equal(g.client.previous().phase,'unknown');
  assert.equal(g.calls.filter(c=>c.op==='shuffleplus.apply').length,1);
+});
+
+test('diagnostics whitelist drops private fields and copying never starts playback',async()=>{
+ const f=fixture();assert.deepEqual(await f.client.diagnostics(),{host:17,mode:'queue',outcome:'unknown',queueUnchanged:true});
+ await f.client.copyDiagnostics();assert.equal(f.calls.filter(c=>c.op==='shuffleplus.apply').length,0);
+ const p=await f.client.queue({});f.fail(new Error('SP_SHUFFLE_UNCONFIRMED_NO_CHANGE'));
+ await assert.rejects(f.client.apply(p,'ok','ok',{}),/stayed unchanged/);
+ assert.equal(f.client.previous().phase,'unknown');assert.ok(f.client.previous().diagnostics.queueUnchanged);
+ assert.ok(!JSON.stringify(f.client.previous()).includes('private-token'));
+ assert.deepEqual(safeDiagnostics({host:17,mode:'private',token:'secret',eventsObserved:-1,errorCode:'secret'}),{host:17});
 });

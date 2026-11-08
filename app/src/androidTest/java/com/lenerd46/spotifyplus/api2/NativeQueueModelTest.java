@@ -89,8 +89,12 @@ public class NativeQueueModelTest {
         ClassLoader loader=new DexClassLoader(apk.getAbsolutePath(),context.getCodeCacheDir().getAbsolutePath(),null,context.getClassLoader());
         Class<?> flow=loader.loadClass("io.reactivex.rxjava3.core.Flowable"),consumer=loader.loadClass("io.reactivex.rxjava3.functions.Consumer");
         Class<?> behavior=loader.loadClass("io.reactivex.rxjava3.processors.BehaviorProcessor");
-        Object processor=behavior.getMethod("createDefault",Object.class).invoke(null,"initial");
-        Object stream=flow.getMethod("delay",long.class,java.util.concurrent.TimeUnit.class).invoke(processor,80L,java.util.concurrent.TimeUnit.MILLISECONDS);
+        Object processor=behavior.getMethod("e0",Object.class).invoke(null,"initial");
+        // Pinned Spotify retains optimized Rx methods, not the unshrunk API names.
+        Class<?> schedulerClass=loader.loadClass("io.reactivex.rxjava3.core.Scheduler");
+        Object scheduler=privateNew(loader.loadClass("io.reactivex.rxjava3.internal.schedulers.SingleScheduler"),new Class<?>[]{});
+        Object stream=privateNew(loader.loadClass("io.reactivex.rxjava3.internal.operators.flowable.FlowableDelay"),new Class<?>[]{flow,long.class,schedulerClass},processor,80L,scheduler);
+        var unit=stream.getClass().getDeclaredField("d");unit.setAccessible(true);assertEquals(java.util.concurrent.TimeUnit.MILLISECONDS,unit.get(stream));
         Class<?> backend=Class.forName("com.lenerd46.spotifyplus.api2.ShufflePlusBridge$NativeBackend");
         Class<?> watcher=Class.forName(backend.getName()+"$Watch"),auditClass=Class.forName(backend.getName()+"$Audit"),match=Class.forName(backend.getName()+"$Match");
         Object owner=privateNew(backend,new Class<?>[]{ClassLoader.class},loader);
@@ -114,9 +118,9 @@ public class NativeQueueModelTest {
             assertEquals("edited",privateCall(watch,"latest",new Class<?>[]{}));
             assertEquals(1,privateCall(audit,"get",new Class<?>[]{String.class},"postDispatchEvents"));
         } finally {privateCall(watch,"close",new Class<?>[]{});}
-        assertEquals(false,behavior.getMethod("hasSubscribers").invoke(processor));
+        assertEquals(false,behavior.getMethod("f0").invoke(processor));
         Class<?> publish=loader.loadClass("io.reactivex.rxjava3.processors.PublishProcessor");
-        Object silent=publish.getMethod("create").invoke(null);
+        Object silent=privateNew(publish,new Class<?>[]{});
         watch=privateNew(watcher,new Class<?>[]{backend,Object.class,Class.class,Method.class},owner,silent,consumer,subscribe);
         audit=privateNew(auditClass,new Class<?>[]{String.class},"collection");
         try {
@@ -125,7 +129,8 @@ public class NativeQueueModelTest {
             assertEquals(false,privateCall(audit,"get",new Class<?>[]{String.class},"sent"));
             assertEquals(true,privateCall(audit,"get",new Class<?>[]{String.class},"initialStateTimedOut"));
         } finally {privateCall(watch,"close",new Class<?>[]{});}
-        assertEquals(false,publish.getMethod("hasSubscribers").invoke(silent));
+        var subscribers=publish.getDeclaredField("b");subscribers.setAccessible(true);
+        assertEquals(0,java.lang.reflect.Array.getLength(((java.util.concurrent.atomic.AtomicReference<?>)subscribers.get(silent)).get()));
     }
 
 }

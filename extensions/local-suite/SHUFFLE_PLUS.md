@@ -1,13 +1,13 @@
-# Shuffle+ 0.1.8 for Spotify Plus R20
+# Shuffle+ 0.1.9 for Spotify Plus R21
 
-Version 0.1.8 requires the **R20 module APK**. Repatch the original Spotify
+Version 0.1.9 requires the **R21 module APK**. Repatch the original Spotify
 9.1.94.1929 APK with this module; installing the ZIP or the module alone does not
 replace an older module embedded by LSPatch.
 
 Collection playback now uses Spotify's normal native PlayCommand handler and
 its interceptors, rather than a direct Esperanto Play request. It supplies the
 exact explicit song order and waits for the player/visible queue to match.
-Use **Check active playback adapter** to verify module R20, the binding and live
+Use **Check active playback adapter** to verify module R21, the binding and live
 player capture. If the player has not been captured, select a song from an album
 or playlist in Spotify before preparing again. Errors include a fixed stage code.
 
@@ -22,7 +22,7 @@ to understand explicit context playback; its implementation was not copied.
 
 ## Install
 
-1. Repatch Spotify **9.1.94.1929 / arm64** using the **R20** Plus module in
+1. Repatch Spotify **9.1.94.1929 / arm64** using the **R21** Plus module in
    LSPatch. A ZIP alone cannot add the native playback adapter to R12/R13.
 2. Extract this ZIP. Put the **shuffle-plus** folder beside your existing four
    local extension folders in SpotifyPlusLocal. It must directly contain
@@ -95,7 +95,7 @@ still require checking playback and acknowledgement before another attempt.
 The real-Spotify-model Android fixture validates request construction without an
 account/service call; it does not prove authenticated queue mutation.
 
-R20 replaces the collection request after R19 phone diagnostics showed the first
+R20 introduced the collection request after R19 phone diagnostics showed the first
 song matched but none of the upcoming prefix did. It starts a **single-track
 context** for the first previewed song, keeping the original source only as the
 play origin. Once a post-dispatch event confirms its URI and assigned occurrence
@@ -121,3 +121,25 @@ boundary. JVM choreography tests model a player which starts **only the first
 song**, including wrong-order/no-op/refusal, lost acknowledgements, observer
 failures and partial outcomes. These fixtures are not authenticated Spotify
 playback or a proof of behavior on the Samsung ARM64 device.
+
+## R21 asynchronous queue readiness
+
+R20 phone diagnostics stopped at selected-queue with firstTrackConfirmed true and
+no queueSent marker or second-observer events. R20 called latest immediately
+after subscribing. A delayed second subscription reproduces exactly
+SP_SHUFFLE_UNCONFIRMED_READBACK before any SetQueue call. R21 waits up to two
+seconds for the listener's initial state before checking freshness and sending
+the pending command. Both first and second listeners use this readiness barrier;
+initial replay remains ineligible as write confirmation. Queue revision and
+current/history/order checks remain in force. A new listener with no state still
+stops without sending its pending command, with explicit false queueSent,
+per-stage event counts and a controlled initial-state-timeout diagnostic.
+
+All staged playback waits share a 22-second monotonic budget after the engine's
+at-most-five-second freshness read, leaving room in the 30-second host request.
+The tenth Android fixture exercises the production observer with the original
+APK's actual RxJava BehaviorProcessor and delayed background callbacks, verifies
+initial replay cannot confirm dispatch, requires a new event, and checks cleanup
+and a silent publisher. JVM tests reproduce R20 before the fix and cover delayed
+first/second listeners, silent readiness and changes during delayed initial state.
+This validates observation behavior, not authenticated server queue mutation.

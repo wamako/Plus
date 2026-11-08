@@ -650,3 +650,16 @@ selection explicitly as queued items, preserving only typed Autoplay extras.
 Per-observer dispatch gates, fresh CAS and partial-outcome reporting are required.
 See [R20 evidence and limits](API2_R20_EXPLICIT_QUEUE.md). CI and artifact hashes
 are recorded in PR2 after validation. This checkpoint does not claim live playback.
+
+## R21 / Shuffle+ 0.1.9: asynchronous queue observer readiness
+
+R20 phone report: firstTrackConfirmed true, selected-queue stage, no queueSent or
+second-observer assessments, UNCONFIRMED_READBACK. A delayed second subscription
+reproduced the exact R20 failure in Watch.latest before SetQueue. R21 awaits
+initial state for both collection stages and queue-only edits, retains freshness
+and post-dispatch confirmation, and adds stage-specific diagnostics. A silent
+listener still stops safely; partial playback remains unknown. All staged waits
+share a bounded deadline. See [R21 evidence and limits](API2_R21_OBSERVER.md).
+A tenth Android fixture uses the actual pinned RxJava asynchronous publisher and
+production observer. CI run/artifact hashes are recorded in PR2 after validation;
+this checkpoint does not claim authenticated phone playback.

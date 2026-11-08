@@ -73,4 +73,59 @@ public class NativeQueueModelTest {
         assertTrue(CollectionOrder.inspect(track(loader,uri,"current",false),result.next,List.of(uri,uri,uri)).matches);
     }
 
+    private static Object privateNew(Class<?> type,Class<?>[] parameters,Object... args) throws Exception {
+        var constructor=type.getDeclaredConstructor(parameters);constructor.setAccessible(true);return constructor.newInstance(args);
+    }
+    private static Object privateCall(Object owner,String name,Class<?>[] types,Object... args) throws Exception {
+        var method=owner.getClass().getDeclaredMethod(name,types);method.setAccessible(true);return method.invoke(owner,args);
+    }
+    private static void expectedReadbackFailure(Object watch,String method,long nanos,String code) throws Exception {
+        try {privateCall(watch,method,new Class<?>[]{long.class},nanos);fail("Initial replay cannot confirm a write");}
+        catch(java.lang.reflect.InvocationTargetException error){assertEquals("SP_SHUFFLE_"+code,error.getCause().getMessage());}
+    }
+    @Test public void productionObserverWaitsForActualAsyncRxReplayWithoutConfirmingAWrite() throws Exception {
+        Context context=InstrumentationRegistry.getInstrumentation().getTargetContext();
+        File apk=new File(context.getFilesDir(),"spotify-model.apk");assertTrue(apk.isFile());assertFalse(apk.canWrite());
+        ClassLoader loader=new DexClassLoader(apk.getAbsolutePath(),context.getCodeCacheDir().getAbsolutePath(),null,context.getClassLoader());
+        Class<?> flow=loader.loadClass("io.reactivex.rxjava3.core.Flowable"),consumer=loader.loadClass("io.reactivex.rxjava3.functions.Consumer");
+        Class<?> behavior=loader.loadClass("io.reactivex.rxjava3.processors.BehaviorProcessor");
+        Object processor=behavior.getMethod("createDefault",Object.class).invoke(null,"initial");
+        Object stream=flow.getMethod("delay",long.class,java.util.concurrent.TimeUnit.class).invoke(processor,80L,java.util.concurrent.TimeUnit.MILLISECONDS);
+        Class<?> backend=Class.forName("com.lenerd46.spotifyplus.api2.ShufflePlusBridge$NativeBackend");
+        Class<?> watcher=Class.forName(backend.getName()+"$Watch"),auditClass=Class.forName(backend.getName()+"$Audit"),match=Class.forName(backend.getName()+"$Match");
+        Object owner=privateNew(backend,new Class<?>[]{ClassLoader.class},loader);
+        var subscribe=flow.getMethod("subscribe",consumer,consumer);
+        Object watch=privateNew(watcher,new Class<?>[]{backend,Object.class,Class.class,Method.class},owner,stream,consumer,subscribe);
+        Object audit=privateNew(auditClass,new Class<?>[]{String.class},"collection");
+        privateCall(audit,"put",new Class<?>[]{String.class,Object.class},"stage","selected-queue");
+        var callbackThread=new java.util.concurrent.atomic.AtomicReference<Thread>();
+        Object matcher=java.lang.reflect.Proxy.newProxyInstance(match.getClassLoader(),new Class<?>[]{match},(proxy,method,args)->{if(method.getName().equals("test")){callbackThread.set(Thread.currentThread());return true;}throw new UnsupportedOperationException();});
+        try {
+            privateCall(watch,"start",new Class<?>[]{match,auditClass},matcher,audit);
+            assertEquals("initial",privateCall(watch,"initial",new Class<?>[]{long.class},java.util.concurrent.TimeUnit.SECONDS.toNanos(3L)));
+            assertNotSame(Thread.currentThread(),callbackThread.get());
+            assertEquals(false,privateCall(audit,"get",new Class<?>[]{String.class},"sent"));
+            assertEquals(0,privateCall(audit,"get",new Class<?>[]{String.class},"postDispatchEvents"));
+            assertEquals(true,privateCall(audit,"get",new Class<?>[]{String.class},"queueInitialStateReceived"));
+            privateCall(watch,"dispatching",new Class<?>[]{});
+            expectedReadbackFailure(watch,"confirmNanos",0L,"UNCONFIRMED_READBACK");
+            behavior.getMethod("onNext",Object.class).invoke(processor,"edited");
+            privateCall(watch,"confirmNanos",new Class<?>[]{long.class},java.util.concurrent.TimeUnit.SECONDS.toNanos(3L));
+            assertEquals("edited",privateCall(watch,"latest",new Class<?>[]{}));
+            assertEquals(1,privateCall(audit,"get",new Class<?>[]{String.class},"postDispatchEvents"));
+        } finally {privateCall(watch,"close",new Class<?>[]{});}
+        assertEquals(false,behavior.getMethod("hasSubscribers").invoke(processor));
+        Class<?> publish=loader.loadClass("io.reactivex.rxjava3.processors.PublishProcessor");
+        Object silent=publish.getMethod("create").invoke(null);
+        watch=privateNew(watcher,new Class<?>[]{backend,Object.class,Class.class,Method.class},owner,silent,consumer,subscribe);
+        audit=privateNew(auditClass,new Class<?>[]{String.class},"collection");
+        try {
+            privateCall(watch,"start",new Class<?>[]{match,auditClass},matcher,audit);
+            expectedReadbackFailure(watch,"initial",0L,"UNCONFIRMED_INITIAL_STATE");
+            assertEquals(false,privateCall(audit,"get",new Class<?>[]{String.class},"sent"));
+            assertEquals(true,privateCall(audit,"get",new Class<?>[]{String.class},"initialStateTimedOut"));
+        } finally {privateCall(watch,"close",new Class<?>[]{});}
+        assertEquals(false,publish.getMethod("hasSubscribers").invoke(silent));
+    }
+
 }

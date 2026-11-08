@@ -51,13 +51,15 @@ FIXTURES={
 'org/json/JSONException.java': r'''package org.json;public class JSONException extends RuntimeException {}''',
 'org/json/JSONObject.java': r'''package org.json;public class JSONObject {final java.util.Map<String,Object> data=new java.util.HashMap<>();public JSONObject put(String k,Object v){data.put(k,v);return this;}public Object get(String k){if(!data.containsKey(k))throw new JSONException();return data.get(k);}public String getString(String k){Object v=get(k);if(!(v instanceof String))throw new JSONException();return (String)v;}public JSONArray getJSONArray(String k){return (JSONArray)get(k);}public int getInt(String k){return ((Number)get(k)).intValue();}}''',
 'org/json/JSONArray.java': r'''package org.json;public class JSONArray {final java.util.List<Object> data=new java.util.ArrayList<>();public JSONArray put(Object v){data.add(v);return this;}public int length(){return data.size();}public Object get(int i){return data.get(i);}public String getString(int i){Object v=get(i);if(!(v instanceof String))throw new JSONException();return (String)v;}}''',
-'io/reactivex/rxjava3/core/Single.java': r'''package io.reactivex.rxjava3.core;public class Single {final java.util.function.Supplier<Object> value;public static boolean lost;public Single(Object value){this.value=()->value;}public Single(java.util.function.Supplier<Object> value){this.value=value;}public Single timeout(long n,java.util.concurrent.TimeUnit unit){if(n!=15&&n!=5&&n!=6&&n!=3&&n!=2)throw new AssertionError();return this;}public Object blockingGet(){if(lost)throw new IllegalStateException("private error");return value.get();}}''',
+'io/reactivex/rxjava3/core/Single.java': r'''package io.reactivex.rxjava3.core;public class Single {final java.util.function.Supplier<Object> value;public static boolean lost;public Single(Object value){this.value=()->value;}public Single(java.util.function.Supplier<Object> value){this.value=value;}public Single timeout(long n,java.util.concurrent.TimeUnit unit){if(n<=0||unit.toNanos(n)>java.util.concurrent.TimeUnit.SECONDS.toNanos(15L))throw new AssertionError();return this;}public Object blockingGet(){if(lost)throw new IllegalStateException("private error");return value.get();}}''',
 'io/reactivex/rxjava3/core/Flowable.java': r'''package io.reactivex.rxjava3.core;
 import java.util.*;import java.util.concurrent.CopyOnWriteArrayList;import io.reactivex.rxjava3.functions.Consumer;import io.reactivex.rxjava3.disposables.Disposable;
-public class Flowable {public Object value;public boolean failSubscribe;public final List<Consumer> listeners=new CopyOnWriteArrayList<>();
+public class Flowable {public Object value,nextInitial;public boolean failSubscribe,asyncInitial,silentInitial,changeInitial;public int subscriptions;public final List<Consumer> listeners=new CopyOnWriteArrayList<>();
 public Flowable(Object value){this.value=value;}public Single firstOrError(){return new Single(()->value);}
-public Disposable subscribe(Consumer next,Consumer error){listeners.add(next);try{if(failSubscribe)error.accept(new IllegalStateException("private"));else next.accept(value);}catch(Exception e){try{error.accept(e);}catch(Exception ignored){}}
- return new Disposable(){boolean disposed;public void dispose(){disposed=true;listeners.remove(next);}public boolean isDisposed(){return disposed;}};}
+public Disposable subscribe(Consumer next,Consumer error){subscriptions++;if(nextInitial!=null){value=nextInitial;nextInitial=null;}final java.util.concurrent.atomic.AtomicBoolean disposed=new java.util.concurrent.atomic.AtomicBoolean();
+ Runnable initial=()->{if(disposed.get())return;listeners.add(next);try{if(failSubscribe)error.accept(new IllegalStateException("private"));else if(!silentInitial)next.accept(value);}catch(Exception e){try{error.accept(e);}catch(Exception ignored){}}};
+ if(asyncInitial){Thread thread=new Thread(()->{try{Thread.sleep(75);}catch(InterruptedException e){return;}initial.run();});thread.setDaemon(true);thread.start();}else initial.run();
+ return new Disposable(){public void dispose(){disposed.set(true);listeners.remove(next);}public boolean isDisposed(){return disposed.get();}};}
 public void emit(Object value,boolean remember){if(remember)this.value=value;for(Consumer next:listeners)try{next.accept(value);}catch(Exception e){throw new IllegalStateException(e);}}
 }''',
 'io/reactivex/rxjava3/functions/Predicate.java': r'''package io.reactivex.rxjava3.functions;public interface Predicate {boolean test(Object value)throws Exception;}''',
@@ -103,12 +105,15 @@ public class AdapterHarness {
  if(lose)throw new IllegalStateException("private");return rejected?"Failure{}":"Success{}";});}}
  // Reproduces the R19 failure shape: starting playback accepts only the first
  // requested song; it does NOT conveniently install the entire shuffled page.
- public static class Handler {int writes;PlayCommand last;boolean noOp,lose,stop,contextTail,manualTail,failRead,failSecondSubscribe;String status="Success{}";
+ public static class Handler {int writes;PlayCommand last;boolean noOp,lose,stop,contextTail,manualTail,failRead,failSecondSubscribe,deferSecond,silentSecond,changeSecond;String status="Success{}";
  public Single obfuscatedPlay(PlayCommand c){return new Single(()->{writes++;last=c;ok(!repo.stream.listeners.isEmpty());
  if(status.startsWith("Success")&&!noOp){State s=new State();s.rev="play-"+writes;s.current=new Opt(track(Integer.parseInt(c.context.pages.get(0).tracks.get(0).uri.substring(14)),"core-"+writes,"context",false));
  s.next=List.of(track(8,"tail8",contextTail?"context":manualTail?"queue":"autoplay",manualTail),track(9,"tail9","autoplay",false));repo.stream.emit(s,true);
  if(stop){s=new State();s.current=new Opt(null);s.next=List.of();repo.stream.emit(s,true);}
- if(failSecondSubscribe)repo.stream.failSubscribe=true;if(failRead)Single.lost=true;}
+ if(deferSecond)repo.stream.asyncInitial=true;
+ if(silentSecond)repo.stream.silentInitial=true;
+ if(changeSecond){State changed=new State();changed.current=((State)repo.stream.value).current;changed.next=List.of(track(8,"manual-user-change","queue",true));repo.stream.nextInitial=changed;}
+if(failSecondSubscribe)repo.stream.failSubscribe=true;if(failRead)Single.lost=true;}
  if(lose)throw new IllegalStateException("private");return status;});}}
  static void reset(){Single.lost=false;State s=new State();repo=new Repo(s);handler=new Handler();player=new PlayerState();com.lenerd46.spotifyplus.player.NextUpQueue.repo=repo;com.lenerd.spotifyplus.module.Utils.playerState=player;com.lenerd.spotifyplus.module.hooks.PlayerHook.contextPlayer=handler;}
  static Object call(String op,JSONObject args)throws Exception{return ShufflePlusBridge.execute(AdapterHarness.class.getClassLoader(),"shuffleplus."+op,args);}
@@ -120,7 +125,7 @@ public class AdapterHarness {
  static JSONObject diag()throws Exception{return (JSONObject)call("diagnostics",new JSONObject());}
  static void stopped(){ok(repo.stream.listeners.isEmpty());}
  public static void main(String[] args)throws Exception {
- reset();ok(((JSONObject)call("capabilities",new JSONObject())).getInt("host")==20);
+ reset();ok(((JSONObject)call("capabilities",new JSONObject())).getInt("host")==21);
  JSONObject p=(JSONObject)call("queue",new JSONObject());ok(repo.writes==0);apply(p,2,0,1);ok(((ContextTrack)repo.last.next.get(0)).uid.equals("c"));stopped();
  p=(JSONObject)call("queue",new JSONObject());((State)repo.stream.value).rev="metadata-only";apply(p,1,2,0);ok(repo.last.revision.equals("metadata-only"));
  p=(JSONObject)call("queue",new JSONObject());((State)repo.stream.value).current=new Opt(track(3,"new-current","context",false));fail("apply",order(p,0,1,2),"STALE_ORDER");
@@ -132,13 +137,22 @@ public class AdapterHarness {
  ok(repo.last.next.size()==4&&((ContextTrack)repo.last.next.get(0)).uid.isEmpty()&&((ContextTrack)repo.last.next.get(0)).provider.equals("queue")&&((ContextTrack)repo.last.next.get(0)).meta.get("is_queued").equals("true"));
  ok(state.next.get(2).uid.equals("tail8")&&state.next.get(2).provider.equals("autoplay"));
  ok(diag().get("playSent").equals(true)&&diag().get("queueSent").equals(true)&&diag().get("firstTrackConfirmed").equals(true)&&diag().get("stage").equals("complete"));stopped();fail("apply",order(p,0,1,2),"USED");
+ // Queue-only edits also wait for an asynchronous subscription before dispatch.
+ reset();repo.stream.asyncInitial=true;p=(JSONObject)call("queue",new JSONObject());apply(p,2,0,1);ok(repo.writes==1&&diag().get("queueInitialStateReceived").equals(true));stopped();
+ reset();repo.stream.silentInitial=true;p=(JSONObject)call("queue",new JSONObject());fail("apply",order(p,2,0,1),"UNCONFIRMED_INITIAL_STATE");ok(repo.writes==0&&diag().get("sent").equals(false));stopped();
  // Existing/manual additions cannot be silently discarded.
- fail("prepare",source(1,2),"MANUAL_QUEUE");
+ ((State)repo.stream.value).next=List.of(track(8,"manual-existing","queue",true));fail("prepare",source(1,2),"MANUAL_QUEUE");
  reset();p=prepare(1,2);((State)repo.stream.value).next=List.of(track(8,"manual","queue",true));fail("apply",order(p,0,1),"STALE_ORDER");ok(handler.writes==0&&repo.writes==0);
  reset();handler.manualTail=true;p=prepare(1,2);fail("apply",order(p,0,1),"SEQUENCE_CHANGED");ok(handler.writes==1&&repo.writes==0&&diag().get("outcome").equals("unknown"));stopped();
  reset();handler.contextTail=true;p=prepare(1,2);fail("apply",order(p,0,1),"SEQUENCE_CHANGED");ok(repo.writes==0);stopped();
  // A single song needs no queue write. Autoplay remains unchanged.
  reset();p=prepare(2);apply(p,0);ok(handler.writes==1&&repo.writes==0);stopped();
+ // A real asynchronous subscription is not ready merely because subscribe returned.
+ reset();handler.deferSecond=true;p=prepare(2,1,1);apply(p,0,1,2);ok(handler.writes==1&&repo.writes==1&&diag().get("queueInitialStateReceived").equals(true));stopped();
+ reset();repo.stream.asyncInitial=true;p=prepare(2,1,1);apply(p,0,1,2);ok(handler.writes==1&&repo.writes==1&&diag().get("firstInitialStateReceived").equals(true));stopped();
+ reset();repo.stream.silentInitial=true;p=prepare(2,1);fail("apply",order(p,0,1),"UNCONFIRMED_INITIAL_STATE");ok(handler.writes==0&&repo.writes==0&&diag().get("sent").equals(false)&&diag().get("outcome").equals("not_sent"));stopped();
+ reset();handler.silentSecond=true;p=prepare(2,1);fail("apply",order(p,0,1),"UNCONFIRMED_INITIAL_STATE");ok(handler.writes==1&&repo.writes==0&&diag().get("firstTrackConfirmed").equals(true)&&diag().get("queueSent").equals(false)&&diag().get("queueObserverEvents").equals(0)&&diag().get("readbackStep").equals("selected-initial")&&diag().get("initialStateTimedOut").equals(true)&&diag().get("outcome").equals("unknown"));stopped();
+ reset();handler.deferSecond=true;handler.changeSecond=true;p=prepare(2,1);fail("apply",order(p,0,1),"SEQUENCE_CHANGED");ok(handler.writes==1&&repo.writes==0&&diag().get("queueInitialStateReceived").equals(true));stopped();
  // An exact-order initial replay still cannot confirm the second operation.
  reset();repo.silentNoOp=true;p=prepare(2,8,9);fail("apply",order(p,0,1,2),"UNCONFIRMED_READBACK");ok(repo.writes==1&&diag().get("postDispatchEvents").equals(1)&&diag().get("outcome").equals("unknown"));stopped();
  // Initial replay of stage two cannot prove its write; a no-op stays unknown.

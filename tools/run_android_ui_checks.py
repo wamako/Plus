@@ -29,13 +29,13 @@ def main():
         classes='com.lenerd46.spotifyplus.features.GlassRenderingTest,com.lenerd46.spotifyplus.api2.NavigationIntentsTest,com.lenerd46.spotifyplus.api2.NativeQueueModelTest,com.lenerd46.spotifyplus.api2.NativePlaybackModelTest'
         result=run('shell','am','instrument','-w','-e','class',classes,'com.lenerd46.spotifyplus.test/androidx.test.runner.AndroidJUnitRunner',timeout=240)
         output=result.stdout.decode('utf-8','replace')
-        if not re.search(r'(?m)^OK \(9 tests\)\s*$',output) or 'FAILURES' in output or 'INSTRUMENTATION_FAILED' in output:
+        if not re.search(r'(?m)^OK \(10 tests\)\s*$',output) or 'FAILURES' in output or 'INSTRUMENTATION_FAILED' in output:
             # This runner only executes our synthetic, logged-out fixtures.
             # Fixed test/exception names help diagnose failures without logs.
             report['failure_categories']=[name for name in ['AssertionError','ClassNotFoundException','NoClassDefFoundError','VerifyError','SecurityException','NoSuchMethodException','ExceptionInInitializerError','IOException'] if name in output]
             report['failed_fixture_methods']=re.findall(r'(?m)^\d+\) ([A-Za-z]+)\(',output)
             raise RuntimeError('Android rendering/navigation instrumentation did not pass')
-        report.update(instrumentation_passed=True,tests_passed=9)
+        report.update(instrumentation_passed=True,tests_passed=10)
         # run-as cannot reliably read FUSE-backed external app files on API37.
         # All app launches/tests above ran with non-root ADB. Elevate only after
         # those checks, on the verified disposable AVD, to retrieve our own
@@ -46,7 +46,7 @@ def main():
         image=output.read_bytes()
         if not image.startswith(b'\x89PNG\r\n\x1a\n'):raise RuntimeError('Missing synthetic rendering artifact')
         run('shell','rm','-f',model)
-        report.update(spotify_explicit_selection_queue_verified=True,spotify_model_queue_command_verified=True,spotify_model_playback_serialization_verified=True,spotify_autoplay_provider_readback_verified=True,passed=True,tests_passed=9,foreground_exclusion=True,repeated_capture=True,actual_blur=True,failed_capture_restores_state=True,spotify_track_intent_resolved=True,unsafe_links_rejected=True)
+        report.update(spotify_async_queue_observer_verified=True,spotify_explicit_selection_queue_verified=True,spotify_model_queue_command_verified=True,spotify_model_playback_serialization_verified=True,spotify_autoplay_provider_readback_verified=True,passed=True,tests_passed=10,foreground_exclusion=True,repeated_capture=True,actual_blur=True,failed_capture_restores_state=True,spotify_track_intent_resolved=True,unsafe_links_rejected=True)
     finally:
         args.report.write_text(json.dumps(report,indent=2)+'\n');print('ANDROID_UI_REPORT '+json.dumps(report,sort_keys=True))
 

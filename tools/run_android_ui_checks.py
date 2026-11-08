@@ -18,9 +18,9 @@ def main():
             if hashlib.file_digest(source,'sha256').hexdigest()!=MODEL_SHA:raise RuntimeError('Unexpected Spotify model source')
         run('install','-r',args.module);run('install','-r',args.tests)
         uid_text=run('shell','pm','list','packages','-U','com.lenerd46.spotifyplus').stdout.decode()
-        uid_match=re.fullmatch(r'package:com\.lenerd46\.spotifyplus uid:([1-9]\d{4,5})\s*',uid_text)
-        if not uid_match:raise RuntimeError('Could not resolve isolated fixture owner')
-        uid=uid_match[1];directory='/data/user/0/com.lenerd46.spotifyplus/files';model=directory+'/spotify-model.apk'
+        uids=re.findall(r'(?m)^package:com\.lenerd46\.spotifyplus uid:([1-9]\d{4,5})[ \t]*$',uid_text)
+        if len(uids)!=1:raise RuntimeError('Could not resolve isolated fixture owner')
+        uid=uids[0];directory='/data/user/0/com.lenerd46.spotifyplus/files';model=directory+'/spotify-model.apk'
         run('root');run('wait-for-device')
         run('shell','mkdir','-p',directory);run('shell','chown',uid+':'+uid,directory)
         run('push',args.spotify_model_apk,model);run('shell','chown',uid+':'+uid,model);run('shell','chmod','0444',model)

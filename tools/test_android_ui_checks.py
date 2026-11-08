@@ -11,7 +11,7 @@ class AndroidUiRunnerTests(unittest.TestCase):
                 if args[:2]==('shell','getprop'):
                     value={'ro.kernel.qemu':guest,'ro.build.version.sdk':'37','ro.product.cpu.abi':'x86_64'}[args[2]]
                     return types.SimpleNamespace(stdout=value.encode())
-                if args[:3]==('shell','pm','list'):return types.SimpleNamespace(stdout=b'package:com.lenerd46.spotifyplus uid:10123\n')
+                if args[:3]==('shell','pm','list'):return types.SimpleNamespace(stdout=b'package:com.lenerd46.spotifyplus.test uid:10124\npackage:com.lenerd46.spotifyplus uid:10123\n')
                 if args[:3]==('shell','id','-u'):return types.SimpleNamespace(stdout=b'2000\n')
                 if args[:3]==('shell','am','instrument'):return types.SimpleNamespace(stdout=instrument.encode())
                 if args[0]=='pull':pathlib.Path(args[-1]).write_bytes(bytes.fromhex('89504e470d0a1a0a'))

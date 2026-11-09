@@ -1,4 +1,30 @@
-# Validation record · 0.1.7 / R12
+# Validation record · 0.1.8 / R21
+
+2026-11-09: test-first changes for silent journal storage failures, large artist
+shuffle and retained binary inputs. Local checks passed: 140 extension regressions
+(including 27 journal fault cases and three shuffle compatibility/scale cases),
+TypeScript, transformed builds, 14 actual-loader profiles and four CI storage
+probe profiles. The rebuilt pinned host passed 71 core, 15 UI, six native and
+34 marketplace tests. Final CI evidence is recorded in PR2 after validation.
+
+Journal cases cover thrown/dropped/stale/malformed read-back at initial, progress
+and completion checkpoints across native/Web playlist creation and queue append,
+confirmed-count/new-copy URI retention even if failure recording fails, privacy,
+healthy batches and no retries. Artist shuffle matches the previous algorithm
+for 30 seeded cases, preserves duplicate occurrences/input, bounds metadata reads
+and handles 100,000 occurrences. Timing samples are workspace observations, not
+phone responsiveness guarantees.
+
+The CI-only Android probe runs journal verification through real native Storage
+and shuffles 100,000 tracks on embedded Node18. Both feature markers are required
+from the launched app process alongside the correct storage phase. Reload must
+verify persisted data before writing and clean its own namespace. Probe files
+are excluded from phone ZIPs. Authenticated writes remain mocked in automated
+extension tests; live Samsung account/playback/queue acceptance remains a phone
+step. Storage read-back is not a power-loss durability guarantee.
+
+## Earlier 0.1.7 / R12 validation
+
 
 2026-11-06: production Java writer tested on the JVM with renamed protocol
 fixtures and a native-client/Rx adapter. Tests check exact Unicode request bytes,

@@ -23,6 +23,10 @@ STORAGE_MARKERS = {
     "write": "SPOTIFYPLUS_CI_STORAGE_WRITE_OK",
     "reload": "SPOTIFYPLUS_CI_STORAGE_RELOAD_OK",
 }
+FEATURE_MARKERS = {
+    "journal_verified": "SPOTIFYPLUS_CI_JOURNAL_OK",
+    "artist_shuffle_verified": "SPOTIFYPLUS_CI_ARTIST_SHUFFLE_OK",
+}
 MARKERS = {
     "integrated_loader_entered": "Bootstrap loader from embedment",
     "module_entered": "[SpotifyPlus] Loading SpotifyPlus v",
@@ -65,7 +69,9 @@ def storage_status(log, phase):
              for name, marker in STORAGE_MARKERS.items()}
     if any(present for name, present in flags.items() if name != phase):
         raise RuntimeError("Storage probe reported the wrong launch phase")
-    return flags[phase], flags
+    checks = {name: bool(re.search(r"(?m)\b" + marker + r"\s*$", log))
+              for name, marker in FEATURE_MARKERS.items()}
+    return flags[phase] and all(checks.values()), {**flags, **checks}
 
 def activity_manager_pids(text):
     # AOSP ProcessRecord.toShortString uses pid:processName/u0a<appId>.
@@ -330,7 +336,8 @@ def launch(device, timeout, details=None, storage_phase=None):
                         complete = True
                         result = {**flags, "stable_after_ready_seconds": 15}
                         if storage_phase is not None:
-                            result["storage_probe"] = {"phase": storage_phase, "passed": True}
+                            result["storage_probe"] = {"phase": storage_phase, "passed": True,
+                                                       **{name: storage_flags[name] for name in FEATURE_MARKERS}}
                         return result, pid
             time.sleep(2)
         raise RuntimeError("Timed out waiting for module, Node host, Shuffle+ or storage probe evidence")

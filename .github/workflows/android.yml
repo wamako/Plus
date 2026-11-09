@@ -21,7 +21,49 @@ permissions:
   actions: read
 
 jobs:
+  # One-time migration of already-verified public build inputs. Remove this job
+  # after publishing and validating the retained release; normal builds stay read-only.
+  retain-runtime-inputs:
+    if: >-
+      github.event_name == 'pull_request' &&
+      github.repository == 'wamako/Plus' &&
+      github.event.pull_request.head.repo.full_name == github.repository &&
+      github.event.pull_request.head.ref == 'codex/local-extensions'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: write
+      actions: read
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          name: SpotifyPlus-Debug-APK
+          run-id: 42078701459
+          github-token: ${{ github.token }}
+          path: ${{ runner.temp }}/verified-r11
+      - name: Reproduce and verify the exact retained bundle
+        run: |
+          python3 tools/package_runtime_inputs.py --donor "$RUNNER_TEMP/verified-r11/app-debug.apk" --output "$RUNNER_TEMP/runtime-inputs-r11-v1.zip" --manifest "$RUNNER_TEMP/runtime-inputs.json"
+          cmp tools/runtime-inputs.json "$RUNNER_TEMP/runtime-inputs.json"
+      - name: Publish only to the known empty draft fixture release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh api repos/wamako/Plus/releases/438801839 > "$RUNNER_TEMP/input-release.json"
+          python3 - <<'PY'
+          import json, os
+          from pathlib import Path
+          release = json.loads((Path(os.environ['RUNNER_TEMP']) / 'input-release.json').read_text())
+          assert release['draft'] and release['tag_name'] == 'build-inputs-r11-v1'
+          assert release['target_commitish'] == 'a757c196c56eb57fa0be3fe5e9314563f62b2f25'
+          assert release['assets'] == [], 'Refusing to replace existing release assets'
+          PY
+          gh release upload build-inputs-r11-v1 "$RUNNER_TEMP/runtime-inputs-r11-v1.zip" "$RUNNER_TEMP/runtime-inputs.json" --repo wamako/Plus
+          gh release edit build-inputs-r11-v1 --draft=false --prerelease --latest=false --repo wamako/Plus
+
   build:
+    needs: retain-runtime-inputs
     runs-on: ubuntu-latest
     env:
       HAS_SIGNING_KEY: ${{ secrets.SIGNING_KEYSTORE_BASE64 != '' }}
@@ -46,26 +88,17 @@ jobs:
         with:
           node-version: '22'
 
-      # Upstream moved to GitLab without the old release binaries. Keep the
-      # verified R11 runtime/lyrics binary inputs; all host code is rebuilt.
+      # A release retains the exact verified R11 binary inputs without Actions
+      # artifact expiry. The manifest pins the archive and every member.
       - name: Restore verified binary inputs
         uses: actions/cache@v4
         id: binary-inputs
         with:
-          path: .api2-cache/r11
-          key: spotifyplus-r11-176aac1fec257cf18b7f2fc002f5cad2be2f9cc774a69694094e34555abb5df2
-
-      - name: Download retained R11 build inputs
-        if: steps.binary-inputs.outputs.cache-hit != 'true'
-        uses: actions/download-artifact@v4
-        with:
-          name: SpotifyPlus-Debug-APK
-          run-id: 42078701459
-          github-token: ${{ github.token }}
-          path: .api2-cache/r11
+          path: .api2-cache/runtime-inputs
+          key: spotifyplus-runtime-inputs-v1-${{ hashFiles('tools/runtime-inputs.json') }}
 
       - name: Prepare and test pinned API-2 runtime and extensions
-        run: python3 tools/prepare_api2.py --runtime-apk .api2-cache/r11/app-debug.apk
+        run: python3 tools/prepare_api2.py --binary-inputs .api2-cache/runtime-inputs/runtime-inputs.zip
 
       - name: Check local extensions and build Shuffle+
         working-directory: extensions/local-suite
@@ -74,6 +107,7 @@ jobs:
           node tools/setup-sdk.mjs
           npm run check
           npm run check:storage-probe
+          python3 tools/package.py
 
       - name: Test and build installable debug APK
         run: |
@@ -95,8 +129,15 @@ jobs:
       - name: Upload Shuffle+ local extension
         uses: actions/upload-artifact@v4
         with:
-          name: SpotifyPlus-ShufflePlus-0.1.9
+          name: SpotifyPlus-ShufflePlus-0.1.10
           path: extensions/local-suite/build/SpotifyPlus-ShufflePlus
+          if-no-files-found: error
+
+      - name: Upload verified phone extension ZIPs
+        uses: actions/upload-artifact@v4
+        with:
+          name: SpotifyPlus-Tested-Extension-ZIPs
+          path: extensions/local-suite/artifacts/*.zip
           if-no-files-found: error
 
       - name: Upload the separate CI-only storage probe

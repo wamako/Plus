@@ -204,21 +204,70 @@ export function filterTracks(tracks, options = {}) {
     return true;
   });
 }
+// Each artist contributes only its earliest remaining position in the random
+// order. The heap finds the same first non-repeating artist as the old scan,
+// without rescanning a dominant artist or shifting the remaining track array.
+class ArtistOrderHeap {
+  constructor() { this.entries = []; }
+  get size() { return this.entries.length; }
+  rank(bucket) { return bucket.rows[bucket.offset].rank; }
+  push(bucket) {
+    const entries = this.entries;
+    let index = entries.length;
+    entries.push(bucket);
+    while (index > 0) {
+      const parent = (index - 1) >> 1;
+      if (this.rank(entries[parent]) <= this.rank(bucket)) break;
+      entries[index] = entries[parent];
+      index = parent;
+    }
+    entries[index] = bucket;
+  }
+  pop() {
+    const entries = this.entries, first = entries[0], last = entries.pop();
+    if (entries.length) {
+      let index = 0;
+      while (index * 2 + 1 < entries.length) {
+        const left = index * 2 + 1, right = left + 1;
+        const child = right < entries.length && this.rank(entries[right]) < this.rank(entries[left]) ? right : left;
+        if (this.rank(last) <= this.rank(entries[child])) break;
+        entries[index] = entries[child];
+        index = child;
+      }
+      entries[index] = last;
+    }
+    return first;
+  }
+}
+
 export function smartShuffle(tracks, rng = Math.random) {
   const pool = tracks
       .map((track) => ({ track, random: rng() }))
       .sort((a, b) => a.random - b.random)
       .map((row) => row.track),
     result = [];
+  const buckets = new Map(), heap = new ArtistOrderHeap();
+  for (let rank = 0; rank < pool.length; rank++) {
+    const track = pool[rank], artist = clean(track.artists?.[0]?.name || track.artist);
+    let bucket = buckets.get(artist);
+    if (!bucket) {
+      bucket = { artist, rows: [], offset: 0 };
+      buckets.set(artist, bucket);
+    }
+    bucket.rows.push({ track, rank });
+  }
+  for (const bucket of buckets.values()) heap.push(bucket);
   let previous = "";
-  while (pool.length) {
-    let index = pool.findIndex(
-      (track) => clean(track.artists?.[0]?.name || track.artist) !== previous,
-    );
-    if (index < 0) index = 0;
-    const [track] = pool.splice(index, 1);
-    result.push(track);
-    previous = clean(track.artists?.[0]?.name || track.artist);
+  while (heap.size) {
+    let bucket = heap.pop();
+    if (bucket.artist === previous && heap.size) {
+      const deferred = bucket;
+      bucket = heap.pop();
+      heap.push(deferred);
+    }
+    result.push(bucket.rows[bucket.offset++].track);
+    previous = bucket.artist;
+    if (bucket.offset < bucket.rows.length) heap.push(bucket);
   }
   return result;
 }

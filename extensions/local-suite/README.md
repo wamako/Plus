@@ -1,7 +1,29 @@
-# Spotify Plus local Android extensions · 0.1.7
+# Spotify Plus local Android extensions · 0.1.8
 
 Four removable Android adaptations for Spotify 9.1.94.1929 / arm64 / API 2.
-Use **Spotify Plus R12** as the LSPatch module. No extension is published to a marketplace.
+Use **Spotify Plus R21** as the LSPatch module. No extension is published to a marketplace.
+
+## 0.1.8 update on R21
+
+Keep `SpotifyPlus-9.1.94.1929-api2-r21-arm64.apk`. Replace the four suite folders,
+Refresh local extensions, then force-stop/reopen Spotify. Do not clear app data
+or leave duplicate extension IDs. The separate Shuffle+ package is 0.1.10; it
+still requires R21/host21 and does not introduce a new playback protocol.
+
+Playlist-copy and queue-append actions now write and read back their initial,
+progress and final journal checkpoints. A missing/stale checkpoint blocks the
+next mutation; failures preserve confirmed counts and any new-copy URI without
+retry or transport fallback. Read-back verifies current storage; it does not
+promise crash/power-loss durability. Existing unknown actions still require
+inspection before another explicit action.
+
+Sort Play's artist-aware shuffle retains its existing selection rule while
+avoiding repeated scans and array shifts on large collections. Shuffle+'s
+Fisher-Yates behavior is unchanged. Both versioned ZIPs are produced from the
+same bundles tested by CI, with member checksums and deterministic packaging.
+The retained binary-input release changes clean-build recovery only; embedded
+Node and Beautiful Lyrics remain unchanged. See the repository's
+[Node assessment](../../docs/NODE_RUNTIME_ASSESSMENT.md).
 
 ## R12 native playlist copies
 
@@ -26,8 +48,8 @@ Existing unknown journals from older versions remain visible: inspect Spotify
 before explicitly starting another copy. Zero confirmed tracks does not prove that no
 empty playlist was created.
 
-Repatch Spotify with R12, replace all four local extension folders with this
-package, then Refresh the local extensions folder and restart Spotify. Existing
+For this update on R21, replace all four local extension folders, then Refresh
+the local extensions folder and restart Spotify. Existing
 extension IDs and settings keys are preserved. R12 retains R11's persistent
 storage repair. Settings that failed to save under R10 must be saved again.
 

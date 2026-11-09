@@ -16,6 +16,7 @@ const { Bridge } = await import(pathToFileURL(path.join(host, "bridge/bridge.js"
 const id = "com.wamako.ci.storageprobe";
 const written = "SPOTIFYPLUS_CI_STORAGE_WRITE_OK";
 const reloaded = "SPOTIFYPLUS_CI_STORAGE_RELOAD_OK";
+const features = ["SPOTIFYPLUS_CI_JOURNAL_OK", "SPOTIFYPLUS_CI_ARTIST_SHUFFLE_OK"];
 
 // Real pinned loader, API factory and JSON/binary bridge; only Android's native
 // addon is substituted. Each load gets fresh runtime/registry/bridge objects.
@@ -80,10 +81,10 @@ function fixture({ dropWrites = false, ignoreRemovals = false } = {}) {
 
 test("CI probe verifies typed values/files with real loader and bridge across fresh runtimes, then cleans up", () => {
   const f = fixture();
-  assert.deepEqual(f.load(), [written]);
+  assert.deepEqual(f.load(), [...features, written]);
   assert.equal(JSON.parse(f.prefs.get(`${id}:probe-boolean`)), false);
   assert.equal(f.files.get(`${id}:probe/data.bin`).data, "AAF/gP8=");
-  assert.deepEqual(f.load(), [reloaded]);
+  assert.deepEqual(f.load(), [...features, reloaded]);
   assert.equal(f.prefs.size, 0);
   assert.equal(f.files.size, 0);
 });
@@ -102,7 +103,7 @@ test("reload checks lost/corrupt preferences and files before attempting any wri
     f => f.files.delete(`spotifyplus-cache:${id}:probe/cache.txt`),
   ]) {
     const f = fixture();
-    assert.deepEqual(f.load(), [written]);
+    assert.deepEqual(f.load(), [...features, written]);
     corrupt(f);
     f.writes.length = 0;
     assert.throws(() => f.load(), /SP_CI_STORAGE_ASSERT/);
@@ -112,7 +113,7 @@ test("reload checks lost/corrupt preferences and files before attempting any wri
 
 test("a total storage reset can only emit the first-launch marker, never persisted reload evidence", () => {
   const f = fixture();
-  assert.deepEqual(f.load(), [written]);
+  assert.deepEqual(f.load(), [...features, written]);
   f.prefs.clear(); f.files.clear();
-  assert.deepEqual(f.load(), [written]);
+  assert.deepEqual(f.load(), [...features, written]);
 });

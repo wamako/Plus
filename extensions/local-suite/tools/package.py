@@ -1,33 +1,69 @@
-"""Create a deterministic local-loader ZIP and verify all four payloads."""
-from pathlib import Path
+"""Package the tested extension bytes in reproducible, versioned phone ZIPs."""
 import hashlib
 import json
+from pathlib import Path
+import re
+import tempfile
 import zipfile
 
-root = Path(__file__).resolve().parents[1]
-parent = root / 'build' / 'SpotifyPlus-Local-Extensions'
-folders = ['listening-stats', 'sort-play', 'genres', 'playlist-plus']
-ids = set()
-for folder in folders:
-    manifest = json.loads((parent / folder / 'manifest.json').read_text())
-    assert manifest['api'] == 2 and manifest['main'] == 'index.js'
-    assert not manifest.get('native')
-    assert manifest['id'] not in ids
-    ids.add(manifest['id'])
-    assert (parent / folder / 'index.js').stat().st_size < 300_000
-(root / 'artifacts').mkdir(exist_ok=True)
-output = root / 'artifacts' / 'SpotifyPlus-Local-Extensions-0.1.6.zip'
-paths = sorted(p for p in parent.rglob('*') if p.is_file() and p.name != 'SHA256SUMS.txt')
-sums = '\n'.join(f'{hashlib.sha256(p.read_bytes()).hexdigest()}  {p.relative_to(parent).as_posix()}' for p in paths) + '\n'
-(parent / 'SHA256SUMS.txt').write_text(sums)
-paths.append(parent / 'SHA256SUMS.txt')
-with zipfile.ZipFile(output, 'w', zipfile.ZIP_DEFLATED, compresslevel=9) as archive:
-    for file in sorted(paths):
-        info = zipfile.ZipInfo(file.relative_to(parent.parent).as_posix(), (2026, 11, 5, 0, 0, 0))
-        info.compress_type = zipfile.ZIP_DEFLATED
-        info.external_attr = 0o100644 << 16
-        archive.writestr(info, file.read_bytes())
-with zipfile.ZipFile(output) as archive:
-    assert archive.testzip() is None
-    assert all(f'SpotifyPlus-Local-Extensions/{folder}/manifest.json' in archive.namelist() for folder in folders)
-print(f'{output}\n{output.stat().st_size} bytes\nSHA256 {hashlib.sha256(output.read_bytes()).hexdigest()}')
+ROOT = Path(__file__).resolve().parents[1]
+FOLDERS = ("listening-stats", "sort-play", "genres", "playlist-plus")
+
+
+def payloads(parent, folders, expected=None):
+    versions, identities = set(), set()
+    for folder in folders:
+        directory = parent / folder
+        manifest = json.loads((directory / "manifest.json").read_text())
+        version = manifest["version"]
+        if not re.fullmatch(r"\d+\.\d+\.\d+", version):
+            raise ValueError("Invalid extension version")
+        if (manifest["api"] != 2 or manifest["main"] != "index.js" or
+                manifest.get("native") or manifest["id"] in identities or
+                (directory / "index.js").stat().st_size >= 300_000):
+            raise ValueError("Invalid local extension payload")
+        identities.add(manifest["id"])
+        versions.add(version)
+    if len(versions) != 1 or (expected is not None and versions != {expected}):
+        raise ValueError("Mixed or stale extension versions")
+    files = {}
+    for folder in folders:
+        directory = parent / folder
+        if directory.is_symlink():
+            raise ValueError("Extension symlinks are not supported")
+        for path in sorted(directory.rglob("*")):
+            if path.is_symlink():
+                raise ValueError("Extension symlinks are not supported")
+            if path.is_file():
+                files[path.relative_to(parent).as_posix()] = path.read_bytes()
+    files["SHA256SUMS.txt"] = ("".join(
+        f"{hashlib.sha256(data).hexdigest()}  {name}\n" for name, data in sorted(files.items())
+    )).encode()
+    return versions.pop(), files
+
+
+def package(name, prefix, files):
+    output = ROOT / "artifacts" / name
+    output.parent.mkdir(exist_ok=True)
+    with tempfile.TemporaryDirectory(dir=output.parent) as temporary:
+        staged = Path(temporary) / name
+        with zipfile.ZipFile(staged, "w", zipfile.ZIP_DEFLATED, compresslevel=9) as archive:
+            for name, data in sorted(files.items()):
+                info = zipfile.ZipInfo(prefix + name, (1980, 1, 1, 0, 0, 0))
+                info.compress_type = zipfile.ZIP_DEFLATED
+                info.external_attr = 0o100644 << 16
+                archive.writestr(info, data, compresslevel=9)
+        with zipfile.ZipFile(staged) as archive:
+            if archive.testzip() is not None or any(archive.read(prefix + name) != data for name, data in files.items()):
+                raise ValueError("Extension archive verification failed")
+        staged.replace(output)
+    print(f"{output.name}: {output.stat().st_size} bytes, SHA256 {hashlib.sha256(output.read_bytes()).hexdigest()}")
+
+
+if __name__ == "__main__":
+    # Validate both products before emitting any installable ZIP.
+    suite_version, suite = payloads(ROOT / "build/SpotifyPlus-Local-Extensions", FOLDERS,
+                                    json.loads((ROOT / "package.json").read_text())["version"])
+    shuffle_version, shuffle = payloads(ROOT / "build/SpotifyPlus-ShufflePlus", ("shuffle-plus",))
+    package(f"SpotifyPlus-Local-Extensions-{suite_version}.zip", "SpotifyPlus-Local-Extensions/", suite)
+    package(f"SpotifyPlus-ShufflePlus-{shuffle_version}.zip", "", shuffle)

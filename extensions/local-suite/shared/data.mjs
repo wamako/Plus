@@ -1,4 +1,5 @@
 import { MusicBrainz } from "./musicbrainz.mjs";
+import { beginJournal, checkpointJournal, recordFailure } from "./write-journal.mjs";
 import {
   LIKED_URI,
   MAX_LIKED_ITEMS,
@@ -1075,8 +1076,8 @@ export class DataClient {
     if (!name?.trim()) throw new Error("Give the new playlist a name.");
     const uris = tracks.map(t => idFromUri(t.uri, "track").uri);
     if (!uris.length || uris.length > MAX_ITEMS) throw new Error("Preview between 1 and 10,000 tracks first.");
-    const journal = { action: "native-copy", startedAt: Date.now(), requested: uris.length, completed: 0, uri: "", phase: "creating" };
-    this.api.Platform.Storage.set("last-write-v1", { ...journal });
+    const storage = this.api.Platform.Storage;
+    const journal = beginJournal(storage, { action: "native-copy", startedAt: Date.now(), requested: uris.length, completed: 0, uri: "", phase: "creating" });
     const invoke = async (operation, args) => {
       // A timed-out bridge call may still finish. Never resend it automatically.
       let timer;
@@ -1097,24 +1098,23 @@ export class DataClient {
       try { journal.uri = idFromUri(created?.uri, "playlist").uri; }
       catch { throw new RequestError("Native playlist response did not identify the created copy.", 0, true); }
       journal.phase = "adding";
-      this.api.Platform.Storage.set("last-write-v1", { ...journal });
+      checkpointJournal(storage, journal);
       for (let i = 0; i < uris.length; i += 100) {
         check(job);
         await invoke("playlists.addTracks", { uri: journal.uri, uris: uris.slice(i, i + 100) });
         journal.completed += Math.min(100, uris.length - i);
-        this.api.Platform.Storage.set("last-write-v1", { ...journal });
+        checkpointJournal(storage, journal);
         progress(`Saved ${journal.completed} of ${uris.length} to the native copy`);
         // Let the host render progress/cancellation between acknowledged batches.
         await new Promise(resolve => setTimeout(resolve, 0));
       }
       journal.phase = "complete";
-      this.api.Platform.Storage.set("last-write-v1", { ...journal });
+      checkpointJournal(storage, journal);
       return journal;
     } catch (error) {
       const step = journal.uri ? "Adding tracks to the new copy" : "Creating the new copy";
-      journal.phase = error.unknown ? "unknown" : "stopped";
-      this.api.Platform.Storage.set("last-write-v1", { ...journal });
-      throw new Error(`${step}: ${error.message} Confirmed ${journal.completed}/${uris.length}.${journal.uri ? ` New copy: ${journal.uri}.` : ""} Inspect Spotify before repeating this action.`);
+      const warning = recordFailure(storage, journal, error);
+      throw new Error(`${step}: ${error.message} Confirmed ${journal.completed}/${uris.length}.${journal.uri ? ` New copy: ${journal.uri}.` : ""}${warning} Inspect Spotify before repeating this action.`);
     }
   }
   async createCopy(
@@ -1131,16 +1131,17 @@ export class DataClient {
     const uris = tracks.map((t) => idFromUri(t.uri, "track").uri);
     if (!uris.length || uris.length > MAX_ITEMS)
       throw new Error("Preview between 1 and 10,000 tracks first.");
-    const journal = {
+    const storage = this.api.Platform.Storage;
+    const journal = beginJournal(storage, {
       action: "copy",
       startedAt: Date.now(),
       requested: uris.length,
       completed: 0,
       uri: "",
       phase: "creating",
-    };
-    // A durable journal is required before sending a write. An unknown outcome is never retried automatically.
-    this.api.Platform.Storage.set("last-write-v1", journal);
+    });
+    // A verified record is required before sending a write. Unknown outcomes
+    // are never retried automatically.
     try {
       const created = await this.spotify("/me/playlists", "POST", {
         name: name.trim().slice(0, 100),
@@ -1153,26 +1154,25 @@ export class DataClient {
       try { ({ id } = idFromUri(journal.uri, "playlist")); }
       catch { throw new RequestError("Spotify did not identify the created copy; its outcome is unknown.", 0, true); }
       journal.phase = "adding";
-      this.api.Platform.Storage.set("last-write-v1", { ...journal });
+      checkpointJournal(storage, journal);
       for (let i = 0; i < uris.length; i += 100) {
         check(job);
         await this.spotify(`/playlists/${id}/items`, "POST", {
           uris: uris.slice(i, i + 100),
         });
         journal.completed += Math.min(100, uris.length - i);
-        this.api.Platform.Storage.set("last-write-v1", { ...journal });
+        checkpointJournal(storage, journal);
         progress(
           `Saved ${journal.completed} of ${uris.length} to the new copy`,
         );
       }
       journal.phase = "complete";
-      this.api.Platform.Storage.set("last-write-v1", { ...journal });
+      checkpointJournal(storage, journal);
       return journal;
     } catch (error) {
-      journal.phase = error.unknown ? "unknown" : "stopped";
-      this.api.Platform.Storage.set("last-write-v1", { ...journal });
+      const warning = recordFailure(storage, journal, error);
       throw new Error(
-        `${error.message} Confirmed ${journal.completed}/${uris.length} tracks.${journal.uri ? ` New copy: ${journal.uri}.` : ""} Inspect Spotify before retrying; the source playlist was not changed.`,
+        `${error.message} Confirmed ${journal.completed}/${uris.length} tracks.${journal.uri ? ` New copy: ${journal.uri}.` : ""}${warning} Inspect Spotify before retrying; the source playlist was not changed.`,
       );
     }
   }
@@ -1184,14 +1184,14 @@ export class DataClient {
       throw new Error(
         "Queue append is limited to 100 tracks per confirmation. Use a new playlist copy for larger results.",
       );
-    const journal = {
+    const storage = this.api.Platform.Storage;
+    const journal = beginJournal(storage, {
       action: "queue-append",
       startedAt: Date.now(),
       requested: uris.length,
       completed: 0,
       phase: "adding",
-    };
-    this.api.Platform.Storage.set("last-write-v1", journal);
+    });
     try {
       for (const uri of uris) {
         check(job);
@@ -1200,17 +1200,16 @@ export class DataClient {
           "POST",
         );
         journal.completed++;
-        this.api.Platform.Storage.set("last-write-v1", { ...journal });
+        checkpointJournal(storage, journal);
         progress(`Appended ${journal.completed} of ${uris.length}`);
       }
       journal.phase = "complete";
-      this.api.Platform.Storage.set("last-write-v1", { ...journal });
+      checkpointJournal(storage, journal);
       return journal;
     } catch (error) {
-      journal.phase = error.unknown ? "unknown" : "stopped";
-      this.api.Platform.Storage.set("last-write-v1", { ...journal });
+      const warning = recordFailure(storage, journal, error);
       throw new Error(
-        `${error.message} Confirmed ${journal.completed}/${uris.length} appended. Inspect the queue before retrying. An active player, Premium, or additional Spotify permissions may be required.`,
+        `${error.message} Confirmed ${journal.completed}/${uris.length} appended.${warning} Inspect the queue before retrying. An active player, Premium, or additional Spotify permissions may be required.`,
       );
     }
   }

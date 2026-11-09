@@ -36,7 +36,9 @@ def run(command, directory): subprocess.run(command, cwd=directory, check=True)
 def main():
     parser=argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--source', type=pathlib.Path)
-    parser.add_argument('--runtime-apk', type=pathlib.Path, help='Verified R11 APK (binary donor), or the original pinned preview APK')
+    inputs=parser.add_mutually_exclusive_group()
+    inputs.add_argument('--runtime-apk', type=pathlib.Path, help='Explicit legacy recovery from the verified R11 or original preview APK')
+    inputs.add_argument('--binary-inputs', type=pathlib.Path, help='Retained checksum-pinned Node/Lyrics bundle (downloaded if absent)')
     parser.add_argument('--no-js-build', action='store_true')
     args=parser.parse_args()
     cache=ROOT/'.api2-cache'; cache.mkdir(exist_ok=True)
@@ -52,14 +54,26 @@ def main():
     run(['python3',str(ROOT/'tools/apply_upstream_updates.py'),'--source',str(source),'--upstream',str(updates)],ROOT)
     cpp=source/'app/src/main/cpp/spotifyengine.cpp'
     replace(cpp, '#include "spotifyengine.h"', '#include <unistd.h>\n#include "spotifyengine.h"')
-    runtime=args.runtime_apk or cache/'r11/app-debug.apk'
-    if not runtime.exists(): raise RuntimeError('Supply --runtime-apk with the verified R11 APK; upstream moved without its old GitHub release binaries')
-    with runtime.open('rb') as stream: digest=hashlib.file_digest(stream,'sha256').hexdigest()
-    if digest not in {RUNTIME_SHA, R11_SHA}: raise RuntimeError('Runtime donor APK checksum mismatch')
-    with zipfile.ZipFile(runtime) as apk:
-        node=apk.read('lib/arm64-v8a/libnode.so')
-        if hashlib.sha256(node).hexdigest() != NODE_SHA: raise RuntimeError('Node binary checksum mismatch')
-        if b'v18.20.4' not in node: raise RuntimeError('Node binary/header version mismatch')
+    runtime=args.runtime_apk
+    lyrics=cache/f'lyrics-{LYRICS}'
+    if runtime is not None:
+        with runtime.open('rb') as stream: digest=hashlib.file_digest(stream,'sha256').hexdigest()
+        if digest not in {RUNTIME_SHA, R11_SHA}: raise RuntimeError('Runtime donor APK checksum mismatch')
+        with zipfile.ZipFile(runtime) as apk:
+            node=apk.read('lib/arm64-v8a/libnode.so')
+    else:
+        from runtime_inputs import ensure_bundle, install_bundle, load_spec
+        spec=load_spec()
+        if spec['entries']['node/arm64-v8a/libnode.so']['sha256'] != NODE_SHA:
+            raise RuntimeError('Runtime manifest changed the preserved ARM Node donor')
+        bundle=args.binary_inputs or cache/'runtime-inputs/runtime-inputs.zip'
+        ensure_bundle(bundle,spec)
+        install_bundle(bundle,source,lyrics,spec)
+        node=(source/'app/libnode/bin/arm64-v8a/libnode.so').read_bytes()
+        digest=R11_SHA
+    if hashlib.sha256(node).hexdigest() != NODE_SHA: raise RuntimeError('Node binary checksum mismatch')
+    if b'v18.20.4' not in node: raise RuntimeError('Node binary/header version mismatch')
+    if runtime is not None:
         out=source/'app/libnode/bin/arm64-v8a/libnode.so';out.parent.mkdir(parents=True,exist_ok=True);out.write_bytes(node)
     generated=ROOT/'app/api2-generated/java'
     if generated.exists():shutil.rmtree(generated)
@@ -156,7 +170,7 @@ def main():
     }
 '''+content[end:])
     lyrics=cache/f'lyrics-{LYRICS}'
-    if digest == R11_SHA:
+    if runtime is not None and digest == R11_SHA:
         # Preserve the exact already-validated extension after upstream's GitHub
         # repository migration. The entire donor APK was verified above.
         prefix='assets/api2-extensions/beautiful-lyrics/'
@@ -169,7 +183,7 @@ def main():
                     destination.parent.mkdir(parents=True,exist_ok=True)
                     destination.write_bytes(apk.read(name))
         shutil.copy2(lyrics/'dist/LICENSE',lyrics/'LICENSE')
-    else: archive('LeNerd46','beautiful-lyrics-spotify-plus',LYRICS,lyrics)
+    elif digest != R11_SHA: archive('LeNerd46','beautiful-lyrics-spotify-plus',LYRICS,lyrics)
     fixture=source/'scripts/lyrics'; fixture.mkdir(exist_ok=True)
     shutil.copy2(lyrics/'dist/lyrics.apk',fixture/'lyrics.apk')
     shutil.copy2(lyrics/'dist/manifest.json',fixture/'manifest.json')

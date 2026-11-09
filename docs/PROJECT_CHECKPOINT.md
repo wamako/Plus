@@ -1,5 +1,19 @@
 # Spotify Plus project checkpoint
 
+
+## Current focused update: suite 0.1.8 / Shuffle+ 0.1.10 on R21
+
+The R21 module/host21, embedded Node18.20.4 and Beautiful Lyrics stay unchanged.
+Existing R21 users only replace extension folders. The current changes verify
+mutation journal checkpoints and stop on silent/stale storage, replace Sort
+Play's quadratic artist-aware shuffle with an equivalent heap/bucket selection,
+and retain exact binary build inputs outside expiring Actions artifacts.
+See [retained inputs](RETAINED_RUNTIME_INPUTS.md), [Node upgrade assessment](NODE_RUNTIME_ASSESSMENT.md)
+and the updated extension validation record. Node was researched, not upgraded.
+Final CI run/head and tested phone ZIP checksums are recorded in PR2. PR2 stays
+draft/unmerged pending physical phone acceptance. Older checkpoint entries below
+are historical and may refer to superseded module or extension versions.
+
 ## Shuffle+ 0.1.1 confirmation repair
 
 The user reported that collection inputs loaded but Prepare shuffled playback

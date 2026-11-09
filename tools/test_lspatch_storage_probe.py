@@ -8,7 +8,9 @@ import tempfile
 import unittest
 from unittest.mock import Mock, patch
 
-from run_lspatch_smoke import STORAGE_MARKERS, launch, main, provision, storage_status
+from run_lspatch_smoke import STORAGE_MARKERS, FEATURE_MARKERS, launch, main, provision, storage_status
+
+FEATURE_READY = "\n".join(FEATURE_MARKERS.values()) + "\n"
 
 HOST_READY = ("Bootstrap loader from embedment\n[SpotifyPlus] Loading SpotifyPlus v\n"
               "Native PlayCommand binding installed\nSystem navigation handlers installed\nHost ready\nLoaded script com.wamako.shuffleplus from /private\n")
@@ -17,7 +19,7 @@ HOST_READY = ("Bootstrap loader from embedment\n[SpotifyPlus] Loading SpotifyPlu
 class StorageProbeTests(unittest.TestCase):
     def test_marker_requires_the_expected_phase_and_a_complete_fixed_token(self):
         for phase, marker in STORAGE_MARKERS.items():
-            self.assertTrue(storage_status("[CI] " + marker + "\n", phase)[0])
+            self.assertTrue(storage_status(FEATURE_READY + "[CI] " + marker + "\n", phase)[0])
             self.assertFalse(storage_status(marker + "_unverified", phase)[0])
             self.assertFalse(storage_status(HOST_READY, phase)[0])
             other = "reload" if phase == "write" else "write"
@@ -25,6 +27,19 @@ class StorageProbeTests(unittest.TestCase):
                 storage_status(marker, other)
         with self.assertRaisesRegex(RuntimeError, "wrong launch phase"):
             storage_status("\n".join(STORAGE_MARKERS.values()), "reload")
+
+    def test_phase_marker_requires_both_feature_checks_from_the_app_process(self):
+        for phase, marker in STORAGE_MARKERS.items():
+            self.assertFalse(storage_status(marker, phase)[0])
+            for feature in FEATURE_MARKERS.values():
+                self.assertFalse(storage_status(marker + "\n" + feature, phase)[0])
+            self.assertFalse(storage_status(marker + "\n" + FEATURE_READY.replace("_OK", "_OK_unverified"), phase)[0])
+            device = self.run_launch(HOST_READY + marker, FEATURE_READY)
+            clock = itertools.count(0, 2)
+            with patch("run_lspatch_smoke.time.monotonic", side_effect=lambda: next(clock)), \
+                    patch("run_lspatch_smoke.time.sleep"):
+                with self.assertRaisesRegex(RuntimeError, "Timed out"):
+                    launch(device, 25, storage_phase=phase)
 
     def run_launch(self, app_log, global_log=None):
         device = Mock()
@@ -36,13 +51,13 @@ class StorageProbeTests(unittest.TestCase):
 
     def test_process_scoped_storage_phase_is_required_before_the_stability_window(self):
         for phase in STORAGE_MARKERS:
-            device = self.run_launch(HOST_READY + STORAGE_MARKERS[phase])
+            device = self.run_launch(HOST_READY + FEATURE_READY + STORAGE_MARKERS[phase])
             clock = itertools.count(0, 2)
             with patch("run_lspatch_smoke.time.monotonic", side_effect=lambda: next(clock)), \
                     patch("run_lspatch_smoke.time.sleep"):
                 result, pid = launch(device, 60, storage_phase=phase)
             self.assertEqual(pid, "42")
-            self.assertEqual(result["storage_probe"], {"phase": phase, "passed": True})
+            self.assertEqual(result["storage_probe"], {"phase": phase, "passed": True, "journal_verified": True, "artist_shuffle_verified": True})
             self.assertEqual(result["stable_after_ready_seconds"], 15)
 
     def test_global_storage_marker_or_lost_second_launch_state_cannot_pass(self):

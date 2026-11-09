@@ -1,7 +1,11 @@
-# Shuffle+ 0.1.11 for Spotify Plus R22
+> Current candidate: R23 / suite 0.1.10 / Shuffle+ 0.1.12. See
+> [stabilization changes and limits](../../docs/API2_R23_STABILIZATION.md) and
+> [phone acceptance](../../R23_ACCEPTANCE.md). Extension code must be trusted.
 
-Version 0.1.11 requires **R22** and its native-factory-default queue capability.
-Repatch the original Spotify 9.1.94.1929 ARM64 APK with R22, replace shuffle-plus,
+# Shuffle+ 0.1.12 for Spotify Plus R23
+
+Version 0.1.12 requires **R23** and its observer-initial CAS and native-factory-default queue capabilities.
+Repatch the original Spotify 9.1.94.1929 ARM64 APK with R23, replace shuffle-plus,
 Refresh and restart. Keep app data. R21 cannot supply the corrected request
 contract or the authenticated Liked Songs transport.
 
@@ -9,12 +13,12 @@ Fresh entries retain Spotify's factory provider/UID before native assignment.
 The order checker remains strict. This aligns request construction; physical
 phone acceptance must establish whether missing/reordered songs are resolved.
 Fisher-Yates and unknown-outcome/no-retry behavior remain. The other four
-extensions are available as suite 0.1.9.
+extensions are available as suite 0.1.10.
 
 Collection playback now uses Spotify's normal native PlayCommand handler and
 its interceptors, rather than a direct Esperanto Play request. It supplies the
 exact explicit song order and waits for the player/visible queue to match.
-Use **Check active playback adapter** to verify module R21, the binding and live
+Use **Check active playback adapter** to verify module R23, the binding and live
 player capture. If the player has not been captured, select a song from an album
 or playlist in Spotify before preparing again. Errors include a fixed stage code.
 
@@ -29,14 +33,14 @@ to understand explicit context playback; its implementation was not copied.
 
 ## Install
 
-1. Repatch Spotify **9.1.94.1929 / arm64** using **R22** in LSPatch. A ZIP alone
+1. Repatch Spotify **9.1.94.1929 / arm64** using **R23** in LSPatch. A ZIP alone
    cannot add the native playback adapter to R12/R13.
 2. Extract this ZIP. Put the **shuffle-plus** folder beside your existing four
    local extension folders in SpotifyPlusLocal. It must directly contain
    manifest.json and index.js. Do not nest it inside an extra ZIP wrapper folder.
 3. Refresh the local extensions folder under Developer, then restart Spotify.
    Open **Shuffle+** from Extensions. Update the other four extensions separately
-   with suite **0.1.9**.
+   with suite **0.1.10**.
 
 ## Use
 

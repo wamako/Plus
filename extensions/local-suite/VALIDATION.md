@@ -1,3 +1,7 @@
+> Current candidate: R23 / suite 0.1.10 / Shuffle+ 0.1.12. See
+> [stabilization changes and limits](../../docs/API2_R23_STABILIZATION.md) and
+> [phone acceptance](../../R23_ACCEPTANCE.md). Extension code must be trusted.
+
 # Validation record · 0.1.9 / R22
 
 Test-first cases cover native Liked Songs credential confinement, JSON/binary

@@ -1,5 +1,11 @@
 # Spotify Plus project checkpoint
 
+## Current candidate: R23 / suite 0.1.10 / Shuffle+ 0.1.12
+
+See [stabilization](API2_R23_STABILIZATION.md) for fixes, tests and deferred work.
+The root manifest defines versions. PR2 records final CI/head and artifact hashes.
+Authenticated phone acceptance remains required. Older sections preserve history.
+
 
 ## Current repair: R22 / suite 0.1.9 / Shuffle+ 0.1.11
 

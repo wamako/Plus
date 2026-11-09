@@ -1,9 +1,21 @@
-# Spotify Plus local Android extensions · 0.1.9
+> Current candidate: R23 / suite 0.1.10 / Shuffle+ 0.1.12. See
+> [stabilization changes and limits](../../docs/API2_R23_STABILIZATION.md) and
+> [phone acceptance](../../R23_ACCEPTANCE.md). Extension code must be trusted.
+
+# Spotify Plus local Android extensions · 0.1.10
 
 Four removable Android adaptations for Spotify 9.1.94.1929 / arm64 / API 2.
-Use **Spotify Plus R22** as the LSPatch module. No extension is published to a marketplace.
+Use **Spotify Plus R23** as the LSPatch module. No extension is published to a marketplace.
 
-## 0.1.9 / R22 update
+## 0.1.10 / R23 update
+
+Repatch with R23 and update Shuffle+ separately to 0.1.12. Keep app data, replace
+folders without duplicate IDs, Refresh local extensions, then restart Spotify.
+The new module fixes queue revision races, variant packaging and update links;
+Shuffle+ verifies completion/review records. These extensions run inside Spotify
+and must be trusted. See the stabilization/acceptance links above.
+
+## Earlier 0.1.9 / R22 update
 
 Repatch the original Spotify 9.1.94.1929 ARM64 APK with **R22**, then replace the
 four suite folders and update Shuffle+ separately to 0.1.11. Refresh local

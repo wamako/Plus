@@ -17,6 +17,22 @@ export function permutation(length, rng = Math.random) {
   return order;
 }
 export function shuffleTracks(tracks, rng) { return permutation(tracks.length, rng).map(i => tracks[i]); }
+// A range is always explicit; changing it must invalidate any prepared ticket.
+export function playbackRange(total, size, part = 0) {
+  if (!Number.isSafeInteger(total) || total < 0 || total > 100000 ||
+      ![20, SHUFFLE_LIMIT].includes(size) || !Number.isSafeInteger(part) || part < 0)
+    throw new Error("Invalid playback range.");
+  const count = Math.ceil(total / size), selected = Math.min(part, Math.max(0, count - 1));
+  return { count, part: selected, from: selected * size, to: Math.min(total, (selected + 1) * size) };
+}
+export function mismatchSummary(value) {
+  const position = value?.firstMismatchUpcomingPosition;
+  if (value?.mode !== "collection" || value?.errorCode !== "SP_SHUFFLE_UNCONFIRMED_ORDER" ||
+      !Number.isSafeInteger(position) || position < 1 || position > SHUFFLE_LIMIT) return "";
+  return `First mismatch: upcoming position ${position} (song ${position + 1} in this preview). ` +
+    "This does not establish whether Spotify skipped, substituted or reordered the song. Check this position in Spotify and copy the diagnostics.";
+}
+
 const check = job => { if (job?.cancelled) throw new Error("Operation cancelled."); };
 const known = {
   MANUAL_QUEUE: "There are manually queued songs. Clear or play them in Spotify before starting a collection shuffle. Nothing was started.",
@@ -61,11 +77,11 @@ export function shuffleError(error, mutation = false) {
 export function safeDiagnostics(value) {
   if (!value || value.host !== HOST) throw new Error(`No R${HOST} shuffle diagnostics are available yet.`);
   const out = {host:HOST};
-  const enums = {mode:["queue","collection"],outcome:["not_sent","unknown","confirmed","refused"],requestFormat:["first-track-explicit-queue"],reply:["success","refused"],readbackError:["schema","stream"],stage:["first-track","selected-queue","complete"],readbackStep:["first-initial","first-confirm","selected-initial","selected-confirm","queue-initial","queue-confirm","complete"],playReply:["success","refused"],queueReply:["success","refused"]};
+  const enums = {mismatchItemKind:["none","track","delimiter","other"],mismatchProvider:["none","empty","queue","context","autoplay","other"],mode:["queue","collection"],outcome:["not_sent","unknown","confirmed","refused"],requestFormat:["first-track-explicit-queue"],reply:["success","refused"],readbackError:["schema","stream"],stage:["first-track","selected-queue","complete"],readbackStep:["first-initial","first-confirm","selected-initial","selected-confirm","queue-initial","queue-confirm","complete"],playReply:["success","refused"],queueReply:["success","refused"]};
   for (const [key, allowed] of Object.entries(enums)) if (allowed.includes(value[key])) out[key] = value[key];
-  for (const key of ["firstInitialStateReceived","queueInitialStateReceived","initialStateTimedOut","playSent","firstTrackConfirmed","queueSent","sent","nativeEditorOptions","queueUnchanged","revisionChanged","currentMatches","historyMatches","uriOrderMatches","uidOrderMatches","visibleOrderMatches","observerStartedBeforeDispatch","observerDisposed","currentPresent","currentUriMatches","currentUidAssigned","selectionPrefixMatches","selectionCompleteInWindow","autoplayTailOnly"])
+  for (const key of ["expectedAtMismatchSeenLater","observedIsOrderedSubsequence","mismatchIsQueued","firstInitialStateReceived","queueInitialStateReceived","initialStateTimedOut","playSent","firstTrackConfirmed","queueSent","sent","nativeEditorOptions","queueUnchanged","revisionChanged","currentMatches","historyMatches","uriOrderMatches","uidOrderMatches","visibleOrderMatches","observerStartedBeforeDispatch","observerDisposed","currentPresent","currentUriMatches","currentUidAssigned","selectionPrefixMatches","selectionCompleteInWindow","autoplayTailOnly"])
     if (typeof value[key] === "boolean") out[key] = value[key];
-  for (const key of ["firstObserverEvents","queueObserverEvents","queuedRequestCount","eventsObserved","postDispatchEvents","expectedTrackCount","expectedNextCount","queuedSlots","observedNextCount","expectedUpcomingCount","matchingUpcomingPrefixCount","autoplayInSelectionCount","autoplayTailCount","contextTailCount","queuedTailCount","otherTailCount","delimiterTailCount"])
+  for (const key of ["firstMismatchUpcomingPosition","observedAtMismatchSelectionPosition","skippedSelectionPositions","unexpectedObservedCount","firstObserverEvents","queueObserverEvents","queuedRequestCount","eventsObserved","postDispatchEvents","expectedTrackCount","expectedNextCount","queuedSlots","observedNextCount","expectedUpcomingCount","matchingUpcomingPrefixCount","autoplayInSelectionCount","autoplayTailCount","contextTailCount","queuedTailCount","otherTailCount","delimiterTailCount"])
     if (Number.isSafeInteger(value[key]) && value[key] >= 0 && value[key] <= 100000) out[key] = value[key];
   if (typeof value.errorCode === "string" && /^SP_SHUFFLE_[A-Z_]+$/.test(value.errorCode)) out.errorCode = value.errorCode;
   return out;
@@ -140,6 +156,8 @@ export class ShuffleClient {
     } catch (error) {
       const failure = shuffleError(error, true);
       try { journal.diagnostics = await this.diagnostics(); } catch {}
+      const detail = mismatchSummary(journal.diagnostics);
+      if (detail) failure.message += ` ${detail}`;
       failure.message += recordFailure(this.api.Platform.Storage, journal, failure, JOURNAL);
       throw failure;
     }

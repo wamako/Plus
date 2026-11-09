@@ -27,8 +27,8 @@ test('Shuffle+ bundle through real pinned loader: no writes on preview, native a
   callApiSync(op){if(op==='player.state')return {contextUri:context,trackUri:uri(1)};throw new Error(op)},
   requestApi:async(op,args)=>{
    calls.push({op,args});
-   if(op==='shuffleplus.capabilities')return {version:1,host:23,queueRevision:"observer-initial-cas",queueEntryProvider:"native-factory-default",observerReadiness:"await-initial-state",collectionVerification:"provider-aware-autoplay",collectionMode:"first-track-explicit-queue",route:"native-play-and-setqueue",queueMode:"native-editor-options",playerReady:true,limit:10000};
-   if(op==='shuffleplus.diagnostics')return {host:23,mode:'queue',outcome:'unknown',queueUnchanged:true};
+   if(op==='shuffleplus.capabilities')return {version:1,host:24,queueRevision:"observer-initial-cas",queueEntryProvider:"native-factory-default",observerReadiness:"await-initial-state",collectionVerification:"provider-aware-autoplay",collectionMode:"first-track-explicit-queue",route:"native-play-and-setqueue",queueMode:"native-editor-options",playerReady:true,limit:10000};
+   if(op==='shuffleplus.diagnostics')return {host:24,mode:'queue',outcome:'unknown',queueUnchanged:true};
    if(op==='shuffleplus.copyDiagnostics')return true;
    if(op==='shuffleplus.queue')return {mode:'queue',ticket,count:3,tracks:[1,1,2].map(n=>({uri:uri(n),title:'Song '+n,artist:'Artist'}))};
    if(op==='shuffleplus.prepare'){if(prepareHold)await prepareHold;if(failPrepare)throw new Error(failPrepare);return {mode:'collection',ticket,count:args.uris.length};}
@@ -56,7 +56,7 @@ test('Shuffle+ bundle through real pinned loader: no writes on preview, native a
   loader.loadScript(path.join(root,'build/SpotifyPlus-ShufflePlus/shuffle-plus'),'user');
   assert.equal(registry.getScripts().length,1);assert.equal(calls.length,0);
   const entry=[...registry.getSideDrawerItems().values()][0];registry.emitSideDrawerPress(entry.scriptId,entry.id);await until(()=>read().includes('Load and shuffle collection'));
-  press('Check active playback adapter');await until(()=>read().includes('Active module R23'));assert.equal(mutations().length,0);
+  press('Check active playback adapter');await until(()=>read().includes('Active module R24'));assert.equal(mutations().length,0);
   press('Preview shuffled upcoming queue');await until(()=>read().includes('Confirm upcoming shuffle'));
   assert.equal(mutations().length,0);assert.match(read(),/3 tracks in preview/);
   press('Cancel shuffle confirmation');assert.equal(mutations().length,0);
@@ -80,6 +80,18 @@ test('Shuffle+ bundle through real pinned loader: no writes on preview, native a
   // A real phone viewport cannot see controls beneath forty rendered song cards.
   context=largeAlbum;press('Use current playing context');press('Load and shuffle collection');
   await until(()=>read().includes('10000 tracks in preview'));
+  press('Use 20-song test ranges');await until(()=>read().includes('20 tracks in preview'));
+  assert.match(read(),/Selected playback range 1–20 of 10000/);
+  press('Prepare shuffled playback');await until(()=>button('Start shuffled playback'));
+  const firstRange=[...calls.findLast(c=>c.op==='shuffleplus.prepare').args.uris];assert.equal(firstRange.length,20);
+  press('Next playback range');await until(()=>read().includes('Selected playback range 21–40 of 10000'));
+  assert.ok(!button('Start shuffled playback'),'range changes invalidate prepared tickets');
+  press('Prepare shuffled playback');await until(()=>button('Start shuffled playback'));
+  const secondRange=[...calls.findLast(c=>c.op==='shuffleplus.prepare').args.uris];assert.equal(secondRange.length,20);
+  assert.equal(new Set([...firstRange,...secondRange]).size,40);
+  assert.equal(mutations().length,3,'test ranges are read-only until explicitly started');
+  press('Use up to 10,000-song ranges');await until(()=>read().includes('10000 tracks in preview'));
+  assert.ok(!button('Start shuffled playback'));assert.match(read(),/Selected playback range 1–10000 of 10000/);
   press('Prepare shuffled playback');await until(()=>button('Start shuffled playback'));
   beforePreview('Start shuffled playback',true);
   assert.ok(!button('Prepare shuffled playback'),'the prepare control must become the start control in place');

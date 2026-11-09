@@ -148,3 +148,24 @@ test("a successful Web create response without a playlist ID remains an unknown 
   await assert.rejects(client.createCopy([track(1)],"Copy","yes","yes",{}),/outcome is unknown/);
   assert.equal(calls,1);assert.equal(values.get("last-write-v1").phase,"unknown");
 });
+
+
+test("retained liked-song metadata failures are accurate, DNS-specific and recover on a new read",async()=>{
+ let online=false;
+ const {client,writes}=fixture(makeHttp(async()=>{
+  if(!online){const error=new Error("private-token in URL");error.cause={code:"ENOTFOUND"};throw error;}
+  return {status:200,json:async()=>({name:"Recovered",artist:[{name:"Artist"}]})};
+ }));
+ const rows=[{uri:uri(1),addedAt:42},{uri:uri(2),addedAt:43}];
+ const failed=await client.hydrateLikes(rows,{},()=>{});
+ assert.deepEqual(failed.map(t=>t.uri),rows.map(t=>t.uri));
+ for(const t of failed){
+  assert.equal(t.metadataUnavailable,true);assert.equal(t.available,null);
+  assert.match(t.metadataStatus,/DNS lookup failed/);
+  assert.doesNotMatch(t.metadataStatus,/Track 1|No partial preview|private-token/);
+  assert.match(t.metadataStatus,/saved song remains/i);
+ }
+ online=true;const recovered=await client.hydrateLikes(rows,{},()=>{});
+ assert.ok(recovered.every(t=>t.title==="Recovered"&&!t.metadataUnavailable));
+ assert.deepEqual(recovered.map(t=>t.addedAt),[42,43]);assert.deepEqual(writes,[]);
+});

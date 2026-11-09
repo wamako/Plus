@@ -153,9 +153,12 @@ export class DataClient {
         failures.push(`${name}: ${reason(error)}`);
       }
     }
-    throw new ReadError(
+    const error = new ReadError(
       `${label} could not be read. ${failures.join("; ")}. Check that this item opens in Spotify. No partial preview was used.`,
     );
+    // Keep already-redacted route failures separate from collection completeness.
+    error.readFailures = failures;
+    throw error;
   }
   async paged(path, job, progress = (_message) => {}, maximum = MAX_ITEMS) {
     const rows = [];
@@ -523,7 +526,11 @@ export class DataClient {
             }),
             addedAt: Number.isFinite(row.addedAt) ? row.addedAt : null,
             metadataUnavailable: true,
-            metadataStatus: reason(error),
+            metadataStatus: `Metadata lookup failed. ${
+              error instanceof ReadError && Array.isArray(error.readFailures)
+                ? error.readFailures.filter(value => !value.startsWith("Current player:")).join("; ")
+                : reason(error)
+            } The saved song remains in this preview; playability is unknown.`,
           };
         }
         completed++;

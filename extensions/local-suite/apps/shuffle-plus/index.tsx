@@ -3,18 +3,18 @@ import React, { useRef, useState } from "react";
 import { View } from "spotifyplus/react";
 import { SpotifyPlus as S } from "spotifyplus";
 import { DataClient } from "../../shared/data.mjs";
-import { ShuffleClient, shuffleTracks, SHUFFLE_LIMIT } from "../../shared/shuffle.mjs";
+import { ShuffleClient, shuffleTracks, playbackRange, SHUFFLE_LIMIT } from "../../shared/shuffle.mjs";
 import { LIKED_URI } from "../../shared/liked-songs.mjs";
 import { Page, Label, Field, Button, Results, useTask, Status, initialUri, currentContext, register, useLikedSource, LikedSongsSource } from "../../shared/ui";
 const dataClient = new DataClient(S), shuffleClient = new ShuffleClient(S);
 function App() {
   const [uri, setUri] = useState(initialUri), input = useRef(uri),
     [data, setData] = useState<any>(null), [tracks, setTracks] = useState<any[]>([]),
-    [part, setPart] = useState(0), [plan, setPlan] = useState<any>(null),
+    [part, setPart] = useState(0), [rangeSize, setRangeSize] = useState(SHUFFLE_LIMIT), [plan, setPlan] = useState<any>(null),
     [confirmation, setConfirmation] = useState<string | null>(null),
     [reviewed, setReviewed] = useState(0), [outcome, setOutcome] = useState(""), [runtime, setRuntime] = useState(""), task = useTask(), liked = useLikedSource();
-  const count = Math.ceil(tracks.length / SHUFFLE_LIMIT), from = part * SHUFFLE_LIMIT,
-    selected = data?.mode === "queue" ? tracks : tracks.slice(from, from + SHUFFLE_LIMIT),
+  const range = playbackRange(tracks.length, rangeSize, part),
+    selected = data?.mode === "queue" ? tracks : tracks.slice(range.from, range.to),
     needsReview = shuffleClient.needsReview(),
     collectionReady = plan?.mode === "collection" && confirmation;
   function clear() { setPlan(null); setConfirmation(null); setOutcome(""); }
@@ -65,9 +65,14 @@ function App() {
       <Label>{tracks.length} songs loaded. Duplicate occurrences are preserved.</Label>
       {data?.mode === "collection" ? <View>
         <Button title="Reshuffle preview" disabled={task.busy} onPress={() => { clear(); setTracks(shuffleTracks(tracks)); setPart(0); }} />
-        {count > 1 ? <View><Label muted>The entire loaded collection was randomized. Choose an explicit playback range of up to 10,000 songs.</Label>
-          {Array.from({ length: count }, (_, i) => <Button key={i} title={`Playback range ${i * SHUFFLE_LIMIT + 1}–${Math.min(tracks.length, (i + 1) * SHUFFLE_LIMIT)}`} active={part === i} disabled={task.busy} onPress={() => { setPart(i); clear(); }} />)}
+        <Label muted>{`Selected playback range ${range.from + 1}–${range.to} of ${tracks.length}. Only these ${selected.length} previewed songs will be requested.`}</Label>
+        <Button title="Use 20-song test ranges" active={rangeSize === 20} disabled={task.busy} onPress={() => { setRangeSize(20); setPart(0); clear(); }} />
+        <Button title="Use up to 10,000-song ranges" active={rangeSize === SHUFFLE_LIMIT} disabled={task.busy} onPress={() => { setRangeSize(SHUFFLE_LIMIT); setPart(0); clear(); }} />
+        {range.count > 1 ? <View>
+          <Button title="Previous playback range" disabled={task.busy || range.part === 0} onPress={() => { setPart(range.part - 1); clear(); }} />
+          <Button title="Next playback range" disabled={task.busy || range.part + 1 >= range.count} onPress={() => { setPart(range.part + 1); clear(); }} />
         </View> : null}
+        {selected.some(t => t.metadataUnavailable) ? <Label muted>{selected.filter(t => t.metadataUnavailable).length} selected songs have missing metadata. Their saved URIs are retained; missing metadata does not prove that a song is unplayable. Metadata network failures and queue-order confirmation are separate checks.</Label> : null}
         <Button title={collectionReady ? "Start shuffled playback" : "Prepare shuffled playback"} disabled={task.busy || needsReview} onPress={collectionReady ? apply : prepare} />
         {collectionReady ? <View>
           <Label>Ready to start the first song, then explicitly queue the remaining {plan.count - 1} songs. Spotify shuffle and repeat will be off for this playback. This confirmation expires after two minutes.</Label>

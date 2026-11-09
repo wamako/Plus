@@ -26,6 +26,22 @@ public class CollectionHarness {
   next=window(14,"autoplay",2);next.add(14,new Track("spotify:delimiter"));ok(!CollectionOrder.inspect(current,next,expected).matches);
   next=window(14,"autoplay",2);next.add(13,new Track("spotify:meta:delimiter"));v=CollectionOrder.inspect(current,next,expected);ok(v.matches&&v.autoplayTailCount==2&&v.delimiterTailCount==1);
   var duplicate=List.of(uri(1),uri(2),uri(1));next=new ArrayList<>(List.of(new Track(2,"context"),new Track(1,"context"),new Track(100,"autoplay")));ok(CollectionOrder.inspect(current,next,duplicate).matches);next.remove(1);ok(!CollectionOrder.inspect(current,next,duplicate).matches);
+  // R23 phone shape: 10,000 requested, an 80-entry window, divergence after eight.
+  var large=selection(10000);next=window(81,"context",0);
+  next.remove(8);next.add(new Track(82,"context"));
+  v=CollectionOrder.inspect(current,next,large);
+  ok(!v.matches&&v.matchingUpcomingPrefixCount==8&&v.firstMismatchUpcomingPosition==9);
+  ok(v.observedAtMismatchSelectionPosition==10&&!v.expectedAtMismatchSeenLater);
+  ok(v.observedIsOrderedSubsequence&&v.skippedSelectionPositions==1&&v.unexpectedObservedCount==0);
+  next=window(81,"context",0);Collections.swap(next,8,9);v=CollectionOrder.inspect(current,next,large);
+  ok(!v.matches&&!v.observedIsOrderedSubsequence&&v.expectedAtMismatchSeenLater&&v.unexpectedObservedCount==0);
+  next=window(81,"context",0);next.set(8,new Track(20000,"queue"));next.get(8).metadata.put("is_queued","true");
+  v=CollectionOrder.inspect(current,next,large);ok(!v.matches&&v.unexpectedObservedCount==1&&v.observedAtMismatchSelectionPosition==0&&v.mismatchItemKind.equals("track")&&v.mismatchProvider.equals("queue")&&v.mismatchIsQueued);
+  next.set(8,new Track("spotify:delimiter"));v=CollectionOrder.inspect(current,next,large);ok(!v.matches&&v.mismatchItemKind.equals("delimiter"));
+  next=window(81,"context",0);v=CollectionOrder.inspect(current,next,large);ok(v.matches&&v.firstMismatchUpcomingPosition==0&&v.observedIsOrderedSubsequence&&v.skippedSelectionPositions==0);
+  next=new ArrayList<>(List.of(new Track(2,"context"),new Track(2,"context")));
+  v=CollectionOrder.inspect(current,next,List.of(uri(1),uri(2),uri(2)));ok(v.matches&&v.observedIsOrderedSubsequence);
+  v=CollectionOrder.inspect(current,next,List.of(uri(1),uri(2),uri(3)));ok(!v.matches&&!v.observedIsOrderedSubsequence&&v.unexpectedObservedCount==1);
   System.out.println("PASS selected order, duplicates, visible windows, typed tails and 14+45 report regression");
  }
 }'''

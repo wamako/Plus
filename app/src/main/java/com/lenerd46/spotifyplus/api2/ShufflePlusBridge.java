@@ -206,6 +206,14 @@ public final class ShufflePlusBridge {
             audit.put("autoplayInSelectionCount",order.autoplayInSelectionCount);audit.put("expectedUpcomingCount",order.expectedUpcomingCount);audit.put("matchingUpcomingPrefixCount",order.matchingUpcomingPrefixCount);
             audit.put("autoplayTailCount",order.autoplayTailCount);audit.put("contextTailCount",order.contextTailCount);
             audit.put("queuedTailCount",order.queuedTailCount);audit.put("otherTailCount",order.otherTailCount);audit.put("delimiterTailCount",order.delimiterTailCount);
+            audit.put("firstMismatchUpcomingPosition",order.firstMismatchUpcomingPosition);
+            audit.put("observedAtMismatchSelectionPosition",order.observedAtMismatchSelectionPosition);
+            audit.put("expectedAtMismatchSeenLater",order.expectedAtMismatchSeenLater);
+            audit.put("observedIsOrderedSubsequence",order.observedIsOrderedSubsequence);
+            audit.put("skippedSelectionPositions",order.skippedSelectionPositions);
+            audit.put("unexpectedObservedCount",order.unexpectedObservedCount);
+            audit.put("mismatchItemKind",order.mismatchItemKind);audit.put("mismatchProvider",order.mismatchProvider);
+            audit.put("mismatchIsQueued",order.mismatchIsQueued);
             audit.put("autoplayTailOnly",order.autoplayTailOnly);audit.put("visibleOrderMatches",order.matches);return order.matches;
         }
         public void replace(ShuffleEngine.Snapshot snapshot,List<ShuffleEngine.Item> order) {

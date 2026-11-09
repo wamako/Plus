@@ -1,13 +1,22 @@
-> Current candidate: R23 / suite 0.1.10 / Shuffle+ 0.1.12. See
-> [stabilization changes and limits](../../docs/API2_R23_STABILIZATION.md) and
-> [phone acceptance](../../R23_ACCEPTANCE.md). Extension code must be trusted.
+> Current candidate: R24 / suite 0.1.11 / Shuffle+ 0.1.13. See
+> [diagnostic changes and limits](../../docs/API2_R24_QUEUE_DIAGNOSTICS.md) and
+> [phone acceptance](../../R24_ACCEPTANCE.md). Extension code must be trusted.
 
-# Spotify Plus local Android extensions · 0.1.10
+# Spotify Plus local Android extensions · 0.1.11
 
 Four removable Android adaptations for Spotify 9.1.94.1929 / arm64 / API 2.
-Use **Spotify Plus R23** as the LSPatch module. No extension is published to a marketplace.
+Use **Spotify Plus R24** as the LSPatch module. No extension is published to a marketplace.
 
-## 0.1.10 / R23 update
+## 0.1.11 / R24 diagnostic update
+
+Retained Liked Songs rows now report metadata failures separately from collection
+completeness; DNS errors no longer say that no preview was used. Missing metadata
+never implies unplayability or removes a saved song. Shuffle+ 0.1.13 adds explicit
+20-song test ranges and R24's redacted mismatch positions/gap evidence. Commands,
+strict order checks, unknown-outcome journals and Autoplay are unchanged. This
+candidate does not claim that the reported live queue failure is fixed.
+
+## Earlier 0.1.10 / R23 update
 
 Repatch with R23 and update Shuffle+ separately to 0.1.12. Keep app data, replace
 folders without duplicate IDs, Refresh local extensions, then restart Spotify.

@@ -96,11 +96,12 @@ public class AdapterHarness {
  public static class Options {public boolean shuffled;public boolean shufflingContext(){return shuffled;}}
  public static class PlayerState {final Options options=new Options();public Options options(){return options;}}
  static Repo repo;static Handler handler;static PlayerState player;
- public static class Repo {final Flowable stream;int writes;SetQueueCommand last;boolean rejected,noOp,silentNoOp,changeCurrent,lose,stopAfterWrite,failSecondSubscribe;Repo(State s){stream=new Flowable(s);}
+ public static class Repo {final Flowable stream;int writes;SetQueueCommand last;boolean gapWindow,rejected,noOp,silentNoOp,changeCurrent,lose,stopAfterWrite,failSecondSubscribe;Repo(State s){stream=new Flowable(s);}
  public Single renamedDispatch(SetQueueCommand c){return new Single(()->{writes++;last=c;ok(c.options.override&&!stream.listeners.isEmpty());
  if(!c.revision.equals(((State)stream.value).rev))return "Failure{stale revision}";
  if(silentNoOp)return "Success{}";State original=(State)stream.value;State s=new State();s.current=original.current;s.prev=original.prev;s.rev=original.rev+"queue";s.next=original.next;
  if(!rejected&&!noOp){s.next=new ArrayList<>();int i=0;for(Object o:c.next){ContextTrack t=(ContextTrack)o;ContextTrack v=t.toBuilder().uid(t.uid.isEmpty()?"assigned-"+(i++):t.uid).build();s.next.add(v);}}
+ if(gapWindow){s.next=new ArrayList<>(s.next.subList(0,81));s.next.remove(8);}
  if(changeCurrent)s.current=new Opt(track(8,"user-skip","context",false));stream.emit(s,true);
  if(stopAfterWrite){s=new State();s.current=new Opt(null);s.next=List.of();stream.emit(s,true);}
  if(lose)throw new IllegalStateException("private");return rejected?"Failure{}":"Success{}";});}}
@@ -130,7 +131,7 @@ if(failSecondSubscribe)repo.stream.failSubscribe=true;if(failRead)Single.lost=tr
  static JSONObject diag()throws Exception{return (JSONObject)call("diagnostics",new JSONObject());}
  static void stopped(){ok(repo.stream.listeners.isEmpty());}
  public static void main(String[] args)throws Exception {
- reset();ok(((JSONObject)call("capabilities",new JSONObject())).getInt("host")==23);
+ reset();ok(((JSONObject)call("capabilities",new JSONObject())).getInt("host")==24);
  JSONObject p=(JSONObject)call("queue",new JSONObject());ok(repo.writes==0);apply(p,2,0,1);ok(((ContextTrack)repo.last.next.get(0)).uid.equals("c"));stopped();
  p=(JSONObject)call("queue",new JSONObject());((State)repo.stream.value).rev="metadata-only";apply(p,1,2,0);ok(repo.last.revision.equals("metadata-only"));
  p=(JSONObject)call("queue",new JSONObject());((State)repo.stream.value).current=new Opt(track(3,"new-current","context",false));fail("apply",order(p,0,1,2),"STALE_ORDER");
@@ -182,6 +183,12 @@ if(failSecondSubscribe)repo.stream.failSubscribe=true;if(failRead)Single.lost=tr
  reset();handler.failRead=true;p=prepare(2,1);fail("apply",order(p,0,1),"UNCONFIRMED_READBACK");Single.lost=false;ok(repo.writes==0&&diag().get("outcome").equals("unknown"));stopped();
  reset();repo.stream.failSubscribe=true;p=prepare(2,1);fail("apply",order(p,0,1),"OBSERVER_READY");ok(handler.writes==0&&repo.writes==0);stopped();
  reset();p=prepare(2,1);com.lenerd.spotifyplus.module.hooks.PlayerHook.contextPlayer=new Handler();fail("apply",order(p,0,1),"STALE_PLAYER");ok(handler.writes==0);
+ // Large collection readback can be bounded and still reveal a real gap.
+ reset();repo.gapWindow=true;int[] largeInput=new int[10000],largeOrder=new int[10000];for(int i=0;i<10000;i++){largeInput[i]=i+1;largeOrder[i]=i;}
+ p=prepare(largeInput);fail("apply",order(p,largeOrder),"UNCONFIRMED_ORDER");
+ ok(repo.writes==1&&handler.writes==1&&diag().get("outcome").equals("unknown"));
+ ok(diag().getInt("observedNextCount")==80&&diag().getInt("matchingUpcomingPrefixCount")==8);
+ ok(diag().getInt("firstMismatchUpcomingPosition")==9&&diag().getInt("skippedSelectionPositions")==1&&diag().get("observedIsOrderedSubsequence").equals(true));stopped();
  reset();List<String> max=Collections.nCopies(9999,uri(1));var prepared=NativeQueueCommand.prepareSelection(AdapterHarness.class.getClassLoader(),"42",max,List.of(),List.of(track(9,"keep","autoplay",false)),null);ok(prepared.next.size()==10000);
  System.out.println("PASS staged adapter: first-track only, explicit queue, duplicate occurrences, preserved Autoplay, safe manual/concurrent changes, no-op/refusal/lost-result and observer cleanup");
  }

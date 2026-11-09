@@ -1,6 +1,12 @@
 # Spotify Plus project checkpoint
 
-## Current candidate: R23 / suite 0.1.10 / Shuffle+ 0.1.12
+## Current diagnostic candidate: R24 / suite 0.1.11 / Shuffle+ 0.1.13
+
+The R23 report requested 10,000 tracks and observed 80 upcoming entries with an
+8-entry matching prefix. Both native replies succeeded; order stayed unconfirmed.
+See [diagnosis](API2_R24_QUEUE_DIAGNOSTICS.md). No authenticated fix is claimed.
+
+## Previous candidate: R23 / suite 0.1.10 / Shuffle+ 0.1.12
 
 See [stabilization](API2_R23_STABILIZATION.md) for fixes, tests and deferred work.
 The root manifest defines versions. PR2 records final CI/head and artifact hashes.

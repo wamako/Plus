@@ -210,3 +210,6 @@ __pycache__/
 /app/api2-source/
 /app/api2-generated/
 /app/api2-assets/
+
+# Dependencies are restored from package-lock.json.
+node_modules/

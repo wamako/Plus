@@ -298,4 +298,18 @@ public class NativeLikedSongsReadTest {
         assertEquals(200, result.status);
         assertArrayEquals(bytes, result.body);
     }
+    @Test public void capturedAccountIdentityNeedsNoProfileRequestOrReadyTokens() throws Exception {
+        AtomicInteger requests = new AtomicInteger();
+        NativeLikedSongsRead reader = new NativeLikedSongsRead(new OkHttpClient.Builder().addInterceptor(chain -> {
+            requests.incrementAndGet();
+            return response(chain.request(), 200, new byte[0]);
+        }).build(), () -> new NativeLikedSongsRead.Credentials("fixture", null, null));
+        assertEquals("fixture", reader.accountUsername());
+        assertEquals(0, requests.get());
+        NativeLikedSongsRead unavailable = new NativeLikedSongsRead(new OkHttpClient(), () -> {
+            throw new IllegalStateException(PRIVATE_CLIENT);
+        });
+        fixedFailure(unavailable::accountUsername);
+    }
+
 }

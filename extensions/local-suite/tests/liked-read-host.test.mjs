@@ -40,6 +40,7 @@ function fixture(t, read) {
     requestApi: async (operation, args) => {
       calls.push({ operation, args: args === undefined ? undefined : structuredClone(args) });
       if (operation === "liked.capabilities") return capability;
+      if (operation === "liked.account") return { username: "self" };
       assert.equal(operation, "liked.read");
       return read(args);
     },
@@ -121,4 +122,13 @@ test("native authentication errors through actual factory remain redacted and ne
     return true;
   });
   assert.deepEqual(f.calls.map(call => call.operation), ["liked.capabilities", "liked.read"]);
+});
+
+
+test("automatic native account identity bypasses profile HTTP through the actual SDK facade", async t => {
+  const f = fixture(t, async () => jsonEnvelope({ uri: "spotify:user:self:collection", pages: [{ tracks: [track(1)] }] }));
+  assert.equal(typeof f.api.LikedSongs.getAccount, "function");
+  const result = await f.client.likedSongs({}, () => {});
+  assert.deepEqual(result.tracks.map(row => row.uri), [uri(1)]);
+  assert.deepEqual(f.calls.map(call => call.operation), ["liked.account", "liked.capabilities", "liked.read"]);
 });

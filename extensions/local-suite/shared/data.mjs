@@ -85,7 +85,7 @@ export class DataClient {
       const code = /\bSP_LIKED_(CLIENT_TOKEN|SESSION|ACCOUNT)\b/.exec(error?.message || "")?.[1];
       throw new ReadError(code === "CLIENT_TOKEN" || code === "SESSION"
         ? "Native Spotify authentication is not ready. Open Spotify and retry the read."
-        : code === "ACCOUNT" ? "The saved username differs from Spotify's current account. Clear the username override."
+        : code === "ACCOUNT" ? "Native account information is unavailable or differs from the saved username. Check the account and username option."
         : "Native Liked Songs read failed. No partial preview was used.");
     }
     check(job);
@@ -449,6 +449,16 @@ export class DataClient {
     const user = await this.routes(
       "Account",
       [
+        ["Captured native account", async () => {
+          if (typeof this.api.LikedSongs?.getAccount !== "function") throw new ReadError("not exposed by this host");
+          let timer;
+          try {
+            return await Promise.race([
+              this.api.LikedSongs.getAccount(),
+              new Promise((_, reject) => { timer = setTimeout(() => reject(new ReadError("account read timed out")), 3000); }),
+            ]);
+          } finally { clearTimeout(timer); }
+        }],
         [
           "Native account",
           async () => {

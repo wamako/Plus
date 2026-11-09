@@ -13,6 +13,7 @@ public final class NativeLikedSongsBridge {
     private NativeLikedSongsBridge() {}
     public static JSONObject execute(String operation,JSONObject args) throws Exception {
         if("liked.capabilities".equals(operation))return new JSONObject().put("version",1).put("transport","native-client-auth-v1");
+        if("liked.account".equals(operation))return new JSONObject().put("username",READER.accountUsername());
         if(!"liked.read".equals(operation))throw new IllegalArgumentException("SP_LIKED_OPERATION");
         final NativeLikedSongsRead.Result result;
         String kind=args.optString("kind","");

@@ -20,7 +20,9 @@ remain; a mismatched queue cannot be reported as success.
 
 JavaScript Liked Songs readers sent only an access token. Native metadata/profile
 readers also use the captured Client-Token, which the SDK does not expose. R22
-adds a narrow async LikedSongs facade and native read-only transport. Fresh
+adds a narrow async LikedSongs facade and native read-only transport. Automatic
+account identity uses the captured native username, avoiding a profile HTTP
+dependency before the collection request. Fresh
 credentials stay native; JSON/protobuf paging, completeness/duplicate guards,
 cancellation and rate-limit stops remain in the client. Old hosts retain their
 existing reader. Supported native requests never downgrade that same request to

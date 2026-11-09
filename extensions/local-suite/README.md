@@ -11,7 +11,8 @@ extensions, force-stop and reopen. Keep app data and avoid duplicate IDs.
 The previous R21 APK does not include this native collection transport.
 
 Liked Songs now prefers native authenticated reads when advertised by the host.
-Spotify client credentials remain in Java. Complete paging, count/duplicate
+Automatic account lookup uses the captured native username without a profile
+HTTP request. Spotify client credentials remain in Java. Complete paging, count/duplicate
 guards, cancellation and rate-limit behavior remain. Errors still block the
 preview. See [R22 evidence and limits](../../docs/API2_R22_COLLECTION_READS.md).
 Earlier journal/performance changes below remain included.

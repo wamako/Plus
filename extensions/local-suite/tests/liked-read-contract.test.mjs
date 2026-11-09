@@ -171,3 +171,14 @@ test("native JSON at the four-MiB transport bound decodes without recursive base
   assert.deepEqual(result.tracks.map(t => t.uri), [trackUri(1)]);
   assert.deepEqual(f.http, []);
 });
+
+test("automatic account lookup uses captured native identity without a profile HTTP dependency", async () => {
+  const f = fixture();
+  f.api.User.getCurrent = async () => { throw new RequestError("Profile route forbidden", 403); };
+  f.api.LikedSongs.getAccount = async () => ({ username: "self" });
+  f.native(async args => { assert.equal(args.url, resolver); return jsonReply(oneContext()); });
+  const result = await f.client.likedSongs({}, () => {});
+  assert.deepEqual(result.tracks.map(t => t.uri), [trackUri(1)]);
+  assert.deepEqual(f.http, []);
+  assert.equal(f.tokenReads(), 0);
+});

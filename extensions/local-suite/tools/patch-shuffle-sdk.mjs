@@ -55,13 +55,25 @@ if (!source.includes("    LikedSongs: {")) {
   if (!source.includes(declaration) || !source.includes(factory)) throw new Error("Pinned SDK Liked Songs API shape changed");
   source = source.replace(declaration, `${declaration}
     LikedSongs: {
+        getAccount(): Promise<{ username: string }>;
         capabilities(): Promise<unknown>;
         read(args: { kind: 'context'; url: string } | { kind: 'collection'; username: string; cursor: string; limit: number }): Promise<unknown>;
     };`);
   source = source.replace(factory, `            LikedSongs: {
+                getAccount: () => runtime.requestApi('liked.account'),
                 capabilities: () => runtime.requestApi('liked.capabilities'),
                 read: args => runtime.requestApi('liked.read', args),
             },
 ${factory}`);
+  fs.writeFileSync(file, source);
+}
+
+// Migrate a previously prepared R22 tree as well as a clean pinned source tree.
+source = fs.readFileSync(file, "utf8");
+if (!source.includes("getAccount(): Promise<{ username: string }>")) {
+  const declaration = "    LikedSongs: {", factory = "            LikedSongs: {";
+  if (!source.includes(declaration) || !source.includes(factory)) throw new Error("Pinned SDK Liked Songs account API shape changed");
+  source = source.replace(declaration, `${declaration}\n        getAccount(): Promise<{ username: string }>;`);
+  source = source.replace(factory, `${factory}\n                getAccount: () => runtime.requestApi('liked.account'),`);
   fs.writeFileSync(file, source);
 }

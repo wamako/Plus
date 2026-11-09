@@ -45,7 +45,7 @@ def verify(path, abi='arm64-v8a'):
         sdk=apk.read('assets/nodejs/loader/script-api.js')
         for name in [b'ShufflePlus:', b'shuffleplus.capabilities', b'shuffleplus.queue', b'shuffleplus.prepare', b'shuffleplus.apply']:
             assert name in sdk, 'Missing packaged Shuffle+ SDK routing: '+name.decode()
-        for name in [b'LikedSongs:', b'liked.capabilities', b'liked.read']:
+        for name in [b'LikedSongs:', b'liked.account', b'liked.capabilities', b'liked.read']:
             assert name in sdk, 'Missing packaged native Liked Songs routing: '+name.decode()
         assert b'if (opened)' in sdk and b'this.runtime.closeSurface(scriptId)' in sdk, 'Missing Spotify navigation overlay dismissal'
         order=json.loads(apk.read('assets/api2-native-load-order.json'))

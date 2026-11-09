@@ -46,6 +46,12 @@ public final class NativeLikedSongsRead {
         if(!token(value.clientToken))throw fail("CLIENT_TOKEN");
         return value;
     }
+    public String accountUsername() {
+        Credentials value;
+        try {value=credentials.get();}catch(RuntimeException error){throw fail("ACCOUNT");}
+        if(value==null||!username(value.username))throw fail("ACCOUNT");
+        return value.username;
+    }
     private static boolean username(String value) {
         if(value==null||value.isEmpty()||value.length()>256)return false;
         for(char c:value.toCharArray())if(Character.isWhitespace(c)||Character.isISOControl(c)||":/?#".indexOf(c)>=0)return false;

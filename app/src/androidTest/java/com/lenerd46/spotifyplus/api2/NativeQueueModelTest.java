@@ -64,11 +64,14 @@ public class NativeQueueModelTest {
         assertEquals("42",get(result.command,"queueRevision"));assertEquals(List.of(prev),get(result.command,"prevTracks"));assertEquals(3,result.next.size());assertSame(tail,result.next.get(2));
         Class<?> track=loader.loadClass("com.spotify.player.model.ContextTrack");
         for(int i=0;i<2;i++) {
-            Object selected=result.next.get(i);assertEquals(uri,get(selected,"uri"));assertEquals("",get(selected,"uid"));assertEquals("queue",get(selected,"provider"));assertEquals("true",((Map<?,?>)get(selected,"metadata")).get("is_queued"));
+            Object selected=result.next.get(i);assertEquals(uri,get(selected,"uri"));assertEquals("",get(selected,"uid"));assertEquals("",get(selected,"provider"));assertEquals("true",((Map<?,?>)get(selected,"metadata")).get("is_queued"));
+            Object fresh=get(track.getMethod("builder",String.class).invoke(null,uri),"build");
+            Method queued=loader.loadClass("p.nmt0").getDeclaredMethod("e",track,boolean.class);queued.setAccessible(true);
+            assertEquals(queued.invoke(null,fresh,true),selected);
             // Actual queue serializer and reverse decoder, not a fixture substitute.
             Method encode=loader.loadClass("p.xam").getMethod("c",track);encode.setAccessible(true);Object proto=encode.invoke(null,selected);
             Method decode=loader.loadClass("p.xam").getMethod("a",proto.getClass());decode.setAccessible(true);Object decoded=decode.invoke(null,proto);
-            assertEquals(uri,get(decoded,"uri"));assertEquals("queue",get(decoded,"provider"));assertEquals("true",((Map<?,?>)get(decoded,"metadata")).get("is_queued"));
+            assertEquals(uri,get(decoded,"uri"));assertEquals("",get(decoded,"provider"));assertEquals("true",((Map<?,?>)get(decoded,"metadata")).get("is_queued"));
         }
         assertTrue(CollectionOrder.inspect(track(loader,uri,"current",false),result.next,List.of(uri,uri,uri)).matches);
     }

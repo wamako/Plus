@@ -1,15 +1,15 @@
-# Shuffle+ 0.1.10 for Spotify Plus R21
+# Shuffle+ 0.1.11 for Spotify Plus R22
 
-Version 0.1.10 works with the existing **R21 module APK**
-(`SpotifyPlus-9.1.94.1929-api2-r21-arm64.apk`). If R21 is already active, replace
-only the shuffle-plus folder, Refresh and restart Spotify. No new module or
-repatch is required for this update. Users on an older module must first repatch
-the original Spotify 9.1.94.1929 APK with R21.
+Version 0.1.11 requires **R22** and its native-factory-default queue capability.
+Repatch the original Spotify 9.1.94.1929 ARM64 APK with R22, replace shuffle-plus,
+Refresh and restart. Keep app data. R21 cannot supply the corrected request
+contract or the authenticated Liked Songs transport.
 
-This bundle includes the shared data client's verified playlist/queue-write
-journal helpers. Shuffle+'s own playback journal, Fisher-Yates order and R21
-native playback protocol remain unchanged. The four other extensions are
-available separately as suite 0.1.8.
+Fresh entries retain Spotify's factory provider/UID before native assignment.
+The order checker remains strict. This aligns request construction; physical
+phone acceptance must establish whether missing/reordered songs are resolved.
+Fisher-Yates and unknown-outcome/no-retry behavior remain. The other four
+extensions are available as suite 0.1.9.
 
 Collection playback now uses Spotify's normal native PlayCommand handler and
 its interceptors, rather than a direct Esperanto Play request. It supplies the
@@ -29,15 +29,14 @@ to understand explicit context playback; its implementation was not copied.
 
 ## Install
 
-1. Keep the active **R21** Plus module. If upgrading from an older module,
-   repatch Spotify **9.1.94.1929 / arm64** using R21 in LSPatch. A ZIP alone
+1. Repatch Spotify **9.1.94.1929 / arm64** using **R22** in LSPatch. A ZIP alone
    cannot add the native playback adapter to R12/R13.
 2. Extract this ZIP. Put the **shuffle-plus** folder beside your existing four
    local extension folders in SpotifyPlusLocal. It must directly contain
    manifest.json and index.js. Do not nest it inside an extra ZIP wrapper folder.
 3. Refresh the local extensions folder under Developer, then restart Spotify.
    Open **Shuffle+** from Extensions. Update the other four extensions separately
-   with suite **0.1.8**.
+   with suite **0.1.9**.
 
 ## Use
 

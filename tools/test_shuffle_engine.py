@@ -71,7 +71,7 @@ public static SetQueueCommand create(String rev,List<?> next,List<?> prev){retur
 public static class Builder {final SetQueueCommand v=new SetQueueCommand();public Builder options(CommandOptions options){v.options=options;return this;}public SetQueueCommand build(){return v;}}}''',
 'com/lenerd/spotifyplus/module/hooks/PlayerHook.java': r'''package com.lenerd.spotifyplus.module.hooks;public class PlayerHook {public static Object contextPlayer;public static String playBinding="installed";}''',
 'com/spotify/player/model/ContextTrack.java': r'''package com.spotify.player.model;import java.util.*;
-public class ContextTrack {public String uri,uid="",provider="context";public Map<String,String> meta=new HashMap<>();
+public class ContextTrack {public String uri,uid="",provider="";public Map<String,String> meta=new HashMap<>();
 public String uri(){return uri;}public String uid(){return uid;}public String provider(){return provider;}public Map<String,String> metadata(){return meta;}
 public static Builder builder(String uri){Builder b=new Builder();b.v.uri=uri;return b;}public Builder toBuilder(){Builder b=builder(uri);b.v.uid=uid;b.v.provider=provider;b.v.meta.putAll(meta);return b;}
 public static class Builder {final ContextTrack v=new ContextTrack();public Builder uid(String uid){v.uid=uid;return this;}public Builder provider(String p){v.provider=p;return this;}public Builder metadata(Map<String,String> m){v.meta=new HashMap<>(m);return this;}public ContextTrack build(){return v;}}}''',
@@ -125,7 +125,7 @@ if(failSecondSubscribe)repo.stream.failSubscribe=true;if(failRead)Single.lost=tr
  static JSONObject diag()throws Exception{return (JSONObject)call("diagnostics",new JSONObject());}
  static void stopped(){ok(repo.stream.listeners.isEmpty());}
  public static void main(String[] args)throws Exception {
- reset();ok(((JSONObject)call("capabilities",new JSONObject())).getInt("host")==21);
+ reset();ok(((JSONObject)call("capabilities",new JSONObject())).getInt("host")==22);
  JSONObject p=(JSONObject)call("queue",new JSONObject());ok(repo.writes==0);apply(p,2,0,1);ok(((ContextTrack)repo.last.next.get(0)).uid.equals("c"));stopped();
  p=(JSONObject)call("queue",new JSONObject());((State)repo.stream.value).rev="metadata-only";apply(p,1,2,0);ok(repo.last.revision.equals("metadata-only"));
  p=(JSONObject)call("queue",new JSONObject());((State)repo.stream.value).current=new Opt(track(3,"new-current","context",false));fail("apply",order(p,0,1,2),"STALE_ORDER");
@@ -134,7 +134,7 @@ if(failSecondSubscribe)repo.stream.failSubscribe=true;if(failRead)Single.lost=tr
  PlayCommand c=handler.last;ok(c.context.uri.equals(uri(2))&&c.context.pages.size()==1&&c.context.pages.get(0).tracks.size()==1&&c.context.pages.get(0).tracks.get(0).uid.isEmpty());
  ok(!c.options.paused&&!c.options.overrides.shuffled&&!c.options.overrides.repeatTrack&&!c.options.overrides.repeatContext&&c.options.skip.track==0L&&c.options.skip.page==0L&&c.origin.view.equals("spotify:album:0000000000000000000099"));
  State state=(State)repo.stream.value;ok(state.next.size()==4&&state.next.get(0).uri.equals(uri(1))&&state.next.get(1).uri.equals(uri(1))&&!state.next.get(0).uid.equals(state.next.get(1).uid));
- ok(repo.last.next.size()==4&&((ContextTrack)repo.last.next.get(0)).uid.isEmpty()&&((ContextTrack)repo.last.next.get(0)).provider.equals("queue")&&((ContextTrack)repo.last.next.get(0)).meta.get("is_queued").equals("true"));
+ ok(repo.last.next.size()==4&&((ContextTrack)repo.last.next.get(0)).uid.isEmpty()&&((ContextTrack)repo.last.next.get(0)).provider.isEmpty()&&((ContextTrack)repo.last.next.get(0)).meta.get("is_queued").equals("true"));
  ok(state.next.get(2).uid.equals("tail8")&&state.next.get(2).provider.equals("autoplay"));
  ok(diag().get("playSent").equals(true)&&diag().get("queueSent").equals(true)&&diag().get("firstTrackConfirmed").equals(true)&&diag().get("stage").equals("complete"));stopped();fail("apply",order(p,0,1,2),"USED");
  // Queue-only edits also wait for an asynchronous subscription before dispatch.

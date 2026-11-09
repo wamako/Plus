@@ -1,4 +1,14 @@
-# Validation record · 0.1.8 / R21
+# Validation record · 0.1.9 / R22
+
+Test-first cases cover native Liked Songs credential confinement, JSON/binary
+paging, redacted failures, endpoint/account checks, redirects, response limits
+and the real SDK facade. Queue entries retain pinned factory identity; the real
+Android helper comparison is required. See [R22 evidence and limits](../../docs/API2_R22_COLLECTION_READS.md).
+Final CI/head and exact file hashes are recorded in PR2 after validation. Live
+Samsung account, queue order and library acceptance remain a phone step.
+
+## Earlier 0.1.8 / R21 validation
+
 
 2026-11-09: test-first changes for silent journal storage failures, large artist
 shuffle and retained binary inputs. Local checks passed: 140 extension regressions

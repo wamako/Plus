@@ -47,7 +47,9 @@ public final class NativeQueueCommand {
         for(String uri:remaining) {
             if(!uri.matches("spotify:track:[A-Za-z0-9]{22}"))throw ShuffleEngine.error("INPUT");
             Object builder=model.getMethod("builder",String.class).invoke(null,uri);
-            call(builder,"provider",new Class<?>[]{String.class},"queue");
+            // A fresh URI-only entry retains ContextTrack.builder's provider.
+            // Spotify's native insertion marks is_queued without imposing a
+            // provider on the new occurrence. The core owns that assignment.
             call(builder,"metadata",new Class<?>[]{Map.class},Map.of("is_queued","true"));
             // Empty occurrence UID: native core assigns it when accepting a new item.
             next.add(call(builder,"build"));

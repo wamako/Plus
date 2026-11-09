@@ -64,7 +64,7 @@ def validate_module_identity(info, abi):
     assert abi in ("arm64-v8a", "x86_64"), "Unsupported module ABI"
     assert info["package"] == "com.lenerd46.spotifyplus"
     suffix = "-emulator-x86_64" if abi == "x86_64" else ""
-    expected = {"0.10.0-api2.9.1.94.13"+suffix,"0.10.0-api2.9.1.94.14"+suffix,"0.10.0-api2.9.1.94.15"+suffix,"0.10.0-api2.9.1.94.16"+suffix,"0.10.0-api2.9.1.94.21"+suffix}
+    expected = {f"0.10.0-api2.9.1.94.{revision}"+suffix for revision in (13,14,15,16,21,22)}
     assert info["version"] in expected, "Module version does not match its explicit ABI profile"
 
 def validate_signature_mode(config, expected):

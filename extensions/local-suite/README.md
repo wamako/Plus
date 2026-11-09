@@ -1,7 +1,20 @@
-# Spotify Plus local Android extensions · 0.1.8
+# Spotify Plus local Android extensions · 0.1.9
 
 Four removable Android adaptations for Spotify 9.1.94.1929 / arm64 / API 2.
-Use **Spotify Plus R21** as the LSPatch module. No extension is published to a marketplace.
+Use **Spotify Plus R22** as the LSPatch module. No extension is published to a marketplace.
+
+## 0.1.9 / R22 update
+
+Repatch the original Spotify 9.1.94.1929 ARM64 APK with **R22**, then replace the
+four suite folders and update Shuffle+ separately to 0.1.11. Refresh local
+extensions, force-stop and reopen. Keep app data and avoid duplicate IDs.
+The previous R21 APK does not include this native collection transport.
+
+Liked Songs now prefers native authenticated reads when advertised by the host.
+Spotify client credentials remain in Java. Complete paging, count/duplicate
+guards, cancellation and rate-limit behavior remain. Errors still block the
+preview. See [R22 evidence and limits](../../docs/API2_R22_COLLECTION_READS.md).
+Earlier journal/performance changes below remain included.
 
 ## 0.1.8 update on R21
 

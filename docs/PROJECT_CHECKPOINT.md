@@ -1,6 +1,18 @@
 # Spotify Plus project checkpoint
 
 
+## Current repair: R22 / suite 0.1.9 / Shuffle+ 0.1.11
+
+The user confirmed R21 queue order/membership wrong after both success replies,
+and internal Liked Songs 403/Web 404 while Spotify itself works. R22 preserves
+fresh queue factory identity and adds native client-authenticated reads without
+exposing Client-Token. See [R22 evidence and limits](API2_R22_COLLECTION_READS.md).
+Repatch with R22 and update both extension products. Node/Lyrics are unchanged.
+Strict confirmation and incomplete-read guards remain. Final CI and file hashes
+are recorded in PR2 after validation; do not infer phone acceptance. Older
+checkpoint sections below describe previous artifacts and instructions.
+
+
 ## Current focused update: suite 0.1.8 / Shuffle+ 0.1.10 on R21
 
 The R21 module/host21, embedded Node18.20.4 and Beautiful Lyrics stay unchanged.

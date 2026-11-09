@@ -1,4 +1,6 @@
 import { idFromUri, requireConfirmation } from "./model.mjs";
+import { beginJournal, checkpointJournal, recordFailure } from "./write-journal.mjs";
+const JOURNAL = "shuffle-write-v1";
 export const SHUFFLE_LIMIT = 10000;
 // Fisher-Yates: equal probability for each permutation under a uniform RNG.
 // Source occurrences (including duplicate URIs) are kept; no artist weighting.
@@ -114,33 +116,30 @@ export class ShuffleClient {
     check(job); this.validate(value, tracks.length, "collection");
     return { ...value, tracks: [...tracks], order: tracks.map((_, i) => i), used: false };
   }
-  previous() { return this.api.Platform.Storage.get("shuffle-write-v1"); }
+  previous() { return this.api.Platform.Storage.get(JOURNAL); }
   needsReview() { return ["pending", "unknown"].includes(this.previous()?.phase); }
   acknowledge() {
     const previous = this.previous();
-    if (previous) this.api.Platform.Storage.set("shuffle-write-v1", { ...previous, phase: "reviewed" });
+    if (previous) checkpointJournal(this.api.Platform.Storage, { ...previous, phase: "reviewed" }, JOURNAL);
   }
   async apply(plan, token, expected, job) {
     requireConfirmation(token, expected); check(job);
     if (this.needsReview()) throw new Error("Inspect the previous shuffle's playback and acknowledge it before starting another.");
     if (plan.used) throw new Error("This confirmation was already used. Load a new preview.");
     plan.used = true;
-    const journal = { ticket: plan.ticket, mode: plan.mode, requested: plan.count, phase: "pending", startedAt: Date.now() };
-    this.api.Platform.Storage.set("shuffle-write-v1", { ...journal });
-    if (this.previous()?.ticket !== journal.ticket || this.previous()?.phase !== "pending")
-      throw new Error("Could not save the shuffle action record. Nothing was sent.");
+    const journal = beginJournal(this.api.Platform.Storage,
+      { ticket: plan.ticket, mode: plan.mode, requested: plan.count, phase: "pending", startedAt: Date.now() }, JOURNAL);
     try {
       const result = await this.api.ShufflePlus.apply(plan.ticket, plan.order);
       if (result?.applied !== plan.count || result?.verification !== "visible-order") throw new Error("Invalid native acknowledgment");
       if (plan.mode === "collection" && (!Number.isSafeInteger(result.autoplayTailCount) || result.autoplayTailCount < 0 || typeof result.selectionCompleteInWindow !== "boolean" || (result.autoplayTailCount > 0 && !result.selectionCompleteInWindow))) throw new Error("Invalid native selection verification");
       journal.phase = "complete";
-      this.api.Platform.Storage.set("shuffle-write-v1", { ...journal });
+      checkpointJournal(this.api.Platform.Storage, journal, JOURNAL);
       return result;
     } catch (error) {
       const failure = shuffleError(error, true);
-      journal.phase = failure.unknown ? "unknown" : "stopped";
       try { journal.diagnostics = await this.diagnostics(); } catch {}
-      this.api.Platform.Storage.set("shuffle-write-v1", { ...journal });
+      failure.message += recordFailure(this.api.Platform.Storage, journal, failure, JOURNAL);
       throw failure;
     }
   }

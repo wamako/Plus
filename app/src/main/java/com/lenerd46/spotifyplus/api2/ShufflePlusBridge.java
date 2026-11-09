@@ -79,6 +79,12 @@ public final class ShufflePlusBridge {
                     }
                 if(reader==null) throw new NoSuchMethodException();
                 Object state=await(reader.invoke(stream),timeout,unit);
+                return snapshot(repo,state);
+            } catch(Exception | LinkageError error){throw controlled(error,"READY");}
+        }
+        // Interpret the exact state received by the observer. Re-reading a different
+        // stream here could pair its CAS revision with stale native track objects.
+        private ShuffleEngine.Snapshot snapshot(Object repo,Object state) throws Exception {
                 String revision=(String)call(state,"revision");
                 if(revision==null || revision.isEmpty()) throw new IllegalStateException();
                 List<?> next=(List<?>)call(state,"nextTracks"), previous=(List<?>)call(state,"prevTracks");
@@ -94,7 +100,6 @@ public final class ShufflePlusBridge {
                 boolean shuffled=(Boolean)call(options,"shufflingContext");
                 String fingerprint=QueueIdentity.fingerprint(state);
                 return new ShuffleEngine.Snapshot(repo,revision,fingerprint,shuffled,items,previous,delimiter,call(state,"track"));
-            } catch(Exception | LinkageError error){throw controlled(error,"READY");}
         }
         public Object preparePlay(ShuffleEngine.Snapshot snapshot,String context,List<String> uris) {
             try {
@@ -156,7 +161,6 @@ public final class ShufflePlusBridge {
                     if(!assess(firstCurrent,tail,p.uris,audit))throw ShuffleEngine.error("UNCONFIRMED_ORDER");
                     audit.put("stage","complete");audit.put("readbackStep","complete");audit.put("outcome","confirmed");return;
                 }
-                NativeQueueCommand.Prepared prepared=NativeQueueCommand.prepareSelection(loader,fresh.revision,p.uris.subList(1,p.uris.size()),fresh.previous,tail,fresh.delimiter);
                 audit.put("queuedRequestCount",p.uris.size()-1);audit.put("nativeEditorOptions",true);
                 audit.put("stage","selected-queue");audit.put("readbackStep","selected-initial");queue=watch(p.owner);
                 queue.start(state -> {
@@ -169,6 +173,11 @@ public final class ShufflePlusBridge {
                 // Initial replay is not confirmation. Reject concurrent edits before dispatch.
                 Object queueInitial=queue.initial(budget.nanos(2L));
                 if(!fresh.fingerprint.equals(QueueIdentity.fingerprint(queueInitial)))throw ShuffleEngine.error("SEQUENCE_CHANGED");
+                ShuffleEngine.Snapshot live=snapshot(p.owner,queueInitial);
+                if(NextUpQueue.currentRepository()!=p.owner||p.client!=PlayerHook.contextPlayer||live.shuffled)throw ShuffleEngine.error("SEQUENCE_CHANGED");
+                List<Object> liveTail=new ArrayList<>();for(var item:live.next)liveTail.add(item.nativeTrack);
+                NativeQueueCommand.requireAutoplayTail(liveTail);
+                NativeQueueCommand.Prepared prepared=NativeQueueCommand.prepareSelection(loader,live.revision,p.uris.subList(1,p.uris.size()),live.previous,liveTail,live.delimiter);
                 long queueTimeout=budget.nanos(5L);
                 queue.dispatching();audit.put("queueSent",true);
                 try {result=await(p.queueRpc.invoke(p.owner,prepared.command),queueTimeout,TimeUnit.NANOSECONDS);}
@@ -225,11 +234,27 @@ public final class ShufflePlusBridge {
                     audit.put("uidOrderMatches",sameField(prepared.next,observed,"uid"));
                     boolean matches=expected.equals(identity);audit.put("visibleOrderMatches",matches);return matches;
                 },audit);
-                try {if(!snapshot.fingerprint.equals(QueueIdentity.fingerprint(observer.initial(TimeUnit.SECONDS.toNanos(2L)))))throw ShuffleEngine.error("STALE_ORDER");}
+                ShuffleEngine.Snapshot live;
+                try {
+                    Object initial=observer.initial(TimeUnit.SECONDS.toNanos(2L));
+                    if(!snapshot.fingerprint.equals(QueueIdentity.fingerprint(initial)))throw ShuffleEngine.error("STALE_ORDER");
+                    live=snapshot(snapshot.owner,initial);
+                    if(NextUpQueue.currentRepository()!=snapshot.owner)throw ShuffleEngine.error("STALE_OWNER");
+                    if(live.shuffled!=snapshot.shuffled)throw ShuffleEngine.error("STALE_OPTIONS");
+                }
                 catch(Exception | LinkageError error){throw controlled(error,"OBSERVER_READY");}
+                // The identity check preserves occurrence indices, including duplicate
+                // URIs. Use those indices to retain metadata from the latest state.
+                IdentityHashMap<ShuffleEngine.Item,Integer> indices=new IdentityHashMap<>();
+                for(int i=0;i<snapshot.next.size();i++)indices.put(snapshot.next.get(i),i);
+                List<Object> liveOrder=new ArrayList<>();
+                for(var item:order)liveOrder.add(live.next.get(indices.get(item)).nativeTrack);
+                NativeQueueCommand.Prepared command;
+                try {command=NativeQueueCommand.prepare(loader,live.revision,liveOrder,live.previous,queuedSlots,live.delimiter);}
+                catch(Exception | LinkageError error){throw controlled(error,"PREPARE");}
                 observer.dispatching();audit.put("queueSent",true);audit.put("outcome","unknown");
                 Object result;
-                try {result=await(dispatch.invoke(snapshot.owner,prepared.command));}
+                try {result=await(dispatch.invoke(snapshot.owner,command.command));}
                 catch(Exception | LinkageError error){throw ShuffleEngine.error("RPC");}
                 String status=String.valueOf(result);
                 if(status.startsWith("Failure")){audit.put("reply","refused");audit.put("outcome","refused");throw ShuffleEngine.error("CONFLICT");}

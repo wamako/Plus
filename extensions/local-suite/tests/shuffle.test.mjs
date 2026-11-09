@@ -103,3 +103,30 @@ test('asynchronous observer capability and stage diagnostics are mandatory witho
  assert.equal(safeDiagnostics({...input,readbackStep:'private',queueObserverEvents:-1}).readbackStep,undefined);
  assert.equal(safeDiagnostics({...input,queueObserverEvents:-1}).queueObserverEvents,undefined);
 });
+
+for (const phase of ["complete", "reviewed"]) {
+ test(`shuffle journal verifies ${phase} checkpoints before reporting success`,async()=>{
+  const f=fixture(), p=await f.client.queue({});
+  if(phase==="reviewed") {f.fail(new Error("SP_SHUFFLE_UNCONFIRMED_ORDER"));await assert.rejects(f.client.apply(p,"ok","ok",{}));}
+  const set=f.api.Platform.Storage.set;
+  f.api.Platform.Storage.set=(key,value)=>{if(value.phase!==phase)set(key,value);};
+  if(phase==="complete") await assert.rejects(f.client.apply(p,"ok","ok",{}));
+  else assert.throws(()=>f.client.acknowledge());
+  assert.equal(f.client.needsReview(),true);
+  assert.equal(f.calls.filter(c=>c.op==='shuffleplus.apply').length,1);
+ });
+}
+test('shuffle failure checkpoint cannot replace the original outcome or expose storage details',async()=>{
+ const f=fixture(),p=await f.client.queue({});f.fail(new Error('SP_SHUFFLE_UNCONFIRMED_ORDER'));
+ const set=f.api.Platform.Storage.set;f.api.Platform.Storage.set=(key,value)=>{
+  if(value.phase==='unknown')throw new Error('/private/account-secret');set(key,value);
+ };
+ await assert.rejects(f.client.apply(p,'ok','ok',{}),e=>e.message.includes('SP_SHUFFLE_UNCONFIRMED_ORDER')&&!e.message.includes('account-secret'));
+ assert.equal(f.client.needsReview(),true);
+});
+test('shuffle initial checkpoint verifies the full record, including operation identity',async()=>{
+ const f=fixture(),p=await f.client.queue({});const set=f.api.Platform.Storage.set;
+ f.api.Platform.Storage.set=(key,value)=>set(key,{...value,requested:0});
+ await assert.rejects(f.client.apply(p,'ok','ok',{}),/Nothing was sent/);
+ assert.equal(f.calls.filter(c=>c.op==='shuffleplus.apply').length,0);
+});

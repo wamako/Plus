@@ -98,6 +98,7 @@ public class AdapterHarness {
  static Repo repo;static Handler handler;static PlayerState player;
  public static class Repo {final Flowable stream;int writes;SetQueueCommand last;boolean rejected,noOp,silentNoOp,changeCurrent,lose,stopAfterWrite,failSecondSubscribe;Repo(State s){stream=new Flowable(s);}
  public Single renamedDispatch(SetQueueCommand c){return new Single(()->{writes++;last=c;ok(c.options.override&&!stream.listeners.isEmpty());
+ if(!c.revision.equals(((State)stream.value).rev))return "Failure{stale revision}";
  if(silentNoOp)return "Success{}";State original=(State)stream.value;State s=new State();s.current=original.current;s.prev=original.prev;s.rev=original.rev+"queue";s.next=original.next;
  if(!rejected&&!noOp){s.next=new ArrayList<>();int i=0;for(Object o:c.next){ContextTrack t=(ContextTrack)o;ContextTrack v=t.toBuilder().uid(t.uid.isEmpty()?"assigned-"+(i++):t.uid).build();s.next.add(v);}}
  if(changeCurrent)s.current=new Opt(track(8,"user-skip","context",false));stream.emit(s,true);
@@ -105,16 +106,20 @@ public class AdapterHarness {
  if(lose)throw new IllegalStateException("private");return rejected?"Failure{}":"Success{}";});}}
  // Reproduces the R19 failure shape: starting playback accepts only the first
  // requested song; it does NOT conveniently install the entire shuffled page.
- public static class Handler {int writes;PlayCommand last;boolean noOp,lose,stop,contextTail,manualTail,failRead,failSecondSubscribe,deferSecond,silentSecond,changeSecond;String status="Success{}";
+ public static class Handler {int writes;PlayCommand last;boolean noOp,lose,stop,contextTail,manualTail,failRead,failSecondSubscribe,deferSecond,silentSecond,changeSecond,metadataSecond;String status="Success{}";
  public Single obfuscatedPlay(PlayCommand c){return new Single(()->{writes++;last=c;ok(!repo.stream.listeners.isEmpty());
  if(status.startsWith("Success")&&!noOp){State s=new State();s.rev="play-"+writes;s.current=new Opt(track(Integer.parseInt(c.context.pages.get(0).tracks.get(0).uri.substring(14)),"core-"+writes,"context",false));
  s.next=List.of(track(8,"tail8",contextTail?"context":manualTail?"queue":"autoplay",manualTail),track(9,"tail9","autoplay",false));repo.stream.emit(s,true);
  if(stop){s=new State();s.current=new Opt(null);s.next=List.of();repo.stream.emit(s,true);}
  if(deferSecond)repo.stream.asyncInitial=true;
  if(silentSecond)repo.stream.silentInitial=true;
+ if(metadataSecond)repo.stream.nextInitial=enriched((State)repo.stream.value);
  if(changeSecond){State changed=new State();changed.current=((State)repo.stream.value).current;changed.next=List.of(track(8,"manual-user-change","queue",true));repo.stream.nextInitial=changed;}
 if(failSecondSubscribe)repo.stream.failSubscribe=true;if(failRead)Single.lost=true;}
  if(lose)throw new IllegalStateException("private");return status;});}}
+ static State enriched(State original){State live=new State();live.rev=original.rev+"-metadata";live.current=original.current;
+ live.prev=original.prev.stream().map(t->t.toBuilder().metadata(Map.of("is_queued",t.meta.get("is_queued"),"title","new-history")).build()).toList();
+ live.next=original.next.stream().map(t->t.toBuilder().metadata(Map.of("is_queued",t.meta.get("is_queued"),"title","new-title")).build()).toList();return live;}
  static void reset(){Single.lost=false;State s=new State();repo=new Repo(s);handler=new Handler();player=new PlayerState();com.lenerd46.spotifyplus.player.NextUpQueue.repo=repo;com.lenerd.spotifyplus.module.Utils.playerState=player;com.lenerd.spotifyplus.module.hooks.PlayerHook.contextPlayer=handler;}
  static Object call(String op,JSONObject args)throws Exception{return ShufflePlusBridge.execute(AdapterHarness.class.getClassLoader(),"shuffleplus."+op,args);}
  static JSONObject source(int... values){JSONArray a=new JSONArray();for(int n:values)a.put(uri(n));return new JSONObject().put("context","spotify:album:0000000000000000000099").put("uris",a);}
@@ -140,6 +145,14 @@ if(failSecondSubscribe)repo.stream.failSubscribe=true;if(failRead)Single.lost=tr
  // Queue-only edits also wait for an asynchronous subscription before dispatch.
  reset();repo.stream.asyncInitial=true;p=(JSONObject)call("queue",new JSONObject());apply(p,2,0,1);ok(repo.writes==1&&diag().get("queueInitialStateReceived").equals(true));stopped();
  reset();repo.stream.silentInitial=true;p=(JSONObject)call("queue",new JSONObject());fail("apply",order(p,2,0,1),"UNCONFIRMED_INITIAL_STATE");ok(repo.writes==0&&diag().get("sent").equals(false));stopped();
+ // Metadata/revision refresh during observer startup must use live CAS and native objects.
+ reset();p=(JSONObject)call("queue",new JSONObject());State live=enriched((State)repo.stream.value);repo.stream.nextInitial=live;
+ apply(p,1,2,0);ok(repo.writes==1&&repo.last.revision.equals(live.rev));
+ ok(((ContextTrack)repo.last.next.get(0)).uid.equals("b")&&((ContextTrack)repo.last.next.get(2)).uid.equals("a"));
+ ok(((ContextTrack)repo.last.next.get(0)).meta.get("title").equals("new-title")&&repo.last.previous.get(0)==live.prev.get(0));stopped();
+ reset();handler.metadataSecond=true;handler.deferSecond=true;p=prepare(2,1,1);apply(p,0,1,2);
+ ok(repo.writes==1&&repo.last.revision.equals("play-1-metadata"));
+ ok(((ContextTrack)repo.last.next.get(2)).meta.get("title").equals("new-title"));stopped();
  // Existing/manual additions cannot be silently discarded.
  ((State)repo.stream.value).next=List.of(track(8,"manual-existing","queue",true));fail("prepare",source(1,2),"MANUAL_QUEUE");
  reset();p=prepare(1,2);((State)repo.stream.value).next=List.of(track(8,"manual","queue",true));fail("apply",order(p,0,1),"STALE_ORDER");ok(handler.writes==0&&repo.writes==0);

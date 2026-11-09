@@ -427,7 +427,9 @@ class DeviceGuards(unittest.TestCase):
 class InputTests(unittest.TestCase):
     def test_current_declared_build_version_is_supported_for_both_explicit_abis(self):
         source=(pathlib.Path(__file__).resolve().parents[1]/"app/build.gradle").read_text()
-        version=re.search(r'versionName \("([^"]+)"',source).group(1)
+        from build_versions import VERSIONS
+        self.assertIn('versionName (buildVersions.moduleVersion',source)
+        version=VERSIONS['moduleVersion']
         for abi,suffix in [("arm64-v8a",""),("x86_64","-emulator-x86_64")]:
             validate_module_identity({"package":"com.lenerd46.spotifyplus","version":version+suffix},abi)
             with self.assertRaises(AssertionError):

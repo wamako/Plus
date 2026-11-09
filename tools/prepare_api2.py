@@ -52,6 +52,8 @@ def main():
     updates=cache/'upstream-updates-c407383'
     archive('LeNerd46','SpotifyPlus','c407383820660d4273703f53d517ce12beced77e',updates)
     run(['python3',str(ROOT/'tools/apply_upstream_updates.py'),'--source',str(source),'--upstream',str(updates)],ROOT)
+    from apply_compatibility_ui import apply as apply_compatibility_ui
+    apply_compatibility_ui(source)
     cpp=source/'app/src/main/cpp/spotifyengine.cpp'
     replace(cpp, '#include "spotifyengine.h"', '#include <unistd.h>\n#include "spotifyengine.h"')
     runtime=args.runtime_apk
@@ -211,6 +213,8 @@ def main():
     assets=ROOT/'app/api2-assets'
     if assets.exists():shutil.rmtree(assets)
     shutil.copytree(source/'app/src/main/assets/nodejs',assets/'nodejs')
+    # Addons are compiled and packaged separately for each Gradle variant.
+    shutil.rmtree(assets/'nodejs/addons',ignore_errors=True)
     notices=assets/'upstream-notices';notices.mkdir(exist_ok=True)
     shutil.copy2(updates/'LICENSE',notices/'SpotifyPlus-MIT.txt')
     load_order=re.findall(r'extractAndLoad\(Utils.MODULE_APK_PATH, outDir, "([^"\n]+)"\)',manager.read_text())

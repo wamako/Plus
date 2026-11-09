@@ -6,8 +6,8 @@
     <string name="general_header">General</string>
     <string name="general_subtitle">Check for Updates • Bring Heart Button Back</string>
     <string name="general_general_title">General</string>
-    <string name="check_updates">Check For Updates</string>
-    <string name="check_updates_desc">Whether to check for updates on start</string>
+    <string name="check_updates">Compatibility build updates</string>
+    <string name="check_updates_desc">Open the tested compatibility build and its release notes</string>
     <string name="set_lastfm">Set Last.fm Username</string>
     <string name="set_lastfm_desc">Sets the username for retrieving your scrobbles</string>
     <string name="lastfm_button">Set Username</string>

@@ -7,6 +7,7 @@ import tempfile
 import zipfile
 
 ROOT = Path(__file__).resolve().parents[1]
+VERSIONS = json.loads((ROOT.parents[1] / "build-versions.json").read_text())
 FOLDERS = ("listening-stats", "sort-play", "genres", "playlist-plus")
 
 
@@ -68,8 +69,8 @@ def package(name, prefix, files):
 if __name__ == "__main__":
     # Validate both products before emitting any installable ZIP.
     suite_version, suite = payloads(ROOT / "build/SpotifyPlus-Local-Extensions", FOLDERS,
-                                    json.loads((ROOT / "package.json").read_text())["version"],
+                                    VERSIONS["suiteVersion"],
                                     ("README.md", "LICENSE", "THIRD_PARTY_NOTICES.md", "VALIDATION.md"))
-    shuffle_version, shuffle = payloads(ROOT / "build/SpotifyPlus-ShufflePlus", ("shuffle-plus",))
+    shuffle_version, shuffle = payloads(ROOT / "build/SpotifyPlus-ShufflePlus", ("shuffle-plus",), VERSIONS["shuffleVersion"])
     package(f"SpotifyPlus-Local-Extensions-{suite_version}.zip", "SpotifyPlus-Local-Extensions/", suite)
     package(f"SpotifyPlus-ShufflePlus-{shuffle_version}.zip", "", shuffle)

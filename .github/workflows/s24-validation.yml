@@ -131,7 +131,7 @@ jobs:
         if: inputs.run_patched_host
         uses: actions/download-artifact@v4
         with:
-          name: SpotifyPlus-ShufflePlus-0.1.11
+          name: SpotifyPlus-ShufflePlus
           run-id: ${{ inputs.module_run_id || github.run_id }}
           github-token: ${{ github.token }}
           path: ${{ runner.temp }}/shuffle-extension

@@ -17,18 +17,18 @@ const text=node=>node?.type==='TEXT_INSTANCE'?node.text:(node?.children||[]).map
 const nodes=node=>[node,...(node?.children||[]).flatMap(nodes)];
 const delay=()=>new Promise(r=>setTimeout(r,5));
 test('Shuffle+ bundle through real pinned loader: no writes on preview, native actions, stale/lost outcomes and unload',async()=>{
- let navigates=false;const links=[];let tree,fail=null,failPrepare=null,prepareHold=null,context=album;const values=new Map(),calls=[],errors=[];
+ let navigates=false,dropReview=false;const links=[];let tree,fail=null,failPrepare=null,prepareHold=null,context=album;const values=new Map(),calls=[],errors=[];
  const logger={child(){return this},info(){},warn(){},error(...args){errors.push(args)}};
  const registry=new ScriptRegistry(logger,()=>{});
  const runtime={registry,ui:{forExtension(){return {}}},platformData:{clientVersion:'9.1.94.1929',osName:'Android',osVersion:'17',sdkVersion:37},session:{accessToken:'token'},
-  storageGet:(s,k)=>values.get(s+':'+k)??null,storageSet:(s,k,v)=>values.set(s+':'+k,structuredClone(v)),storageRemove:(s,k)=>values.delete(s+':'+k),
+  storageGet:(s,k)=>values.get(s+':'+k)??null,storageSet:(s,k,v)=>{if(!dropReview||v?.phase!=='reviewed')values.set(s+':'+k,structuredClone(v));},storageRemove:(s,k)=>values.delete(s+':'+k),
   registerSideDrawer(){},registerContextMenu(){},createWorkletContext(){return true},createAnimationAdapter(){return {}},disposeWorkletContext(){},
   unregisterScript:s=>registry.unregisterScript(s),logScript(_s,l,a){if(l==='error')errors.push(a)},
   callApiSync(op){if(op==='player.state')return {contextUri:context,trackUri:uri(1)};throw new Error(op)},
   requestApi:async(op,args)=>{
    calls.push({op,args});
-   if(op==='shuffleplus.capabilities')return {version:1,host:22,queueEntryProvider:"native-factory-default",observerReadiness:"await-initial-state",collectionVerification:"provider-aware-autoplay",collectionMode:"first-track-explicit-queue",route:"native-play-and-setqueue",queueMode:"native-editor-options",playerReady:true,limit:10000};
-   if(op==='shuffleplus.diagnostics')return {host:22,mode:'queue',outcome:'unknown',queueUnchanged:true};
+   if(op==='shuffleplus.capabilities')return {version:1,host:23,queueRevision:"observer-initial-cas",queueEntryProvider:"native-factory-default",observerReadiness:"await-initial-state",collectionVerification:"provider-aware-autoplay",collectionMode:"first-track-explicit-queue",route:"native-play-and-setqueue",queueMode:"native-editor-options",playerReady:true,limit:10000};
+   if(op==='shuffleplus.diagnostics')return {host:23,mode:'queue',outcome:'unknown',queueUnchanged:true};
    if(op==='shuffleplus.copyDiagnostics')return true;
    if(op==='shuffleplus.queue')return {mode:'queue',ticket,count:3,tracks:[1,1,2].map(n=>({uri:uri(n),title:'Song '+n,artist:'Artist'}))};
    if(op==='shuffleplus.prepare'){if(prepareHold)await prepareHold;if(failPrepare)throw new Error(failPrepare);return {mode:'collection',ticket,count:args.uris.length};}
@@ -56,7 +56,7 @@ test('Shuffle+ bundle through real pinned loader: no writes on preview, native a
   loader.loadScript(path.join(root,'build/SpotifyPlus-ShufflePlus/shuffle-plus'),'user');
   assert.equal(registry.getScripts().length,1);assert.equal(calls.length,0);
   const entry=[...registry.getSideDrawerItems().values()][0];registry.emitSideDrawerPress(entry.scriptId,entry.id);await until(()=>read().includes('Load and shuffle collection'));
-  press('Check active playback adapter');await until(()=>read().includes('Active module R22'));assert.equal(mutations().length,0);
+  press('Check active playback adapter');await until(()=>read().includes('Active module R23'));assert.equal(mutations().length,0);
   press('Preview shuffled upcoming queue');await until(()=>read().includes('Confirm upcoming shuffle'));
   assert.equal(mutations().length,0);assert.match(read(),/3 tracks in preview/);
   press('Cancel shuffle confirmation');assert.equal(mutations().length,0);
@@ -71,7 +71,11 @@ test('Shuffle+ bundle through real pinned loader: no writes on preview, native a
   press('Copy last shuffle diagnostics');await until(()=>read().includes('Shuffle diagnostics copied'));assert.equal(mutations().length,2);
   fail='SP_SHUFFLE_RPC';press('Prepare shuffled playback');await until(()=>button('Start shuffled playback'));press('Start shuffled playback');await until(()=>read().includes('I checked playback; allow another shuffle'));
   assert.equal(mutations().length,3);assert.equal(values.get('com.wamako.shuffleplus:shuffle-write-v1').phase,'unknown');
-  press('I checked playback; allow another shuffle');assert.equal(values.get('com.wamako.shuffleplus:shuffle-write-v1').phase,'reviewed');
+  dropReview=true;press('I checked playback; allow another shuffle');
+  await until(()=>read().includes('Could not save and verify the action record'));
+  assert.equal(values.get('com.wamako.shuffleplus:shuffle-write-v1').phase,'unknown');
+  assert.ok(button('I checked playback; allow another shuffle'));assert.equal(mutations().length,3);
+  dropReview=false;press('I checked playback; allow another shuffle');assert.equal(values.get('com.wamako.shuffleplus:shuffle-write-v1').phase,'reviewed');
   await until(()=>!read().includes('I checked playback; allow another shuffle'));fail=null;
   // A real phone viewport cannot see controls beneath forty rendered song cards.
   context=largeAlbum;press('Use current playing context');press('Load and shuffle collection');

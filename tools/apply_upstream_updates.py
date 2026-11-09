@@ -1,7 +1,8 @@
 #!/usr/bin/env python3
 """Selected MIT-licensed upstream c407383 updates, retaining our API-2 ABI."""
 from pathlib import Path
-import argparse,shutil
+import argparse,shutil,re
+from build_versions import VERSIONS
 UPSTREAM='c407383820660d4273703f53d517ce12beced77e'
 
 def change(p,old,new):
@@ -99,7 +100,11 @@ def projects(source,latest):
   s=s[:a]+new[c:d]+s[b:]
  if 'export const snapSettingValue =' not in s:s+='\n'+new[new.index('export const snapSettingValue ='):]
  p.write_text(s)
- p=source/'scripts/settings/src/app.tsx';t=p.read_text().replace("const SPOTIFY_PLUS_VERSION = '0.10.0-preview-1';","const SPOTIFY_PLUS_VERSION = '0.10.0-api2.9.1.94.22';").replace("const SPOTIFY_PLUS_VERSION = '0.10.0-api2.9.1.94.21';", "const SPOTIFY_PLUS_VERSION = '0.10.0-api2.9.1.94.22';").replace("const MARKETPLACE_VERSION = '0.1.0';","const MARKETPLACE_VERSION = '1.0.0';");p.write_text(t)
+ p=source/'scripts/settings/src/app.tsx';t=p.read_text()
+ t,count=re.subn(r"const SPOTIFY_PLUS_VERSION = '[^']+';",f"const SPOTIFY_PLUS_VERSION = '{VERSIONS['moduleVersion']}';",t)
+ if count!=1:raise RuntimeError('Settings version anchor changed')
+ p.write_text(t.replace("const MARKETPLACE_VERSION = '0.1.0';","const MARKETPLACE_VERSION = '1.0.0';"))
+
  # Keep settings manifest/version and native-only color/theme controls on the
  # existing implementation; copied controls require no new renderer protocol.
 

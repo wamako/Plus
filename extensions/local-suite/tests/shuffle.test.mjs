@@ -9,8 +9,8 @@ function fixture(){
  const api={Platform:{Storage:{get:k=>values.get(k),set:(k,v)=>values.set(k,structuredClone(v))}},
   request:async(op,args)=>{
    calls.push({op,args});
-   if(op==='shuffleplus.capabilities')return {version:1,host:22,queueEntryProvider:"native-factory-default",observerReadiness:"await-initial-state",collectionVerification:"provider-aware-autoplay",collectionMode:"first-track-explicit-queue",route:"native-play-and-setqueue",queueMode:"native-editor-options",playerReady:true,limit:10000};
-   if(op==='shuffleplus.diagnostics')return {host:22,mode:'queue',outcome:'unknown',queueUnchanged:true,privateUri:uri(1),token:'private-token'};
+   if(op==='shuffleplus.capabilities')return {version:1,host:23,queueRevision:"observer-initial-cas",queueEntryProvider:"native-factory-default",observerReadiness:"await-initial-state",collectionVerification:"provider-aware-autoplay",collectionMode:"first-track-explicit-queue",route:"native-play-and-setqueue",queueMode:"native-editor-options",playerReady:true,limit:10000};
+   if(op==='shuffleplus.diagnostics')return {host:23,mode:'queue',outcome:'unknown',queueUnchanged:true,privateUri:uri(1),token:'private-token'};
    if(op==='shuffleplus.copyDiagnostics')return true;
    if(op==='shuffleplus.queue')return {mode:'queue',ticket,count:3,tracks};
    if(op==='shuffleplus.prepare')return {mode:'collection',ticket,count:args.uris.length};
@@ -61,28 +61,28 @@ test('cancellation, missing adapter and failed durable journal prevent playback 
  const p=await f.client.queue({});await assert.rejects(f.client.apply(p,'ok','ok',{cancelled:true}),/cancelled/);
  f.api.Platform.Storage.set=()=>{};await assert.rejects(f.client.apply(p,'ok','ok',{}),/Nothing was sent/);
  assert.equal(f.calls.filter(c=>c.op==='shuffleplus.apply').length,0);
- const old=new ShuffleClient({request:async()=>{throw new Error('Unknown operation')},Platform:f.api.Platform});await assert.rejects(old.queue({}),/R22/);
+ const old=new ShuffleClient({request:async()=>{throw new Error('Unknown operation')},Platform:f.api.Platform});await assert.rejects(old.queue({}),/R23/);
  assert.equal(shuffleError(new Error('SP_SHUFFLE_RPC'),true).unknown,true);
 });
 
 test('old host and count-only success replies cannot claim verified playback',async()=>{
  const f=fixture();f.api.ShufflePlus.capabilities=async()=>({version:1,host:13,limit:10000});
- await assert.rejects(f.client.capabilities({}),/R22/);assert.equal(f.calls.length,0);
- const incomplete=fixture();incomplete.api.ShufflePlus.capabilities=async()=>({version:1,host:22,route:"native-play-and-setqueue",queueMode:"native-editor-options",limit:10000});
- await assert.rejects(incomplete.client.capabilities({}),/R22/);assert.equal(incomplete.calls.length,0);
+ await assert.rejects(f.client.capabilities({}),/R23/);assert.equal(f.calls.length,0);
+ const incomplete=fixture();incomplete.api.ShufflePlus.capabilities=async()=>({version:1,host:23,route:"native-play-and-setqueue",queueMode:"native-editor-options",limit:10000});
+ await assert.rejects(incomplete.client.capabilities({}),/R23/);assert.equal(incomplete.calls.length,0);
  const g=fixture(),p=await g.client.queue({});g.respond({applied:3});
  await assert.rejects(g.client.apply(p,'ok','ok',{}));assert.equal(g.client.previous().phase,'unknown');
  assert.equal(g.calls.filter(c=>c.op==='shuffleplus.apply').length,1);
 });
 
 test('diagnostics whitelist drops private fields and copying never starts playback',async()=>{
- const f=fixture();assert.deepEqual(await f.client.diagnostics(),{host:22,mode:'queue',outcome:'unknown',queueUnchanged:true});
+ const f=fixture();assert.deepEqual(await f.client.diagnostics(),{host:23,mode:'queue',outcome:'unknown',queueUnchanged:true});
  await f.client.copyDiagnostics();assert.equal(f.calls.filter(c=>c.op==='shuffleplus.apply').length,0);
  const p=await f.client.queue({});f.fail(new Error('SP_SHUFFLE_UNCONFIRMED_NO_CHANGE'));
  await assert.rejects(f.client.apply(p,'ok','ok',{}),/stayed unchanged/);
  assert.equal(f.client.previous().phase,'unknown');assert.ok(f.client.previous().diagnostics.queueUnchanged);
  assert.ok(!JSON.stringify(f.client.previous()).includes('private-token'));
- assert.deepEqual(safeDiagnostics({host:22,mode:'private',token:'secret',eventsObserved:-1,errorCode:'secret'}),{host:22});
+ assert.deepEqual(safeDiagnostics({host:23,mode:'private',token:'secret',eventsObserved:-1,errorCode:'secret'}),{host:23});
 });
 
 test('confirmed Autoplay tail requires complete selection and survives safe diagnostics without private fields',async()=>{
@@ -92,13 +92,13 @@ test('confirmed Autoplay tail requires complete selection and survives safe diag
  for(const reply of [{selectionCompleteInWindow:false,autoplayTailCount:45},{selectionCompleteInWindow:true,autoplayTailCount:-1},{selectionCompleteInWindow:true,autoplayTailCount:'45'}]){
   const g=fixture(),plan=await g.client.collection(tracks,'spotify:collection:tracks',{});g.respond({applied:3,verification:'visible-order',...reply});await assert.rejects(g.client.apply(plan,'ok','ok',{}));assert.equal(g.client.previous().phase,'unknown');
  }
- assert.deepEqual(safeDiagnostics({host:22,selectionCompleteInWindow:true,autoplayTailOnly:true,autoplayTailCount:45,matchingUpcomingPrefixCount:13,otherTailCount:0,token:'secret'}),{host:22,selectionCompleteInWindow:true,autoplayTailOnly:true,matchingUpcomingPrefixCount:13,autoplayTailCount:45,otherTailCount:0});
+ assert.deepEqual(safeDiagnostics({host:23,selectionCompleteInWindow:true,autoplayTailOnly:true,autoplayTailCount:45,matchingUpcomingPrefixCount:13,otherTailCount:0,token:'secret'}),{host:23,selectionCompleteInWindow:true,autoplayTailOnly:true,matchingUpcomingPrefixCount:13,autoplayTailCount:45,otherTailCount:0});
 });
 
 test('asynchronous observer capability and stage diagnostics are mandatory without accepting private state',async()=>{
  const f=fixture(),caps=await f.api.ShufflePlus.capabilities();delete caps.observerReadiness;f.calls.length=0;f.api.ShufflePlus.capabilities=async()=>caps;
- await assert.rejects(f.client.capabilities({}),/R22/);assert.equal(f.calls.length,0);
- const input={host:22,stage:'selected-queue',readbackStep:'selected-initial',playSent:true,queueSent:false,firstInitialStateReceived:true,queueInitialStateReceived:false,initialStateTimedOut:true,firstObserverEvents:2,queueObserverEvents:0,token:'private',initialState:{uri:'private'}};
+ await assert.rejects(f.client.capabilities({}),/R23/);assert.equal(f.calls.length,0);
+ const input={host:23,stage:'selected-queue',readbackStep:'selected-initial',playSent:true,queueSent:false,firstInitialStateReceived:true,queueInitialStateReceived:false,initialStateTimedOut:true,firstObserverEvents:2,queueObserverEvents:0,token:'private',initialState:{uri:'private'}};
  const expected={...input};delete expected.token;delete expected.initialState;assert.deepEqual(safeDiagnostics(input),expected);
  assert.equal(safeDiagnostics({...input,readbackStep:'private',queueObserverEvents:-1}).readbackStep,undefined);
  assert.equal(safeDiagnostics({...input,queueObserverEvents:-1}).queueObserverEvents,undefined);

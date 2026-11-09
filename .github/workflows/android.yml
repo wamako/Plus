@@ -55,6 +55,12 @@ jobs:
           path: .api2-cache/runtime-inputs
           key: spotifyplus-runtime-inputs-v1-${{ runner.os }}-${{ hashFiles('tools/runtime-inputs.json') }}
 
+      - name: Check locked legacy scripting dependencies
+        working-directory: scripting
+        run: |
+          npm ci --ignore-scripts
+          node node_modules/typescript/bin/tsc --noEmit
+
       - name: Prepare and test pinned API-2 runtime and extensions
         run: python3 tools/prepare_api2.py --binary-inputs .api2-cache/runtime-inputs/runtime-inputs.zip
 
@@ -70,12 +76,20 @@ jobs:
       - name: Test and build installable debug APK
         run: |
           python3 -m unittest discover -s tools -p 'test_*.py'
-          bash ./gradlew clean testDebugUnitTest assembleDebug
+          # Clean Release proves it builds without Debug outputs or signing secrets.
+          bash ./gradlew clean assembleRelease
+          python3 tools/verify_module_apk.py app/build/outputs/apk/release/app-release-unsigned.apk
+          python3 tools/verify_api2_assets.py app/build/outputs/apk/release/app-release-unsigned.apk
+          python3 tools/verify_variant_addon.py app/build/outputs/apk/release/app-release-unsigned.apk --variant release
+          # Build both variants in the same tree, with parallel task scheduling.
+          bash ./gradlew --parallel testDebugUnitTest assembleDebug assembleRelease
 
       - name: Validate module DEX files
         run: |
           python3 tools/verify_module_apk.py app/build/outputs/apk/debug/app-debug.apk
           python3 tools/verify_api2_assets.py app/build/outputs/apk/debug/app-debug.apk
+          python3 tools/verify_variant_addon.py app/build/outputs/apk/debug/app-debug.apk --variant debug
+          python3 tools/verify_variant_addon.py app/build/outputs/apk/release/app-release-unsigned.apk --variant release
 
       - name: Upload debug APK
         uses: actions/upload-artifact@v4
@@ -87,7 +101,7 @@ jobs:
       - name: Upload Shuffle+ local extension
         uses: actions/upload-artifact@v4
         with:
-          name: SpotifyPlus-ShufflePlus-0.1.11
+          name: SpotifyPlus-ShufflePlus
           path: extensions/local-suite/build/SpotifyPlus-ShufflePlus
           if-no-files-found: error
 
@@ -137,6 +151,8 @@ jobs:
         run: |
           bash ./gradlew assembleRelease
           python3 tools/verify_module_apk.py app/build/outputs/apk/release/app-release.apk
+          python3 tools/verify_api2_assets.py app/build/outputs/apk/release/app-release.apk
+          python3 tools/verify_variant_addon.py app/build/outputs/apk/release/app-release.apk --variant release
 
       - name: Upload APK artifact
         if: github.event_name == 'push' && github.ref == 'refs/heads/main' && env.HAS_SIGNING_KEY == 'true'

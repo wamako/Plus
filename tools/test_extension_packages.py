@@ -17,8 +17,10 @@ class ExtensionPackageTests(unittest.TestCase):
     def setUp(self):
         self.temporary = tempfile.TemporaryDirectory()
         self.addCleanup(self.temporary.cleanup)
-        self.root = Path(self.temporary.name)
-        (self.root / "tools").mkdir()
+        self.repository = Path(self.temporary.name)
+        self.root = self.repository / "extensions/local-suite"
+        (self.root / "tools").mkdir(parents=True)
+        (self.repository / "build-versions.json").write_text(json.dumps({"suiteVersion":"0.1.8","shuffleVersion":"0.1.10"}))
         shutil.copyfile(SCRIPT, self.root / "tools/package.py")
         (self.root / "package.json").write_text('{"version":"0.1.8"}')
         self.suite = self.root / "build/SpotifyPlus-Local-Extensions"
@@ -57,6 +59,14 @@ class ExtensionPackageTests(unittest.TestCase):
         path = self.suite / FOLDERS[0] / "manifest.json"
         manifest = json.loads(path.read_text())
         manifest["version"] = "0.1.7"
+        path.write_text(json.dumps(manifest))
+        self.assertNotEqual(self.run_packager().returncode, 0)
+        self.assertFalse(list((self.root / "artifacts").glob("*.zip")))
+
+    def test_stale_shuffle_version_fails_before_any_phone_zip_is_written(self):
+        path = self.shuffle / "manifest.json"
+        manifest = json.loads(path.read_text())
+        manifest["version"] = "0.1.9"
         path.write_text(json.dumps(manifest))
         self.assertNotEqual(self.run_packager().returncode, 0)
         self.assertFalse(list((self.root / "artifacts").glob("*.zip")))

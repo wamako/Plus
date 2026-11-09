@@ -18,14 +18,14 @@ public final class ShufflePlusBridge {
     public static synchronized Object execute(ClassLoader loader,String operation,JSONObject args) throws Exception {
         if(operation.equals("shuffleplus.diagnostics")) return report();
         if(operation.equals("shuffleplus.copyDiagnostics")) return !lastReport.isEmpty()&&ShuffleDiagnosticsUi.copy(report().toString());
-        if(operation.equals("shuffleplus.capabilities")) return new JSONObject().put("queueMode","native-editor-options").put("version",1).put("host",22).put("queueEntryProvider","native-factory-default").put("observerReadiness","await-initial-state").put("collectionVerification","provider-aware-autoplay").put("collectionMode","first-track-explicit-queue").put("route","native-play-and-setqueue").put("playerReady",PlayerHook.contextPlayer!=null).put("binding",PlayerHook.playBinding).put("limit",ShuffleEngine.LIMIT);
+        if(operation.equals("shuffleplus.capabilities")) return new JSONObject().put("queueMode","native-editor-options").put("version",1).put("host",com.lenerd46.spotifyplus.BuildConfig.SHUFFLE_HOST).put("queueRevision","observer-initial-cas").put("queueEntryProvider","native-factory-default").put("observerReadiness","await-initial-state").put("collectionVerification","provider-aware-autoplay").put("collectionMode","first-track-explicit-queue").put("route","native-play-and-setqueue").put("playerReady",PlayerHook.contextPlayer!=null).put("binding",PlayerHook.playBinding).put("limit",ShuffleEngine.LIMIT);
         if(engine==null || engineLoader!=loader) {
             engineLoader=loader;
             engine=new ShuffleEngine(new NativeBackend(loader),android.os.SystemClock::elapsedRealtime);
         }
         try {
             if(operation.equals("shuffleplus.apply")) {
-                lastReport=Map.of("host",22,"outcome","not_sent");
+                lastReport=Map.of("host",com.lenerd46.spotifyplus.BuildConfig.SHUFFLE_HOST,"outcome","not_sent");
                 JSONArray input=args.getJSONArray("order");
                 if(input.length()>ShuffleEngine.LIMIT) throw ShuffleEngine.error("LIMIT");
                 List<Integer> order=new ArrayList<>();
@@ -282,7 +282,7 @@ public final class ShufflePlusBridge {
         private interface Match {boolean test(Object state) throws Exception;}
         private static final class Audit {
             final Map<String,Object> values=new LinkedHashMap<>();
-            Audit(String mode){put("host",22);put("mode",mode);put("sent",false);put("outcome","not_sent");put("eventsObserved",0);put("postDispatchEvents",0);if("collection".equals(mode)){put("playSent",false);put("queueSent",false);put("firstInitialStateReceived",false);put("queueInitialStateReceived",false);put("firstObserverEvents",0);put("queueObserverEvents",0);}}
+            Audit(String mode){put("host",com.lenerd46.spotifyplus.BuildConfig.SHUFFLE_HOST);put("mode",mode);put("sent",false);put("outcome","not_sent");put("eventsObserved",0);put("postDispatchEvents",0);if("collection".equals(mode)){put("playSent",false);put("queueSent",false);put("firstInitialStateReceived",false);put("queueInitialStateReceived",false);put("firstObserverEvents",0);put("queueObserverEvents",0);}}
             synchronized void put(String key,Object value){values.put(key,value);}
             synchronized Object get(String key){return values.get(key);}
             synchronized void event(boolean dispatched){if("collection".equals(values.get("mode"))){String key="selected-queue".equals(values.get("stage"))?"queueObserverEvents":"firstObserverEvents";values.put(key,((Number)values.get(key)).intValue()+1);}values.put("eventsObserved",((Number)values.get("eventsObserved")).intValue()+1);if(dispatched)values.put("postDispatchEvents",((Number)values.get("postDispatchEvents")).intValue()+1);}

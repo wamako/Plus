@@ -11,6 +11,7 @@ import pathlib
 import struct
 import zipfile
 import zlib
+from build_versions import VERSIONS
 
 CORE = "e00c5c5038bbcc14e0b382ab893301d6993e6989"
 JAR_SHA = "d238fdc414d121b7fa454d8b4ccf420df3a8c97d563761861ff92bd9c5da2165"
@@ -65,6 +66,7 @@ def validate_module_identity(info, abi):
     assert info["package"] == "com.lenerd46.spotifyplus"
     suffix = "-emulator-x86_64" if abi == "x86_64" else ""
     expected = {f"0.10.0-api2.9.1.94.{revision}"+suffix for revision in (13,14,15,16,21,22)}
+    expected.add(VERSIONS["moduleVersion"]+suffix)
     assert info["version"] in expected, "Module version does not match its explicit ABI profile"
 
 def validate_signature_mode(config, expected):

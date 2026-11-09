@@ -2,6 +2,8 @@ plugins {
     id 'com.android.application'
 }
 
+def buildVersions = new groovy.json.JsonSlurper().parse(rootProject.file('build-versions.json'))
+
 def nativeAbi = providers.gradleProperty('spotifyplusNativeAbi').getOrElse('arm64-v8a')
 if (!(nativeAbi in ['arm64-v8a', 'x86_64'])) throw new GradleException('Unsupported Spotify Plus native ABI')
 
@@ -15,8 +17,10 @@ android {
         applicationId "com.lenerd46.spotifyplus"
         minSdk 27
         targetSdk 35
-        versionCode 39
-        versionName ("0.10.0-api2.9.1.94.22" + (nativeAbi == 'x86_64' ? '-emulator-x86_64' : ''))
+        versionCode buildVersions.moduleVersionCode
+        versionName (buildVersions.moduleVersion + (nativeAbi == 'x86_64' ? '-emulator-x86_64' : ''))
+
+        buildConfigField "int", "SHUFFLE_HOST", buildVersions.host.toString()
 
         testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
         ndk { abiFilters nativeAbi }
@@ -85,14 +89,22 @@ dependencies {
 //    implementation 'io.github.junkfood02.youtubedl-android:ffmpeg:0.18.1'
 }
 
-// The API-2 Node addon is a freshly compiled native library, not a downloaded addon.
-tasks.register('syncApi2Addon') {
-    dependsOn 'externalNativeBuildDebug'
-    doLast {
-        def matches = fileTree("$buildDir/intermediates/cmake").matching { include "**/obj/${nativeAbi}/libspotifyplus_bridge.so" }.files
-        if (matches.size() != 1) throw new GradleException("Expected one compiled API-2 addon, found " + matches)
-        delete 'api2-assets/nodejs/addons'
-        copy { from matches.first(); into "api2-assets/nodejs/addons/${nativeAbi}"; rename { 'spotifyplus_bridge.node' } }
+// Each variant owns its generated assets and its matching compiled addon.
+// Mixed Debug/Release builds must never copy each other's native output.
+['debug', 'release'].each { variant ->
+    def capitalized = variant.capitalize()
+    def output = layout.buildDirectory.dir("generated/api2Addon/${variant}")
+    android.sourceSets.getByName(variant).assets.srcDir(output)
+    def sync = tasks.register("sync${capitalized}Api2Addon", Sync) {
+        dependsOn "externalNativeBuild${capitalized}"
+        def addon = fileTree(layout.buildDirectory.dir("intermediates/cmake/${variant}")) {
+            include "**/obj/${nativeAbi}/libspotifyplus_bridge.so"
+        }
+        from(addon) { eachFile { path = "nodejs/addons/${nativeAbi}/spotifyplus_bridge.node" }; includeEmptyDirs = false }
+        into output
+        doFirst {
+            if (addon.files.size() != 1) throw new GradleException("Expected one ${variant} API-2 addon, found " + addon.files)
+        }
     }
+    tasks.matching { it.name == "merge${capitalized}Assets" }.configureEach { dependsOn sync }
 }
-tasks.matching { it.name == 'mergeDebugAssets' || it.name == 'mergeReleaseAssets' }.configureEach { dependsOn 'syncApi2Addon' }

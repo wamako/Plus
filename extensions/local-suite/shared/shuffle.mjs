@@ -1,5 +1,6 @@
 import { idFromUri, requireConfirmation } from "./model.mjs";
 import { beginJournal, checkpointJournal, recordFailure } from "./write-journal.mjs";
+import { HOST } from "./build-info.mjs";
 const JOURNAL = "shuffle-write-v1";
 export const SHUFFLE_LIMIT = 10000;
 // Fisher-Yates: equal probability for each permutation under a uniform RNG.
@@ -24,7 +25,7 @@ const known = {
   PLAYER_READY: "Start a song from an album or playlist in Spotify, then prepare a new Shuffle+ preview.",
   PLAY_REFUSED: "Spotify’s native player refused this playback command. Check playback permissions and prepare a new preview.",
   READY: "Start Spotify playback once, then reopen Shuffle+ and load a new preview.",
-  PREPARE: "The native playback protocol could not be prepared. Check that R22 is active.",
+  PREPARE: `The native playback protocol could not be prepared. Check that R${HOST} is active.`,
   SHUFFLE_ON: "Turn off Spotify's shuffle in the player before reshuffling the upcoming queue.",
   STALE: "Playback or the queue changed. Load a new preview before applying it.",
   STALE_ORDER: "The current song, history, or upcoming song order changed. Load a new preview before applying it.",
@@ -52,14 +53,14 @@ export function shuffleError(error, mutation = false) {
   };
   const result = new Error(unconfirmed[code] || (code === "UNCONFIRMED" ? "Spotify acknowledged the command, but its player and queue did not confirm the previewed order. Inspect playback before trying again." : known[code]) || (mutation
     ? "The native shuffle did not return a confirmed result. Inspect playback before trying again."
-    : "Shuffle+ needs the R22 playback adapter. Repatch Spotify with the R22 module, then restart it."));
+    : `Shuffle+ needs the R${HOST} playback adapter. Repatch Spotify with the R${HOST} module, then restart it.`));
   if (code) result.message += ` [SP_SHUFFLE_${code}]`;
   result.unknown = mutation && !known[code];
   return result;
 }
 export function safeDiagnostics(value) {
-  if (!value || value.host !== 22) throw new Error("No R22 shuffle diagnostics are available yet.");
-  const out = {host:22};
+  if (!value || value.host !== HOST) throw new Error(`No R${HOST} shuffle diagnostics are available yet.`);
+  const out = {host:HOST};
   const enums = {mode:["queue","collection"],outcome:["not_sent","unknown","confirmed","refused"],requestFormat:["first-track-explicit-queue"],reply:["success","refused"],readbackError:["schema","stream"],stage:["first-track","selected-queue","complete"],readbackStep:["first-initial","first-confirm","selected-initial","selected-confirm","queue-initial","queue-confirm","complete"],playReply:["success","refused"],queueReply:["success","refused"]};
   for (const [key, allowed] of Object.entries(enums)) if (allowed.includes(value[key])) out[key] = value[key];
   for (const key of ["firstInitialStateReceived","queueInitialStateReceived","initialStateTimedOut","playSent","firstTrackConfirmed","queueSent","sent","nativeEditorOptions","queueUnchanged","revisionChanged","currentMatches","historyMatches","uriOrderMatches","uidOrderMatches","visibleOrderMatches","observerStartedBeforeDispatch","observerDisposed","currentPresent","currentUriMatches","currentUidAssigned","selectionPrefixMatches","selectionCompleteInWindow","autoplayTailOnly"])
@@ -76,7 +77,7 @@ export class ShuffleClient {
     let value;
     try {
       value = await this.api.ShufflePlus.capabilities();
-      if (value?.version !== 1 || !Number.isSafeInteger(value?.host) || value.host < 22 || value?.queueEntryProvider !== "native-factory-default" || value?.observerReadiness !== "await-initial-state" || value?.collectionVerification !== "provider-aware-autoplay" || value?.collectionMode !== "first-track-explicit-queue" || value?.route !== "native-play-and-setqueue" || value?.queueMode !== "native-editor-options" || value?.limit !== SHUFFLE_LIMIT) throw new Error();
+      if (value?.version !== 1 || !Number.isSafeInteger(value?.host) || value.host < HOST || value?.queueRevision !== "observer-initial-cas" || value?.queueEntryProvider !== "native-factory-default" || value?.observerReadiness !== "await-initial-state" || value?.collectionVerification !== "provider-aware-autoplay" || value?.collectionMode !== "first-track-explicit-queue" || value?.route !== "native-play-and-setqueue" || value?.queueMode !== "native-editor-options" || value?.limit !== SHUFFLE_LIMIT) throw new Error();
     } catch (error) { throw shuffleError(error); }
     check(job);
     return value;

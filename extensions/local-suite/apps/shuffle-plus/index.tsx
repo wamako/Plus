@@ -1,3 +1,4 @@
+import { HOST } from "../../shared/build-info.mjs";
 import React, { useRef, useState } from "react";
 import { View } from "spotifyplus/react";
 import { SpotifyPlus as S } from "spotifyplus";
@@ -44,7 +45,7 @@ function App() {
     });
   }
   return <Page title="Shuffle+">
-    <Label muted>Random song order without taste or artist weighting. Previewing never changes playback. Requires Spotify Plus R22.</Label>
+    <Label muted>Random song order without taste or artist weighting. Previewing never changes playback. Requires Spotify Plus R{HOST}.</Label>
     <Button title="Check active playback adapter" disabled={task.busy} onPress={() => task.run(job => shuffleClient.capabilities(job), info => setRuntime(`Active module R${info.host} · native Play + explicit queue · binding ${info.binding || "unknown"} · ${info.playerReady ? "player captured" : "start playback in Spotify first"}`))} />
     {runtime ? <Label>{runtime}</Label> : null}
     <Button title="Copy last shuffle diagnostics" disabled={task.busy} onPress={() => task.run(job => shuffleClient.copyDiagnostics(job), () => setRuntime("Shuffle diagnostics copied. They contain counts/status only; no song IDs, account names or tokens."))} />
@@ -82,7 +83,7 @@ function App() {
     </View> : null}
     {needsReview ? <View>
       <Label muted>The previous shuffle has an unconfirmed outcome. Check Spotify's player and queue before starting another.</Label>
-      <Button title="I checked playback; allow another shuffle" disabled={task.busy} onPress={() => { shuffleClient.acknowledge(); clear(); setReviewed(reviewed + 1); }} />
+      <Button title="I checked playback; allow another shuffle" disabled={task.busy} onPress={() => task.run(async () => { shuffleClient.acknowledge(); }, () => { clear(); setReviewed(reviewed + 1); })} />
     </View> : null}
     <Status task={task} />
     {outcome ? <Label>{outcome}</Label> : null}

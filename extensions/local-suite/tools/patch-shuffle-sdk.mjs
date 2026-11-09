@@ -47,3 +47,21 @@ if (!source.includes("        diagnostics(): Promise<unknown>;")) {
   source = source.replace("                capabilities: () => runtime.requestApi('shuffleplus.capabilities'),", "                capabilities: () => runtime.requestApi('shuffleplus.capabilities'),\n                diagnostics: () => runtime.requestApi('shuffleplus.diagnostics'),\n                copyDiagnostics: () => runtime.requestApi('shuffleplus.copyDiagnostics'),");
   fs.writeFileSync(file, source);
 }
+
+// Keep Spotify's client credential in Java; extensions receive read data only.
+source = fs.readFileSync(file, "utf8");
+if (!source.includes("    LikedSongs: {")) {
+  const declaration = "    Queue: QueueApi;", factory = "            Queue: {";
+  if (!source.includes(declaration) || !source.includes(factory)) throw new Error("Pinned SDK Liked Songs API shape changed");
+  source = source.replace(declaration, `${declaration}
+    LikedSongs: {
+        capabilities(): Promise<unknown>;
+        read(args: { kind: 'context'; url: string } | { kind: 'collection'; username: string; cursor: string; limit: number }): Promise<unknown>;
+    };`);
+  source = source.replace(factory, `            LikedSongs: {
+                capabilities: () => runtime.requestApi('liked.capabilities'),
+                read: args => runtime.requestApi('liked.read', args),
+            },
+${factory}`);
+  fs.writeFileSync(file, source);
+}

@@ -136,7 +136,8 @@ def main():
     manager.write_text(content)
     services=generated/'com/lenerd/spotifyplus/module/scripting/SpotifyServices.java'
     replace(services, '    public Object execute(String operation, JSONObject args) throws Exception {', '''    public Object execute(String operation, JSONObject args) throws Exception {
-        if (operation.startsWith("shuffleplus.")) return com.lenerd46.spotifyplus.api2.ShufflePlusBridge.execute(loader, operation, args);''')
+        if (operation.startsWith("shuffleplus.")) return com.lenerd46.spotifyplus.api2.ShufflePlusBridge.execute(loader, operation, args);
+        if (operation.startsWith("liked.")) return com.lenerd46.spotifyplus.api2.NativeLikedSongsBridge.execute(operation, args);''')
     replace(services, '    private Object modifyPlaylist(String operation, JSONObject args) throws Exception {', '''    private Object modifyPlaylist(String operation, JSONObject args) throws Exception {
         // 9.1.94 changed the generated builder aliases and creation-origin enum.
         if (operation.equals("playlists.create")) {

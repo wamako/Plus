@@ -55,6 +55,51 @@ export class DataClient {
     this.inflight = new Map();
     this.accountReads = new WeakMap();
     this.lastfmGenreFailure = null;
+    this.nativeLikedSupport = null;
+  }
+  async nativeLiked(args, job) {
+    check(job);
+    const reader = this.api.LikedSongs;
+    if (typeof reader?.capabilities !== "function" || typeof reader?.read !== "function") return null;
+    const bounded = async (call, milliseconds) => {
+      let timer;
+      try {
+        return await Promise.race([
+          Promise.resolve().then(call),
+          new Promise((_, reject) => { timer = setTimeout(() => reject(new Error("timeout")), milliseconds); }),
+        ]);
+      } finally { clearTimeout(timer); }
+    };
+    if (!this.nativeLikedSupport) {
+      this.nativeLikedSupport = bounded(() => reader.capabilities(), 3000)
+        .then(value => value?.version === 1 && value?.transport === "native-client-auth-v1")
+        .catch(() => false);
+    }
+    const supported = await this.nativeLikedSupport;
+    check(job);
+    if (!supported) return null;
+    let response;
+    try { response = await bounded(() => reader.read(args), 17000); }
+    catch (error) {
+      check(job);
+      const code = /\bSP_LIKED_(CLIENT_TOKEN|SESSION|ACCOUNT)\b/.exec(error?.message || "")?.[1];
+      throw new ReadError(code === "CLIENT_TOKEN" || code === "SESSION"
+        ? "Native Spotify authentication is not ready. Open Spotify and retry the read."
+        : code === "ACCOUNT" ? "The saved username differs from Spotify's current account. Clear the username override."
+        : "Native Liked Songs read failed. No partial preview was used.");
+    }
+    check(job);
+    if (!Number.isInteger(response?.status) || response.status < 100 || response.status > 599)
+      throw new ReadError("Invalid native Liked Songs response.");
+    if (response.status !== 200) throw new RequestError(`HTTP ${response.status}`, response.status);
+    if (response.encoding !== "base64" || typeof response.body !== "string" || response.body.length > 5592408)
+      throw new ReadError("Invalid native Liked Songs payload.");
+    const bytes = Buffer.from(response.body, "base64");
+    // Canonical round-trip rejects malformed/ignored characters without a
+    // repeated-group regex, which overflows V8's stack at the allowed size.
+    if (bytes.length > 4 * 1024 * 1024 || bytes.toString("base64") !== response.body)
+      throw new ReadError("Invalid native Liked Songs payload.");
+    return bytes;
   }
   async spotify(path, method = "GET", body) {
     if (!/^\/[A-Za-z0-9/?=&%._-]+$/.test(path))
@@ -494,22 +539,25 @@ export class DataClient {
       cursors.add(token);
       if (cursors.size > MAX_LIKED_PAGES)
         throw new ReadError(`Saved library scan exceeds ${MAX_LIKED_PAGES} pages`);
-      const access = this.api.Platform.Session.accessToken;
-      if (!access) throw new ReadError("Spotify session unavailable");
-      const bytes = await this.request(
-        "https://spclient.wg.spotify.com/collection/v2/paging",
-        {
-          method: "POST",
-          readOnly: true,
-          responseType: "bytes",
-          headers: {
-            Authorization: `Bearer ${access}`,
-            Accept: "application/vnd.collection-v2.spotify.proto",
-            "Content-Type": "application/vnd.collection-v2.spotify.proto",
+      let bytes = await this.nativeLiked({ kind: "collection", username, cursor: token, limit: 100 }, job);
+      if (bytes === null) {
+        const access = this.api.Platform.Session.accessToken;
+        if (!access) throw new ReadError("Spotify session unavailable");
+        bytes = await this.request(
+          "https://spclient.wg.spotify.com/collection/v2/paging",
+          {
+            method: "POST",
+            readOnly: true,
+            responseType: "bytes",
+            headers: {
+              Authorization: `Bearer ${access}`,
+              Accept: "application/vnd.collection-v2.spotify.proto",
+              "Content-Type": "application/vnd.collection-v2.spotify.proto",
+            },
+            body: encodeCollectionPage(username, token),
           },
-          body: encodeCollectionPage(username, token),
-        },
-      );
+        );
+      }
       check(job);
       let page;
       try {
@@ -571,9 +619,20 @@ export class DataClient {
       contextUri = `spotify:user:${encodeURIComponent(username)}:collection`;
     const request = async (url) => {
       check(job);
+      url = contextPageUrl(url);
+      const bytes = await this.nativeLiked({ kind: "context", url }, job);
+      if (bytes !== null) {
+        try {
+          const text = bytes.toString("utf8");
+          if (!Buffer.from(text, "utf8").equals(bytes)) throw new Error();
+          const value = JSON.parse(text);
+          if (!value || typeof value !== "object" || Array.isArray(value)) throw new Error();
+          return value;
+        } catch { throw new ReadError("Invalid native Liked Songs JSON response."); }
+      }
       const token = this.api.Platform.Session.accessToken;
       if (!token) throw new ReadError("Spotify session unavailable");
-      return this.request(contextPageUrl(url), {
+      return this.request(url, {
         headers: {
           Authorization: `Bearer ${token}`,
           Accept: "application/json",

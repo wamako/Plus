@@ -40,11 +40,13 @@ def verify(path, abi='arm64-v8a'):
         assert "Lcom/lenerd/spotifyplus/module/hooks/SystemHook;" in host_classes, "Missing API-2 navigation handler"
         assert "Lcom/lenerd46/spotifyplus/features/GlassBackdrop;" in host_classes, "Missing foreground-excluding glass capture"
         assert "Lcom/lenerd46/spotifyplus/api2/NativePlaylistWriter;" in host_classes, "Missing 9.1.94 playlist writer"
-        for name in ["ShuffleEngine", "QueueIdentity", "NavigationIntents", "NativePlaybackCommand", "NativeQueueCommand", "CollectionOrder", "ShuffleDiagnosticsUi", "ShufflePlusBridge"]:
+        for name in ["ShuffleEngine", "QueueIdentity", "NavigationIntents", "NativePlaybackCommand", "NativeQueueCommand", "CollectionOrder", "ShuffleDiagnosticsUi", "ShufflePlusBridge", "NativeLikedSongsRead", "NativeLikedSongsBridge"]:
             assert "Lcom/lenerd46/spotifyplus/api2/"+name+";" in host_classes, "Missing Shuffle+ native adapter: "+name
         sdk=apk.read('assets/nodejs/loader/script-api.js')
         for name in [b'ShufflePlus:', b'shuffleplus.capabilities', b'shuffleplus.queue', b'shuffleplus.prepare', b'shuffleplus.apply']:
             assert name in sdk, 'Missing packaged Shuffle+ SDK routing: '+name.decode()
+        for name in [b'LikedSongs:', b'liked.capabilities', b'liked.read']:
+            assert name in sdk, 'Missing packaged native Liked Songs routing: '+name.decode()
         assert b'if (opened)' in sdk and b'this.runtime.closeSurface(scriptId)' in sdk, 'Missing Spotify navigation overlay dismissal'
         order=json.loads(apk.read('assets/api2-native-load-order.json'))
         assert set(order)=={'libc++_shared.so','libnode.so','libnative-lib.so'}, 'Incomplete native bootstrap'

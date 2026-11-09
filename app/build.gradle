@@ -89,24 +89,49 @@ dependencies {
 //    implementation 'io.github.junkfood02.youtubedl-android:ffmpeg:0.18.1'
 }
 
-// Each variant owns its generated assets and its matching compiled addon.
-// Mixed Debug/Release builds must never copy each other's native output.
-['debug', 'release'].each { variant ->
-    def capitalized = variant.capitalize()
-    def output = layout.buildDirectory.dir("generated/api2Addon/${variant}")
-    def sync = tasks.register("sync${capitalized}Api2Addon", Sync) {
-        dependsOn "externalNativeBuild${capitalized}"
-        def addon = fileTree(layout.buildDirectory.dir("intermediates/cmake/${variant}")) {
-            include "**/obj/${nativeAbi}/libspotifyplus_bridge.so"
-        }
-        from(addon) { eachFile { path = "nodejs/addons/${nativeAbi}/spotifyplus_bridge.node" }; includeEmptyDirs = false }
-        into output
-        doFirst {
-            if (addon.files.size() != 1) throw new GradleException("Expected one ${variant} API-2 addon, found " + addon.files)
+// AGP's generated-source API wires every asset consumer, including release lint.
+// https://developer.android.com/reference/tools/gradle-api/8.8/com/android/build/api/variant/SourceDirectories
+abstract class Api2AddonAssets extends DefaultTask {
+    @InputFiles
+    @PathSensitive(PathSensitivity.RELATIVE)
+    abstract ConfigurableFileCollection getNativeOutputs()
+
+    @Input
+    abstract Property<String> getNativeAbiName()
+
+    @OutputDirectory
+    abstract DirectoryProperty getOutputDirectory()
+
+    @javax.inject.Inject
+    abstract FileSystemOperations getFileSystemOperations()
+
+    @TaskAction
+    void generate() {
+        def matches = nativeOutputs.files
+        if (matches.size() != 1) throw new GradleException("Expected one compiled API-2 addon, found " + matches)
+        def nativeFile = matches.first()
+        def target = outputDirectory.get().asFile
+        def targetAbi = nativeAbiName.get()
+        fileSystemOperations.sync {
+            into target
+            from(nativeFile) {
+                into "nodejs/addons/${targetAbi}"
+                rename { 'spotifyplus_bridge.node' }
+            }
         }
     }
-    // A task-backed source directory carries the producer dependency to every
-    // consumer, including lint, rather than only to mergeAssets.
-    android.sourceSets.getByName(variant).assets.srcDir(sync)
-    tasks.matching { it.name == "merge${capitalized}Assets" }.configureEach { dependsOn sync }
+}
+
+androidComponents {
+    onVariants(selector().all()) { variant ->
+        def capitalized = variant.name.capitalize()
+        def sync = tasks.register("sync${capitalized}Api2Addon", Api2AddonAssets) {
+            dependsOn "externalNativeBuild${capitalized}"
+            nativeAbiName.set(nativeAbi)
+            nativeOutputs.from(fileTree(layout.buildDirectory.dir("intermediates/cmake/${variant.name}")) {
+                include "**/obj/${nativeAbi}/libspotifyplus_bridge.so"
+            })
+        }
+        variant.sources.assets.addGeneratedSourceDirectory(sync, { it.outputDirectory })
+    }
 }

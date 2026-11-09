@@ -1,13 +1,16 @@
 """Offline validation and atomic-cache tests for the retained runtime bundle."""
 import copy
 import hashlib
+import os
 import pathlib
 import stat
 import tempfile
 import unittest
 import warnings
 import zipfile
+from unittest.mock import patch
 
+import runtime_inputs
 from runtime_inputs import ensure_bundle, install_bundle, verify_bundle
 
 
@@ -178,6 +181,69 @@ class RuntimeInputTests(unittest.TestCase):
 
         with self.assertRaises(VALIDATION_ERRORS):
             install_bundle(path, source, lyrics, spec)
+
+        self.assertEqual((self.tree(source), self.tree(lyrics)), before)
+
+    def test_replacing_archive_after_verification_cannot_activate_unverified_members(self):
+        path, spec = self.bundle()
+        changed = {**PAYLOADS, "lyrics/index.js": b"unverified replacement script"}
+        replacement, _ = self.bundle(list(changed.items()), changed)
+        source, lyrics = self.root / "source", self.root / "lyrics-cache"
+        arm = source / "app/libnode/bin/arm64-v8a/libnode.so"
+        arm.parent.mkdir(parents=True)
+        arm.write_bytes(b"previous verified Node")
+        (lyrics / "dist").mkdir(parents=True)
+        (lyrics / "dist/index.js").write_bytes(b"previous verified lyrics")
+        (lyrics / "LICENSE").write_bytes(b"previous verified license")
+        before = self.tree(source), self.tree(lyrics)
+        original_verify = runtime_inputs.verify_bundle
+
+        def verify_then_replace(bundle, manifest):
+            original_verify(bundle, manifest)
+            # A cache pathname can be replaced while an already-open verified
+            # file remains valid. Only the original public pathname is changed.
+            if replacement.exists():
+                os.replace(replacement, path)
+
+        rejected = False
+        with patch("runtime_inputs.verify_bundle", side_effect=verify_then_replace):
+            try:
+                install_bundle(path, source, lyrics, spec)
+            except VALIDATION_ERRORS:
+                rejected = True
+
+        if rejected:
+            self.assertEqual((self.tree(source), self.tree(lyrics)), before)
+        else:
+            # Holding a stable verified snapshot is also valid: either reject
+            # the changed cache or install only the original verified bytes.
+            self.assertEqual(arm.read_bytes(), PAYLOADS[NODE])
+            expected = {name.removeprefix("lyrics/"): value for name, value in PAYLOADS.items()
+                        if name.startswith("lyrics/")}
+            self.assertEqual(self.tree(lyrics / "dist"), expected)
+            self.assertEqual((lyrics / "LICENSE").read_bytes(), PAYLOADS["lyrics/LICENSE"])
+
+    def test_node_activation_failure_preserves_both_previous_input_trees(self):
+        path, spec = self.bundle()
+        source, lyrics = self.root / "source", self.root / "lyrics-cache"
+        arm = source / "app/libnode/bin/arm64-v8a/libnode.so"
+        arm.parent.mkdir(parents=True)
+        arm.write_bytes(b"previous verified Node")
+        (lyrics / "dist").mkdir(parents=True)
+        (lyrics / "dist/index.js").write_bytes(b"previous verified lyrics")
+        (lyrics / "dist/previous-only.txt").write_bytes(b"must survive rollback")
+        (lyrics / "LICENSE").write_bytes(b"previous verified license")
+        before = self.tree(source), self.tree(lyrics)
+        original_replace = os.replace
+
+        def fail_node_activation(old, new):
+            if pathlib.Path(new) == arm:
+                raise OSError("offline fixture: Node destination cannot be replaced")
+            return original_replace(old, new)
+
+        with patch("runtime_inputs.os.replace", side_effect=fail_node_activation):
+            with self.assertRaises((OSError, RuntimeError)):
+                install_bundle(path, source, lyrics, spec)
 
         self.assertEqual((self.tree(source), self.tree(lyrics)), before)
 

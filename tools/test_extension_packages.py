@@ -24,6 +24,8 @@ class ExtensionPackageTests(unittest.TestCase):
         self.suite = self.root / "build/SpotifyPlus-Local-Extensions"
         for folder in FOLDERS:
             self.extension(self.suite / folder, "com.wamako." + folder, "0.1.8")
+        for name in ("README.md", "LICENSE", "THIRD_PARTY_NOTICES.md", "VALIDATION.md"):
+            (self.suite / name).write_text("Retained packaging notice: " + name + "\n")
         self.shuffle = self.root / "build/SpotifyPlus-ShufflePlus/shuffle-plus"
         self.extension(self.shuffle, "com.wamako.shuffleplus", "0.1.10")
 

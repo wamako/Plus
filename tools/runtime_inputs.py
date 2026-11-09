@@ -57,22 +57,27 @@ def verify_bundle(path, spec):
     if path.stat().st_size != spec["archive"]["size"] or checksum(path) != spec["archive"]["sha256"]:
         raise ValueError("Runtime input archive checksum or size mismatch")
     with zipfile.ZipFile(path) as archive:
-        infos = archive.infolist()
-        names = [entry.filename for entry in infos]
-        if len(names) != len(set(names)) or set(names) != set(spec["entries"]):
-            raise ValueError("Runtime input archive entry set mismatch")
-        for info in infos:
-            mode = info.external_attr >> 16
-            if (info.is_dir() or stat.S_IFMT(mode) not in (0, stat.S_IFREG) or
-                    info.compress_type not in (zipfile.ZIP_STORED, zipfile.ZIP_DEFLATED)):
-                raise ValueError("Runtime input must be an ordinary file")
+        for info in checked_infos(archive, spec):
             expected = spec["entries"][info.filename]
-            if info.file_size != expected["size"]:
-                raise ValueError("Runtime input member size mismatch")
             with archive.open(info) as source:
                 actual = hashlib.file_digest(source, "sha256").hexdigest()
             if actual != expected["sha256"]:
                 raise ValueError("Runtime input member checksum mismatch")
+
+
+def checked_infos(archive, spec):
+    infos = archive.infolist()
+    names = [entry.filename for entry in infos]
+    if len(names) != len(set(names)) or set(names) != set(spec["entries"]):
+        raise ValueError("Runtime input archive entry set mismatch")
+    for info in infos:
+        mode = info.external_attr >> 16
+        if (info.is_dir() or stat.S_IFMT(mode) not in (0, stat.S_IFREG) or
+                info.compress_type not in (zipfile.ZIP_STORED, zipfile.ZIP_DEFLATED)):
+            raise ValueError("Runtime input must be an ordinary file")
+        if info.file_size != spec["entries"][info.filename]["size"]:
+            raise ValueError("Runtime input member size mismatch")
+    return infos
 
 
 class HTTPSOnly(urllib.request.HTTPRedirectHandler):
@@ -136,23 +141,34 @@ def install_bundle(path, source, lyrics_cache, spec):
     with tempfile.TemporaryDirectory(prefix=".lyrics-inputs-", dir=lyrics_cache.parent) as temporary:
         staged = Path(temporary) / "current"
         with zipfile.ZipFile(path) as archive:
-            for name in spec["entries"]:
+            # Bind installation to the bytes actually extracted, even if the
+            # public cache pathname changed after initial archive verification.
+            node = None
+            for info in checked_infos(archive, spec):
+                name = info.filename
+                payload = archive.read(info)
+                expected = spec["entries"][name]
+                if len(payload) != expected["size"] or hashlib.sha256(payload).hexdigest() != expected["sha256"]:
+                    raise ValueError("Extracted runtime member checksum or size mismatch")
                 if name.startswith("lyrics/"):
                     target = staged / "dist" / name.removeprefix("lyrics/")
                     target.parent.mkdir(parents=True, exist_ok=True)
-                    target.write_bytes(archive.read(name))
+                    target.write_bytes(payload)
+                elif name == NODE:
+                    node = payload
             shutil.copyfile(staged / "dist/LICENSE", staged / "LICENSE")
-            node = archive.read(NODE)
         previous = Path(temporary) / "previous"
         if lyrics_cache.exists():
             os.replace(lyrics_cache, previous)
         try:
             os.replace(staged, lyrics_cache)
+            atomic_write(source / "app/libnode/bin/arm64-v8a/libnode.so", node)
         except OSError:
+            if lyrics_cache.exists():
+                shutil.rmtree(lyrics_cache)
             if previous.exists():
                 os.replace(previous, lyrics_cache)
             raise
-        atomic_write(source / "app/libnode/bin/arm64-v8a/libnode.so", node)
 
 
 def main():

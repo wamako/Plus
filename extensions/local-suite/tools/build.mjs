@@ -25,7 +25,7 @@ for (const [folder, id, name] of apps) {
     version: "0.1.8",
     api: 2,
     main: "index.js",
-    description: `Independent Android adaptation: ${name}. For Spotify Plus R12 API 2.`,
+    description: `Independent Android adaptation: ${name}. For Spotify Plus R21 API 2.`,
   };
   await fs.mkdir(out, { recursive: true });
   await bundleExtension({

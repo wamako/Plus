@@ -10,7 +10,7 @@ ROOT = Path(__file__).resolve().parents[1]
 FOLDERS = ("listening-stats", "sort-play", "genres", "playlist-plus")
 
 
-def payloads(parent, folders, expected=None):
+def payloads(parent, folders, expected=None, documents=()):
     versions, identities = set(), set()
     for folder in folders:
         directory = parent / folder
@@ -27,6 +27,11 @@ def payloads(parent, folders, expected=None):
     if len(versions) != 1 or (expected is not None and versions != {expected}):
         raise ValueError("Mixed or stale extension versions")
     files = {}
+    for name in documents:
+        path = parent / name
+        if path.is_symlink() or not path.is_file():
+            raise ValueError("Required extension notice is missing")
+        files[name] = path.read_bytes()
     for folder in folders:
         directory = parent / folder
         if directory.is_symlink():
@@ -63,7 +68,8 @@ def package(name, prefix, files):
 if __name__ == "__main__":
     # Validate both products before emitting any installable ZIP.
     suite_version, suite = payloads(ROOT / "build/SpotifyPlus-Local-Extensions", FOLDERS,
-                                    json.loads((ROOT / "package.json").read_text())["version"])
+                                    json.loads((ROOT / "package.json").read_text())["version"],
+                                    ("README.md", "LICENSE", "THIRD_PARTY_NOTICES.md", "VALIDATION.md"))
     shuffle_version, shuffle = payloads(ROOT / "build/SpotifyPlus-ShufflePlus", ("shuffle-plus",))
     package(f"SpotifyPlus-Local-Extensions-{suite_version}.zip", "SpotifyPlus-Local-Extensions/", suite)
     package(f"SpotifyPlus-ShufflePlus-{shuffle_version}.zip", "", shuffle)

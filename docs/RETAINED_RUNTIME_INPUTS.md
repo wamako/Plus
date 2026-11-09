@@ -14,7 +14,10 @@ The manifest pins both the archive and every member by SHA-256 and size. A corru
 existing cache fails rather than falling back to unverified data. Downloads stage
 in a temporary directory and activate only after full verification. Installation
 rejects duplicate, extra, missing, traversal and nonregular ZIP entries, validates
-every member before replacing inputs, and preserves other Node ABIs.
+every member before replacing inputs, checks the actually extracted bytes again,
+and preserves other Node ABIs. A failed Node activation restores the previous
+Lyrics tree. These are build-time failure protections, not a two-filesystem
+power-loss transaction.
 
 ## Clean build and recovery
 

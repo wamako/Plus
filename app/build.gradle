@@ -94,7 +94,6 @@ dependencies {
 ['debug', 'release'].each { variant ->
     def capitalized = variant.capitalize()
     def output = layout.buildDirectory.dir("generated/api2Addon/${variant}")
-    android.sourceSets.getByName(variant).assets.srcDir(output)
     def sync = tasks.register("sync${capitalized}Api2Addon", Sync) {
         dependsOn "externalNativeBuild${capitalized}"
         def addon = fileTree(layout.buildDirectory.dir("intermediates/cmake/${variant}")) {
@@ -106,5 +105,8 @@ dependencies {
             if (addon.files.size() != 1) throw new GradleException("Expected one ${variant} API-2 addon, found " + addon.files)
         }
     }
+    // A task-backed source directory carries the producer dependency to every
+    // consumer, including lint, rather than only to mergeAssets.
+    android.sourceSets.getByName(variant).assets.srcDir(sync)
     tasks.matching { it.name == "merge${capitalized}Assets" }.configureEach { dependsOn sync }
 }

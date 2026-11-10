@@ -41,6 +41,7 @@ public final class Api2Runtime {
             // All extension preferences, write journals and file storage route
             // through this handler. Register it before the Node host can start.
             new StorageHook().init(loader,dex);
+            new SystemHook().init(loader,dex);
             new ServicesHook().init(loader,dex);new PlayerHook().init(loader,dex);
             new SideDrawerHook().init(loader,dex);new ContextMenuHook().init(loader,dex);
             new ReactManager().init(loader,dex);new LocalExtensionHook().init(loader,dex);new NowPlayingUITarget().init(loader,dex);

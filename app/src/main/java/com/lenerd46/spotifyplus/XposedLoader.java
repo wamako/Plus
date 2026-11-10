@@ -17,8 +17,6 @@ import android.view.*;
 import android.widget.FrameLayout;
 import android.widget.TextView;
 import com.google.android.material.button.MaterialButton;
-import com.google.gson.JsonObject;
-import com.google.gson.JsonParser;
 import com.lenerd46.spotifyplus.hooks.*;
 import com.lenerd46.spotifyplus.scripting.ScriptManager;
 //import com.yausername.youtubedl_android.YoutubeDL;
@@ -29,13 +27,7 @@ import org.luckypray.dexkit.DexKitBridge;
 
 import java.io.*;
 import java.lang.ref.WeakReference;
-import java.net.HttpURLConnection;
-import java.net.URL;
 import java.util.Enumeration;
-import java.util.concurrent.ExecutorService;
-import java.util.concurrent.Executors;
-import java.util.regex.Matcher;
-import java.util.regex.Pattern;
 import java.util.zip.ZipEntry;
 import java.util.zip.ZipFile;
 
@@ -46,7 +38,7 @@ public class XposedLoader implements IXposedHookLoadPackage, IXposedHookZygoteIn
 
     private DexKitBridge bridge;
     private String modulePath = null;
-    private static final String MODULE_VERSION = "0.10.0-api2.9.1.94.10";
+    private static final String MODULE_VERSION = BuildConfig.VERSION_NAME;
 
     @Override
     public void handleLoadPackage(LoadPackageParam lpparam) throws Throwable {
@@ -70,6 +62,16 @@ public class XposedLoader implements IXposedHookLoadPackage, IXposedHookZygoteIn
             protected void afterHookedMethod(MethodHookParam param) throws Throwable {
                 Activity activity = (Activity) param.thisObject;
                 References.currentActivity = activity;
+            }
+        });
+
+        XposedHelpers.findAndHookMethod(Activity.class, "onDestroy", new XC_MethodHook() {
+            @Override
+            protected void afterHookedMethod(MethodHookParam param) {
+                Activity activity = (Activity) param.thisObject;
+                if (References.currentActivity == activity) References.currentActivity = null;
+                if (com.lenerd.spotifyplus.module.SpotifyHook.currentActivity == activity)
+                    com.lenerd.spotifyplus.module.SpotifyHook.currentActivity = null;
             }
         });
 
@@ -131,9 +133,7 @@ public class XposedLoader implements IXposedHookLoadPackage, IXposedHookZygoteIn
 
                 navigateToStartupPage(activity);
 
-                if (hasInternet(activity)) {
-                    checkForUpdates(activity);
-                }
+                // Compatibility builds use the fork-specific update link in Settings → About.
             }
         });
 
@@ -210,175 +210,6 @@ public class XposedLoader implements IXposedHookLoadPackage, IXposedHookZygoteIn
         }
 
         activity.startActivity(intent);
-    }
-
-    private void checkForUpdates(Activity activity) {
-        ExecutorService executor = Executors.newSingleThreadExecutor();
-        Handler handler = new Handler(Looper.getMainLooper());
-
-        SharedPreferences prefs = activity.getSharedPreferences("SpotifyPlus", Context.MODE_PRIVATE);
-        if (prefs.getBoolean("general_check_updates", true)) {
-            executor.execute(() -> {
-                String thisContent = "";
-
-                try {
-                    URL url = new URL("https://api.github.com/repos/lenerd46/spotifyplus/releases/latest");
-                    HttpURLConnection connection = (HttpURLConnection) url.openConnection();
-                    connection.setRequestMethod("GET");
-
-                    int responseCode = connection.getResponseCode();
-                    if (responseCode == HttpURLConnection.HTTP_OK) {
-                        BufferedReader in = new BufferedReader(new InputStreamReader(connection.getInputStream()));
-
-                        String inputLine;
-                        StringBuilder response = new StringBuilder();
-                        while ((inputLine = in.readLine()) != null) {
-                            response.append(inputLine);
-                        }
-
-                        in.close();
-                        thisContent = response.toString();
-                    }
-                } catch (Exception e) {
-                    XposedBridge.log(e);
-                }
-
-                String content = thisContent;
-                handler.post(() -> {
-                    if (content.isEmpty())
-                        return;
-
-                    JsonObject json = new JsonParser().parseString(content).getAsJsonObject();
-                    String latest = json.get("tag_name").getAsString().replace("v", "");
-
-                    if (isVersionGreater(latest, MODULE_VERSION)) {
-                        // New update available!
-
-                        ViewGroup root = (ViewGroup) activity.getWindow().getDecorView();
-                        if (root == null)
-                            return;
-
-                        XModuleResources modResources = References.modResources;
-                        int themeOverlayLast = R.style.Theme_SpotifyPlus;
-                        Context themedCtx = new ModuleContextWrapper(activity.getApplicationContext(), themeOverlayLast,
-                                modResources, ModuleContextWrapper.class.getClassLoader());
-                        LayoutInflater inflater = LayoutInflater.from(activity.getApplicationContext())
-                                .cloneInContext(themedCtx);
-                        View updateWindow = inflater.inflate(
-                                modResources.getIdentifier("update_view", "layout", "com.lenerd46.spotifyplus"), root,
-                                false);
-                        root.addView(updateWindow);
-
-                        FrameLayout background = updateWindow.findViewById(
-                                modResources.getIdentifier("update_popup_root", "id", "com.lenerd46.spotifyplus"));
-                        TextView versionText = updateWindow.findViewById(
-                                modResources.getIdentifier("update_popup_version", "id", "com.lenerd46.spotifyplus"));
-                        MaterialButton updateButton = updateWindow.findViewById(
-                                modResources.getIdentifier("btn_download_update", "id", "com.lenerd46.spotifyplus"));
-                        MaterialButton dismissButton = updateWindow.findViewById(
-                                modResources.getIdentifier("btn_dismiss_update", "id", "com.lenerd46.spotifyplus"));
-
-                        versionText.setText(References.getString(R.string.update_modal_compare, MODULE_VERSION, latest));
-
-                        background.setOnClickListener(layout -> {
-                            root.removeView(updateWindow);
-                        });
-
-                        updateButton.setOnClickListener(v -> {
-                            root.removeView(updateWindow);
-
-                            Intent intent = new Intent(Intent.ACTION_VIEW,
-                                    Uri.parse("https://github.com/LeNerd46/SpotifyPlus/releases"));
-                            intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
-                            activity.startActivity(intent);
-                        });
-
-                        dismissButton.setOnClickListener(v -> root.removeView(updateWindow));
-
-                        // LayoutInflater inflater = LayoutInflater.from(activity);
-                        // View dialogueView =
-                        // inflater.inflate(modResources.getLayout(R.layout.dialogue_update),
-                        // (ViewGroup) activity.getWindow().getDecorView(), false);
-                        //
-                        // Button download =
-                        // dialogueView.findViewById(modResources.getIdentifier("download_button", "id",
-                        // "com.lenerd46.spotifyplus"));
-                        // Button later =
-                        // dialogueView.findViewById(modResources.getIdentifier("later_button", "id",
-                        // "com.lenerd46.spotifyplus"));
-                        //
-                        // AlertDialog dialogue = new
-                        // AlertDialog.Builder(activity).setView(dialogueView).create();
-                        //
-                        // later.setOnClickListener(v -> dialogue.dismiss());
-                        //
-                        // download.setOnClickListener(v -> {
-                        // Intent intent = new Intent(Intent.ACTION_VIEW,
-                        // Uri.parse("https://github.com/LeNerd46/SpotifyPlus/releases"));
-                        // intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
-                        // activity.startActivity(intent);
-                        // dialogue.dismiss();
-                        // });
-                        //
-                        // dialogue.show();
-                        //
-                        // Window dialogueWindow = dialogue.getWindow();
-                        // if (dialogueWindow != null) {
-                        // int width = activity.getResources().getDisplayMetrics().widthPixels;
-                        // dialogueWindow.setLayout(width, WindowManager.LayoutParams.WRAP_CONTENT);
-                        // }
-                    }
-                });
-            });
-        }
-    }
-
-    private final Pattern LEADING_NUMBER = Pattern.compile("^(\\d+)");
-
-    public boolean isVersionGreater(String latest, String current) {
-        if (latest == null || current == null)
-            return false;
-
-        String l = normalize(latest);
-        String c = normalize(current);
-
-        String[] la = l.split("\\.");
-        String[] ca = c.split("\\.");
-
-        int len = Math.max(la.length, ca.length);
-        for (int i = 0; i < len; i++) {
-            long lv = i < la.length ? parseSegment(la[i]) : 0L;
-            long cv = i < ca.length ? parseSegment(ca[i]) : 0L;
-            if (lv > cv)
-                return true;
-            if (lv < cv)
-                return false;
-        }
-        // equal
-        return false;
-    }
-
-    private String normalize(String s) {
-        s = s.trim();
-        if (s.startsWith("v") || s.startsWith("V"))
-            s = s.substring(1);
-        // drop pre-release / build metadata (e.g. -beta, +build)
-        s = s.split("[-+]")[0];
-        return s;
-    }
-
-    private long parseSegment(String seg) {
-        seg = seg.trim();
-        Matcher m = LEADING_NUMBER.matcher(seg);
-        if (m.find()) {
-            try {
-                return Long.parseLong(m.group(1));
-            } catch (NumberFormatException e) {
-                // extremely large number; fallback
-                return 0L;
-            }
-        }
-        return 0L;
     }
 
     public boolean hasInternet(Context ctx) {

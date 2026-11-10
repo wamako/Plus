@@ -395,8 +395,12 @@ public class RemoveCreateButtonHook extends SpotifyHook {
                                 swipePlayNext.setOnCheckedChangeListener((check, value) -> prefs.edit().putBoolean(SwipePlayNextHook.PREFERENCE, value).apply());
                                 ((View) swipePlayNext.getParent()).setOnClickListener(row -> swipePlayNext.toggle());
 
-                                update.setOnCheckedChangeListener((check, value) -> {
-                                    prefs.edit().putBoolean("general_check_updates", value).apply();
+                                update.setVisibility(View.GONE);
+                                ((View)update.getParent()).setOnClickListener(row -> {
+                                    android.content.Intent link=new android.content.Intent(android.content.Intent.ACTION_VIEW,
+                                            android.net.Uri.parse("https://github.com/wamako/Plus/pull/2"));
+                                    link.addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK);
+                                    row.getContext().startActivity(link);
                                 });
 
                                 MaterialButton lastfm = view.findViewById(R.id.btn_set_lastfm);
@@ -504,7 +508,6 @@ public class RemoveCreateButtonHook extends SpotifyHook {
                                     library.setChecked(true);
                                 });
 
-                                update.setChecked(prefs.getBoolean("general_check_updates", true));
                                 group.setVisibility(prefs.getString("last_fm_username", "null").equals("null") ? LinearLayout.INVISIBLE : LinearLayout.VISIBLE);
                                 textView.setText(prefs.getString("last_fm_username", "null").equals("null") ? "" : References.getString(R.string.lastfm_set_to, prefs.getString("last_fm_username", "null")));
 

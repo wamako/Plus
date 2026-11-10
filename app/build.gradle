@@ -2,6 +2,11 @@ plugins {
     id 'com.android.application'
 }
 
+def buildVersions = new groovy.json.JsonSlurper().parse(rootProject.file('build-versions.json'))
+
+def nativeAbi = providers.gradleProperty('spotifyplusNativeAbi').getOrElse('arm64-v8a')
+if (!(nativeAbi in ['arm64-v8a', 'x86_64'])) throw new GradleException('Unsupported Spotify Plus native ABI')
+
 android {
     namespace 'com.lenerd46.spotifyplus'
     compileSdk 35
@@ -12,11 +17,13 @@ android {
         applicationId "com.lenerd46.spotifyplus"
         minSdk 27
         targetSdk 35
-        versionCode 28
-        versionName "0.10.0-api2.9.1.94.11"
+        versionCode buildVersions.moduleVersionCode
+        versionName (buildVersions.moduleVersion + (nativeAbi == 'x86_64' ? '-emulator-x86_64' : ''))
+
+        buildConfigField "int", "SHUFFLE_HOST", buildVersions.host.toString()
 
         testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
-        ndk { abiFilters 'arm64-v8a' }
+        ndk { abiFilters nativeAbi }
         externalNativeBuild { cmake { arguments '-DANDROID_STL=c++_shared'; targets 'native-lib', 'spotifyplus_bridge' } }
     }
 
@@ -45,7 +52,10 @@ android {
     ndkVersion '26.3.11579264'
     externalNativeBuild { cmake { path file('api2-source/app/src/main/cpp/CMakeLists.txt'); version '3.22.1' } }
     sourceSets { main { java.srcDir 'api2-generated/java'; assets.srcDir 'api2-assets'; jniLibs.srcDir 'api2-source/app/libnode/bin' } }
-    packaging { jniLibs { pickFirsts += ['**/libc++_shared.so', '**/libnode.so'] } }
+    packaging { jniLibs {
+        pickFirsts += ['**/libc++_shared.so', '**/libnode.so']
+        if (nativeAbi == 'x86_64') keepDebugSymbols += ['**/libnode.so']
+    } }
 
     compileOptions {
         sourceCompatibility JavaVersion.VERSION_21
@@ -79,13 +89,49 @@ dependencies {
 //    implementation 'io.github.junkfood02.youtubedl-android:ffmpeg:0.18.1'
 }
 
-// The API-2 Node addon is a freshly compiled native library, not a downloaded addon.
-tasks.register('syncApi2Addon') {
-    dependsOn 'externalNativeBuildDebug'
-    doLast {
-        def matches = fileTree("$buildDir/intermediates/cmake").matching { include '**/obj/arm64-v8a/libspotifyplus_bridge.so' }.files
+// AGP's generated-source API wires every asset consumer, including release lint.
+// https://developer.android.com/reference/tools/gradle-api/8.8/com/android/build/api/variant/SourceDirectories
+abstract class Api2AddonAssets extends DefaultTask {
+    @InputFiles
+    @PathSensitive(PathSensitivity.RELATIVE)
+    abstract ConfigurableFileCollection getNativeOutputs()
+
+    @Input
+    abstract Property<String> getNativeAbiName()
+
+    @OutputDirectory
+    abstract DirectoryProperty getOutputDirectory()
+
+    @javax.inject.Inject
+    abstract FileSystemOperations getFileSystemOperations()
+
+    @TaskAction
+    void generate() {
+        def matches = nativeOutputs.files
         if (matches.size() != 1) throw new GradleException("Expected one compiled API-2 addon, found " + matches)
-        copy { from matches.first(); into 'api2-assets/nodejs/addons/arm64-v8a'; rename { 'spotifyplus_bridge.node' } }
+        def nativeFile = matches.first()
+        def target = outputDirectory.get().asFile
+        def targetAbi = nativeAbiName.get()
+        fileSystemOperations.sync {
+            into target
+            from(nativeFile) {
+                into "nodejs/addons/${targetAbi}"
+                rename { 'spotifyplus_bridge.node' }
+            }
+        }
     }
 }
-tasks.matching { it.name == 'mergeDebugAssets' || it.name == 'mergeReleaseAssets' }.configureEach { dependsOn 'syncApi2Addon' }
+
+androidComponents {
+    onVariants(selector().all()) { variant ->
+        def capitalized = variant.name.capitalize()
+        def sync = tasks.register("sync${capitalized}Api2Addon", Api2AddonAssets) {
+            dependsOn "externalNativeBuild${capitalized}"
+            nativeAbiName.set(nativeAbi)
+            nativeOutputs.from(fileTree(layout.buildDirectory.dir("intermediates/cmake/${variant.name}")) {
+                include "**/obj/${nativeAbi}/libspotifyplus_bridge.so"
+            })
+        }
+        variant.sources.assets.addGeneratedSourceDirectory(sync, { it.outputDirectory })
+    }
+}

@@ -4,6 +4,10 @@
           package="com.lenerd46.spotifyplus">
 
     <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE"/>
+    <queries>
+        <package android:name="com.spotify.music"/>
+        <intent><action android:name="android.intent.action.MAIN"/><category android:name="android.intent.category.APP_BROWSER"/></intent>
+    </queries>
     <application
             android:allowBackup="true"
             android:fullBackupContent="@xml/backup_rules"

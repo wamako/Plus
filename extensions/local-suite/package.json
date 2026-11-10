@@ -1,0 +1,20 @@
+{
+  "name": "spotifyplus-local-suite",
+  "version": "0.1.12",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "build": "node tools/build.mjs && node tools/build-shuffle.mjs",
+    "test": "node --test tests/core.test.mjs tests/native-reads.test.mjs tests/liked-songs.test.mjs tests/recovery.test.mjs tests/settings.test.mjs tests/shuffle.test.mjs tests/write-journal.test.mjs tests/sort-shuffle.test.mjs tests/liked-read-contract.test.mjs",
+    "typecheck": "tsc --noEmit",
+    "check": "npm run test && npm run typecheck && npm run build && npm run preflight",
+    "check:storage-probe": "node tools/build-storage-probe.mjs && node --test tests/storage-probe-host.test.mjs",
+    "preflight": "node --test tests/host-preflight.test.mjs tests/shuffle-host.test.mjs tests/upstream-host.test.mjs tests/liked-read-host.test.mjs"
+  },
+  "devDependencies": {
+    "@types/node": "22.19.17",
+    "@types/react": "19.2.14",
+    "esbuild": "0.28.2",
+    "typescript": "5.9.3"
+  }
+}

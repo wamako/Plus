@@ -1,0 +1,201 @@
+{
+  "format": 1,
+  "donor_sha256": "176aac1fec257cf18b7f2fc002f5cad2be2f9cc774a69694094e34555abb5df2",
+  "provenance": {
+    "run": "42078701459",
+    "commit": "a757c196c56eb57fa0be3fe5e9314563f62b2f25",
+    "node_version": "18.20.4",
+    "lyrics_commit": "6e60d0a038149c2df72664275d35beb2916cafd1"
+  },
+  "archive": {
+    "url": "https://github.com/wamako/Plus/releases/download/build-inputs-r11-v1/runtime-inputs-r11-v1.zip",
+    "sha256": "d43b7b250bf7cd1fca0f66000d21f4c6e1d64780bf5a59d80df7b4a997065c4a",
+    "size": 100588604
+  },
+  "entries": {
+    "licenses/node/LICENSE.txt": {
+      "sha256": "66233b87054d6bca9b0c2f23b027bb2caf1ebd961a6f981616d098dade33af34",
+      "size": 116078
+    },
+    "licenses/spotify-plus/LICENSE.txt": {
+      "sha256": "af5ffa2b1b8add81fcba8d153cfba1e9fa434357f2d0c2f22a83e52f08207302",
+      "size": 1069
+    },
+    "lyrics/LICENSE": {
+      "sha256": "0a93cdd05f39b1eccc973e3e041a99dfc498a6b37b353703428b9f805a2d164b",
+      "size": 1069
+    },
+    "lyrics/assets/fonts/lyrics-medium-real.ttf": {
+      "sha256": "e83f46fc285e787bc954f2710edbc3ca37dfb8945014ca02b27e98456469d3bc",
+      "size": 433392
+    },
+    "lyrics/assets/fonts/lyrics-medium.ttf": {
+      "sha256": "ca3091891b730c30273b16cc83c9daf94bb46f0f985262616cea8155d5118f14",
+      "size": 435904
+    },
+    "lyrics/assets/images/PHOSPHOR-LICENSE.txt": {
+      "sha256": "b5b1f1da112d18ea2147decfd48ddc1bf2b5aeb6c265381579340e95b15a2bb2",
+      "size": 1071
+    },
+    "lyrics/assets/images/README.md": {
+      "sha256": "3370906b3e7802c9c3e63d800a32d926397419f4d83469af7ac268f39a82defc",
+      "size": 813
+    },
+    "lyrics/assets/images/globe.svg": {
+      "sha256": "304bdd885e372275f2fcbd09a0ae70923f5771a0d6128b3d7cf46b895e5a7c47",
+      "size": 996
+    },
+    "lyrics/assets/images/mic-sparkle.png": {
+      "sha256": "c309af62892f706b45170574993dc5dc5257a7d4b3a0e4a1a9b54f145cbddb56",
+      "size": 7044
+    },
+    "lyrics/assets/images/microphone.svg": {
+      "sha256": "b41b7f6ec03b1d76f7841f0aee100ca4049429aca8105ab6456b185009c2afff",
+      "size": 514
+    },
+    "lyrics/assets/images/music-note.png": {
+      "sha256": "646e0b9de202be71d1dcad353d7a5a5a22c55a1cbca66277ec67d5a583bb56a2",
+      "size": 552
+    },
+    "lyrics/assets/images/sparkle.svg": {
+      "sha256": "ff4a8cadc2d8b5280da72253dc9d9214d64e5ab0a9ed8ef12df6d8ce8b105f86",
+      "size": 313
+    },
+    "lyrics/assets/images/sparkles.png": {
+      "sha256": "b29b1ce4160681c94625d2aa20934d1dc65079947820d210b282e0d3da8058b9",
+      "size": 11248
+    },
+    "lyrics/assets/images/subtitle.svg": {
+      "sha256": "127916004a958c7901e4df12755040fa21df2e44176546c7c7421af22caa1b76",
+      "size": 370
+    },
+    "lyrics/assets/images/translate.png": {
+      "sha256": "5b287962e026b08439c1c6bbb2b6bda46cbd1641701780b5fefa999019962fd3",
+      "size": 964
+    },
+    "lyrics/assets/native/alignment/masked.onnx": {
+      "sha256": "ca945afbdb299d5844a5c69711b0ce7c531b40cd0e95c969c8b7df5006bd5899",
+      "size": 312565
+    },
+    "lyrics/assets/native/frida-gadget-17.23.2-android-arm64.so": {
+      "sha256": "73a83a2d33c19d86cb61e11e1ddc7250ee2f79b0f39579c563bff1258ec0b088",
+      "size": 25237232
+    },
+    "lyrics/assets/native/qnn/libQnnGpu.so.gz.0": {
+      "sha256": "2f9e2687b76d03f377b2c68e1fc42858db526ae051263c394373c162e660c90d",
+      "size": 2079957
+    },
+    "lyrics/assets/native/qnn/libQnnHtp.so.gz.0": {
+      "sha256": "1669d8f627ce46b93463d2b3dc434e631259a40e5852a161f13bdb428920e63a",
+      "size": 926613
+    },
+    "lyrics/assets/native/qnn/libQnnHtpPrepare.so.gz.0": {
+      "sha256": "c3b6e78a5bed5402d35b89679cc0f3a74e35abafd226e99e28c77c5e796ea072",
+      "size": 4194304
+    },
+    "lyrics/assets/native/qnn/libQnnHtpPrepare.so.gz.1": {
+      "sha256": "6f061308ed1817120cc62bd7062c2b2cb2913970802cec51a13b0bce4bd94390",
+      "size": 4194304
+    },
+    "lyrics/assets/native/qnn/libQnnHtpPrepare.so.gz.2": {
+      "sha256": "2297991835ee28b628a2cde5b7ed891a9fb7781da397ad2d024d83b679f70f53",
+      "size": 4194304
+    },
+    "lyrics/assets/native/qnn/libQnnHtpPrepare.so.gz.3": {
+      "sha256": "92da61cf7c42e0f8f33759b345451c76b506d854985c79fb5c4452b34c48b52c",
+      "size": 4194304
+    },
+    "lyrics/assets/native/qnn/libQnnHtpPrepare.so.gz.4": {
+      "sha256": "971f38482346ba7d485116263f7fb81d358ebdf53e53ab5648a7fff6a72a74ff",
+      "size": 4194304
+    },
+    "lyrics/assets/native/qnn/libQnnHtpPrepare.so.gz.5": {
+      "sha256": "6b44db478391d533bd0210717b5bb33c7ae4ee1a9ac86b3aa8ea231fbf33006d",
+      "size": 4194304
+    },
+    "lyrics/assets/native/qnn/libQnnHtpPrepare.so.gz.6": {
+      "sha256": "3f22323ccf005453e7d1fc3ca353072336078b2f8b93641bc065a245f753acaa",
+      "size": 4194304
+    },
+    "lyrics/assets/native/qnn/libQnnHtpPrepare.so.gz.7": {
+      "sha256": "3ebfd566007dacb27e85a9c2969636e052f603631c307dd9462d38a54f558fd4",
+      "size": 205394
+    },
+    "lyrics/assets/native/qnn/libQnnHtpV68Skel.so.gz.0": {
+      "sha256": "e60d1343c5df718ae494c01e3dc160e287a9e98bc5839542189910572bbd016f",
+      "size": 2683723
+    },
+    "lyrics/assets/native/qnn/libQnnHtpV68Stub.so.gz.0": {
+      "sha256": "93b79624b3345629115ec131449fe832e96b01370cd51bbb0eb15821d4612f03",
+      "size": 239120
+    },
+    "lyrics/assets/native/qnn/libQnnHtpV69Skel.so.gz.0": {
+      "sha256": "19a4cdebcfe50c8bd97459764f0ac55ab637479501694149e00e22a38ffbf3a7",
+      "size": 3044437
+    },
+    "lyrics/assets/native/qnn/libQnnHtpV69Stub.so.gz.0": {
+      "sha256": "d170429b85ca1f435f6c636b1d8e6ea1724f4c33e30ed414b07028d7944f7edb",
+      "size": 239135
+    },
+    "lyrics/assets/native/qnn/libQnnHtpV73Skel.so.gz.0": {
+      "sha256": "f24997d48fa6200476bba8da60fd8dfb9177189cc158562e9af5112b5d732759",
+      "size": 3294501
+    },
+    "lyrics/assets/native/qnn/libQnnHtpV73Stub.so.gz.0": {
+      "sha256": "add2db8878e7ecf50da4f8d604dc4213abfe6f38c2582981638e13747efebc9d",
+      "size": 241150
+    },
+    "lyrics/assets/native/qnn/libQnnHtpV75Skel.so.gz.0": {
+      "sha256": "e064139634ca84ff1159966567b1edfc0d1977dae39083eb15dc90ac83c85330",
+      "size": 3311573
+    },
+    "lyrics/assets/native/qnn/libQnnHtpV75Stub.so.gz.0": {
+      "sha256": "c2695c1ad8d80fa5fd71b753f9e52bb91d26112b8b059158794b77eba5afffb6",
+      "size": 241149
+    },
+    "lyrics/assets/native/qnn/libQnnHtpV79Skel.so.gz.0": {
+      "sha256": "5e1e57d6bcca05e7e5d320322b9cf0d16b6860c2d8082b7af21f2be7c3bb2e8f",
+      "size": 3385562
+    },
+    "lyrics/assets/native/qnn/libQnnHtpV79Stub.so.gz.0": {
+      "sha256": "cf3e41153af56755e98dfa2ccaf4ef2cc94d5e6a6b798dfecead0168190b5bea",
+      "size": 241149
+    },
+    "lyrics/assets/native/qnn/libQnnSystem.so.gz.0": {
+      "sha256": "a81a8cb191ed44a4b09fcbaa66c0841bd2013247e26a30f9c7924b34fc1a2de2",
+      "size": 929221
+    },
+    "lyrics/assets/native/qnn/runtime.json": {
+      "sha256": "ba97e37ae5980db36b7ec2e5de3834d3ea619080fbb82dfa3c9eedf4befee1f7",
+      "size": 7840
+    },
+    "lyrics/assets/native/spotify-audio-resolver.js": {
+      "sha256": "1899032397729aa0dfe8f21e2daa4fcb54314ec336bcff8180236b3b0713e86e",
+      "size": 14861
+    },
+    "lyrics/assets/native/spotify-cache-reader.js": {
+      "sha256": "470e1701ddec14da1afd89d906e492d627c2f29fac8f05d46c6eff53b6e5e001",
+      "size": 36219
+    },
+    "lyrics/assets/native/spotify-remote-reader.js": {
+      "sha256": "3d63deca34f9ab60dd5eaf80dee7ff2cd909b46ebf5f642727ae0e9692550330",
+      "size": 3046
+    },
+    "lyrics/index.js": {
+      "sha256": "6f415bf186f7f2054d3f210c644a1455feea674564b97f6ab09b3e88b72f2636",
+      "size": 3829552
+    },
+    "lyrics/lyrics.apk": {
+      "sha256": "8f00aab5d0eae71f59b555de6ad0ad5d48ac2b5164990aca66a37ac97c30a1cf",
+      "size": 27888655
+    },
+    "lyrics/manifest.json": {
+      "sha256": "160c19ca4ccb0339dc5cc5666a9d87af59d1a6576e63faa0db0c532a5e10c41c",
+      "size": 518
+    },
+    "node/arm64-v8a/libnode.so": {
+      "sha256": "ce00e709fe6b84c5a57b48cbcba8549cf594d752d386a93a8b2c6b76fb9d021a",
+      "size": 49522248
+    }
+  }
+}

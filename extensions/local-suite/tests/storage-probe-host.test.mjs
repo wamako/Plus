@@ -16,7 +16,7 @@ const { Bridge } = await import(pathToFileURL(path.join(host, "bridge/bridge.js"
 const id = "com.wamako.ci.storageprobe";
 const written = "SPOTIFYPLUS_CI_STORAGE_WRITE_OK";
 const reloaded = "SPOTIFYPLUS_CI_STORAGE_RELOAD_OK";
-const features = ["SPOTIFYPLUS_CI_JOURNAL_OK", "SPOTIFYPLUS_CI_ARTIST_SHUFFLE_OK"];
+const features = ["SPOTIFYPLUS_CI_API2_OK", "SPOTIFYPLUS_CI_JOURNAL_OK", "SPOTIFYPLUS_CI_ARTIST_SHUFFLE_OK"];
 
 // Real pinned loader, API factory and JSON/binary bridge; only Android's native
 // addon is substituted. Each load gets fresh runtime/registry/bridge objects.

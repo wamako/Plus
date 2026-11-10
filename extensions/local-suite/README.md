@@ -1,13 +1,20 @@
-> Current candidate: R24 / suite 0.1.11 / Shuffle+ 0.1.13. See
-> [diagnostic changes and limits](../../docs/API2_R24_QUEUE_DIAGNOSTICS.md) and
-> [phone acceptance](../../R24_ACCEPTANCE.md). Extension code must be trusted.
+> Current candidate: R25 / suite 0.1.12 / Shuffle+ 0.1.14. See
+> [API/Marketplace update](../../docs/API2_R25_UPSTREAM.md) and
+> [phone acceptance](../../R25_ACCEPTANCE.md). Extension code must be trusted.
 
-# Spotify Plus local Android extensions · 0.1.11
+# Spotify Plus local Android extensions · 0.1.12
 
 Four removable Android adaptations for Spotify 9.1.94.1929 / arm64 / API 2.
-Use **Spotify Plus R24** as the LSPatch module. No extension is published to a marketplace.
+Use **Spotify Plus R25** as the LSPatch module. No extension is published to a marketplace.
 
-## 0.1.11 / R24 diagnostic update
+## 0.1.12 / R25 compatibility update
+
+Paired with the module that correctly advertises API 2. The runtime now contains
+errors from scheduled callbacks and supports animated raster Marketplace images.
+These extension versions update the host pairing; shuffle/read/write algorithms
+are unchanged. The reported authenticated queue-order failure remains unresolved.
+
+## Earlier 0.1.11 / R24 diagnostic update
 
 Retained Liked Songs rows now report metadata failures separately from collection
 completeness; DNS errors no longer say that no preview was used. Missing metadata

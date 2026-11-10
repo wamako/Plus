@@ -57,7 +57,7 @@ class StorageProbeTests(unittest.TestCase):
                     patch("run_lspatch_smoke.time.sleep"):
                 result, pid = launch(device, 60, storage_phase=phase)
             self.assertEqual(pid, "42")
-            self.assertEqual(result["storage_probe"], {"phase": phase, "passed": True, "journal_verified": True, "artist_shuffle_verified": True})
+            self.assertEqual(result["storage_probe"], {"phase": phase, "passed": True, "journal_verified": True, "artist_shuffle_verified": True, "extension_api2_verified": True})
             self.assertEqual(result["stable_after_ready_seconds"], 15)
 
     def test_global_storage_marker_or_lost_second_launch_state_cannot_pass(self):

@@ -1,11 +1,16 @@
 #!/usr/bin/env python3
 """Check the actual bundled runtime and nested extension APK, not just the outer module."""
-import io,json,struct,sys,zipfile,argparse,hashlib
+import io,json,struct,sys,zipfile,argparse,hashlib,re
 from verify_module_apk import validate_dex
 
 def validate_storage_classes(classes):
     assert "Lcom/lenerd/spotifyplus/module/hooks/StorageHook;" in classes, "Missing API-2 storage handler"
     assert "Lcom/lenerd46/spotifyplus/api2/Api2Runtime;" in classes, "Missing API-2 bootstrap"
+
+
+def validate_api_advertisement(sdk, manifest):
+    assert re.search(rb'exports\.CURRENT_SCRIPT_API\s*=\s*2\s*;', manifest), 'Packaged loader does not support API 2'
+    assert re.search(rb'version:\s*script_manifest_\d+\.CURRENT_SCRIPT_API\b', sdk), 'Public API version must use the loader constant'
 
 
 def needed_libraries(data):
@@ -43,6 +48,10 @@ def verify(path, abi='arm64-v8a'):
         for name in ["ShuffleEngine", "QueueIdentity", "NavigationIntents", "NativePlaybackCommand", "NativeQueueCommand", "CollectionOrder", "ShuffleDiagnosticsUi", "ShufflePlusBridge", "NativeLikedSongsRead", "NativeLikedSongsBridge"]:
             assert "Lcom/lenerd46/spotifyplus/api2/"+name+";" in host_classes, "Missing Shuffle+ native adapter: "+name
         sdk=apk.read('assets/nodejs/loader/script-api.js')
+        validate_api_advertisement(sdk, apk.read('assets/nodejs/loader/script-manifest.js'))
+        for name in ['ScriptImageView', 'ScriptImageLoader']:
+            assert 'Lcom/lenerd/spotifyplus/module/scripting/'+name+';' in host_classes, 'Missing image backport: '+name
+        assert b'createScriptScheduler' in apk.read('assets/nodejs/loader/script-loader.js'), 'Missing extension callback lifecycle protection'
         for name in [b'ShufflePlus:', b'shuffleplus.capabilities', b'shuffleplus.queue', b'shuffleplus.prepare', b'shuffleplus.apply']:
             assert name in sdk, 'Missing packaged Shuffle+ SDK routing: '+name.decode()
         for name in [b'LikedSongs:', b'liked.account', b'liked.capabilities', b'liked.read']:

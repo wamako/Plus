@@ -1,6 +1,13 @@
 # Spotify Plus project checkpoint
 
-## Current diagnostic candidate: R24 / suite 0.1.11 / Shuffle+ 0.1.13
+## Current candidate: R25 / suite 0.1.12 / Shuffle+ 0.1.14
+
+See [upstream comparison and API fix](API2_R25_UPSTREAM.md). Public API version now
+uses the existing loader constant. Native image and extension scheduling backports
+retain the established renderer/bridge and playback semantics. PR2 records final
+CI/artifact evidence. Queue-order and DNS phone failures remain unresolved.
+
+## Previous diagnostic candidate: R24 / suite 0.1.11 / Shuffle+ 0.1.13
 
 The R23 report requested 10,000 tracks and observed 80 upcoming entries with an
 8-entry matching prefix. Both native replies succeeded; order stayed unconfirmed.

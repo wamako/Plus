@@ -131,7 +131,7 @@ if(failSecondSubscribe)repo.stream.failSubscribe=true;if(failRead)Single.lost=tr
  static JSONObject diag()throws Exception{return (JSONObject)call("diagnostics",new JSONObject());}
  static void stopped(){ok(repo.stream.listeners.isEmpty());}
  public static void main(String[] args)throws Exception {
- reset();ok(((JSONObject)call("capabilities",new JSONObject())).getInt("host")==24);
+ reset();ok(((JSONObject)call("capabilities",new JSONObject())).getInt("host")==25);
  JSONObject p=(JSONObject)call("queue",new JSONObject());ok(repo.writes==0);apply(p,2,0,1);ok(((ContextTrack)repo.last.next.get(0)).uid.equals("c"));stopped();
  p=(JSONObject)call("queue",new JSONObject());((State)repo.stream.value).rev="metadata-only";apply(p,1,2,0);ok(repo.last.revision.equals("metadata-only"));
  p=(JSONObject)call("queue",new JSONObject());((State)repo.stream.value).current=new Opt(track(3,"new-current","context",false));fail("apply",order(p,0,1,2),"STALE_ORDER");

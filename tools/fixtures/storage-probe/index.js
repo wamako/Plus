@@ -4,6 +4,9 @@ import { SpotifyPlus as S } from "spotifyplus";
 import { beginJournal, checkpointJournal } from "../../../extensions/local-suite/shared/write-journal.mjs";
 import { smartShuffle } from "../../../extensions/local-suite/shared/model.mjs";
 
+if (S.version !== 2) throw new Error("SP_CI_API_VERSION");
+console.log("SPOTIFYPLUS_CI_API2_OK");
+
 const storage = S.Platform.Storage;
 const preferences = {
   "probe-text": "CI storage: café 🎵",

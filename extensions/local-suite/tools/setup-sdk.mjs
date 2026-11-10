@@ -2,12 +2,11 @@
 // Build-time tooling only; no SDK archive or Node dependencies are needed on the phone.
 import fs from "node:fs/promises";
 import path from "node:path";
-import os from "node:os";
 import { spawnSync } from "node:child_process";
 import { fileURLToPath } from "node:url";
 const pin = "615455bf0a7a81cd2d01382a1f1e9e0a699fb082";
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
-const temp = await fs.mkdtemp(path.join(os.tmpdir(), "spotifyplus-sdk-"));
+const temp = await fs.mkdtemp(path.join(root, ".sdk-setup-"));
 const archive = path.join(temp, "sdk.tar.gz");
 // curl honors the build machine's proxy and CA configuration.
 function run(command, args, cwd = root) {
@@ -32,6 +31,7 @@ const destination = path.join(root, ".sdk");
 await fs.rm(destination, { recursive: true, force: true });
 await fs.rename(path.join(temp, selected), destination);
 run("python3", [path.resolve(root, "../../tools/apply_upstream_updates.py"), "--sdk", destination]);
+run("python3", [path.resolve(root, "../../tools/apply_runtime_improvements.py"), "--sdk", destination]);
 run("node", [path.join(root, "tools/patch-shuffle-sdk.mjs"), destination]);
 run("npm", ["ci", "--ignore-scripts"], destination);
 run("npm", ["run", "build"], destination);

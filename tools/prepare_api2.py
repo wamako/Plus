@@ -54,6 +54,8 @@ def main():
     run(['python3',str(ROOT/'tools/apply_upstream_updates.py'),'--source',str(source),'--upstream',str(updates)],ROOT)
     from apply_compatibility_ui import apply as apply_compatibility_ui
     apply_compatibility_ui(source)
+    from apply_runtime_improvements import projects as apply_runtime_improvements
+    apply_runtime_improvements(source, updates)
     cpp=source/'app/src/main/cpp/spotifyengine.cpp'
     replace(cpp, '#include "spotifyengine.h"', '#include <unistd.h>\n#include "spotifyengine.h"')
     runtime=args.runtime_apk

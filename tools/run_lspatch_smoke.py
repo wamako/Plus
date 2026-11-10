@@ -24,6 +24,7 @@ STORAGE_MARKERS = {
     "reload": "SPOTIFYPLUS_CI_STORAGE_RELOAD_OK",
 }
 FEATURE_MARKERS = {
+    "extension_api2_verified": "SPOTIFYPLUS_CI_API2_OK",
     "journal_verified": "SPOTIFYPLUS_CI_JOURNAL_OK",
     "artist_shuffle_verified": "SPOTIFYPLUS_CI_ARTIST_SHUFFLE_OK",
 }

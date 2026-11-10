@@ -27,8 +27,8 @@ test('Shuffle+ bundle through real pinned loader: no writes on preview, native a
   callApiSync(op){if(op==='player.state')return {contextUri:context,trackUri:uri(1)};throw new Error(op)},
   requestApi:async(op,args)=>{
    calls.push({op,args});
-   if(op==='shuffleplus.capabilities')return {version:1,host:24,queueRevision:"observer-initial-cas",queueEntryProvider:"native-factory-default",observerReadiness:"await-initial-state",collectionVerification:"provider-aware-autoplay",collectionMode:"first-track-explicit-queue",route:"native-play-and-setqueue",queueMode:"native-editor-options",playerReady:true,limit:10000};
-   if(op==='shuffleplus.diagnostics')return {host:24,mode:'queue',outcome:'unknown',queueUnchanged:true};
+   if(op==='shuffleplus.capabilities')return {version:1,host:25,queueRevision:"observer-initial-cas",queueEntryProvider:"native-factory-default",observerReadiness:"await-initial-state",collectionVerification:"provider-aware-autoplay",collectionMode:"first-track-explicit-queue",route:"native-play-and-setqueue",queueMode:"native-editor-options",playerReady:true,limit:10000};
+   if(op==='shuffleplus.diagnostics')return {host:25,mode:'queue',outcome:'unknown',queueUnchanged:true};
    if(op==='shuffleplus.copyDiagnostics')return true;
    if(op==='shuffleplus.queue')return {mode:'queue',ticket,count:3,tracks:[1,1,2].map(n=>({uri:uri(n),title:'Song '+n,artist:'Artist'}))};
    if(op==='shuffleplus.prepare'){if(prepareHold)await prepareHold;if(failPrepare)throw new Error(failPrepare);return {mode:'collection',ticket,count:args.uris.length};}
@@ -56,7 +56,7 @@ test('Shuffle+ bundle through real pinned loader: no writes on preview, native a
   loader.loadScript(path.join(root,'build/SpotifyPlus-ShufflePlus/shuffle-plus'),'user');
   assert.equal(registry.getScripts().length,1);assert.equal(calls.length,0);
   const entry=[...registry.getSideDrawerItems().values()][0];registry.emitSideDrawerPress(entry.scriptId,entry.id);await until(()=>read().includes('Load and shuffle collection'));
-  press('Check active playback adapter');await until(()=>read().includes('Active module R24'));assert.equal(mutations().length,0);
+  press('Check active playback adapter');await until(()=>read().includes('Active module R25'));assert.equal(mutations().length,0);
   press('Preview shuffled upcoming queue');await until(()=>read().includes('Confirm upcoming shuffle'));
   assert.equal(mutations().length,0);assert.match(read(),/3 tracks in preview/);
   press('Cancel shuffle confirmation');assert.equal(mutations().length,0);

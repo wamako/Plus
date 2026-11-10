@@ -1,3 +1,6 @@
+> R25 / Shuffle+ 0.1.14 pairing. Playback logic and strict order verification are
+> unchanged from R24; this release does not claim to fix the phone queue mismatch.
+
 > Current candidate: R23 / suite 0.1.10 / Shuffle+ 0.1.12. See
 > [stabilization changes and limits](../../docs/API2_R23_STABILIZATION.md) and
 > [phone acceptance](../../R23_ACCEPTANCE.md). Extension code must be trusted.

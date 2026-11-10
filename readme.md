@@ -1,3 +1,6 @@
+> R25 compatibility candidate: [upstream comparison and API 2 repair](docs/API2_R25_UPSTREAM.md).
+> [Phone acceptance](R25_ACCEPTANCE.md).
+
 # Spotify Plus · Spotify 9.1.94.1929 compatibility build
 
 This fork adapts Spotify Plus and local Android extensions for non-root LSPatch.

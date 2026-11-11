@@ -51,8 +51,9 @@ public final class CustomSleepTimer {
     public static void show(){Activity a=References.currentActivity;if(a!=null&&preferences!=null)a.runOnUiThread(()->FeatureSheets.show("Sleep timer",root->new Page(a,root)));}
     private static final class Page {
         final Activity activity;final LinearLayout presets;final TextView status,error;final EditText input;
-        final ArrayList<Long> values=new ArrayList<>();boolean hours,save,editing;
+        final SavedTimerDurations values;boolean hours,save,editing;
         Page(Activity a,LinearLayout root){
+            values=new SavedTimerDurations(loadPresets(),this::persist);
             activity=a;status=FeatureSheets.text(a,"",16);root.addView(status);
             root.addView(FeatureSheets.button(a,"Cancel active timer",()->{cancel();refreshStatus();}));
             root.addView(FeatureSheets.text(a,"Pause playback after a custom duration",16));
@@ -62,18 +63,23 @@ public final class CustomSleepTimer {
             min.setOnClickListener(v->{hours=false;select.run();});hr.setOnClickListener(v->{hours=true;select.run();});select.run();units.addView(min,new LinearLayout.LayoutParams(0,-2,1));units.addView(hr,new LinearLayout.LayoutParams(0,-2,1));root.addView(units);
             Button saving=FeatureSheets.button(a,"Save as preset: No",()->{});saving.setOnClickListener(v->{save=!save;saving.setText(save?"Save as preset: Yes":"Save as preset: No");});root.addView(saving);
             error=FeatureSheets.text(a,"",14);error.setTextColor(0xffffb4b4);root.addView(error);
-            root.addView(FeatureSheets.button(a,"Start sleep timer",()->{try{long minutes=SleepTimerState.minutes(input.getText().toString(),hours);start(minutes);if(save&&!values.contains(minutes)){values.add(minutes);persist();render();}error.setText("");refreshStatus();}catch(Exception e){error.setText(e.getMessage());}}));
-            root.addView(FeatureSheets.button(a,"Save preset for player menu",()->{try{long minutes=SleepTimerState.minutes(input.getText().toString(),hours);if(!values.contains(minutes)){values.add(minutes);persist();render();}error.setText("");FeatureSheets.toast("Saved. Reopen the player's Sleep timer menu to use it.");}catch(Exception e){error.setText(e.getMessage());}}));
+            root.addView(FeatureSheets.button(a,"Start sleep timer",()->{try{long minutes=SleepTimerState.minutes(input.getText().toString(),hours);start(minutes);if(save){values.add(minutes);render();}error.setText("");refreshStatus();}catch(Exception e){error.setText(e.getMessage());refreshStatus();}}));
+            root.addView(FeatureSheets.button(a,"Save preset for player menu",()->{try{long minutes=SleepTimerState.minutes(input.getText().toString(),hours);values.add(minutes);render();error.setText("");FeatureSheets.toast("Saved. Reopen the player's Sleep timer menu to use it.");}catch(Exception e){error.setText(e.getMessage());}}));
             root.addView(FeatureSheets.text(a,"Saved timers",18));Button edit=FeatureSheets.button(a,"Edit saved timers",()->{});edit.setOnClickListener(v->{editing=!editing;edit.setText(editing?"Done":"Edit saved timers");render();});root.addView(edit);
             presets=FeatureSheets.column(a);root.addView(presets);
-            try{JSONArray stored=new JSONArray(preferences.getString("custom_sleep_timers","[{\"value\":5,\"unit\":false},{\"value\":10,\"unit\":false},{\"value\":15,\"unit\":false},{\"value\":30,\"unit\":false},{\"value\":45,\"unit\":false},{\"value\":1,\"unit\":true}]"));for(int i=0;i<stored.length();i++){JSONObject item=stored.getJSONObject(i);try{values.add(SleepTimerState.minutes(item.get("value").toString(),item.optBoolean("unit")));}catch(Exception ignored){}}}catch(Exception ignored){}
             render();refreshStatus();Runnable ticker=new Runnable(){public void run(){if(!status.isAttachedToWindow())return;refreshStatus();status.postDelayed(this,1000);}};
             status.addOnAttachStateChangeListener(new View.OnAttachStateChangeListener(){public void onViewAttachedToWindow(View v){status.post(ticker);}public void onViewDetachedFromWindow(View v){status.removeCallbacks(ticker);}});
         }
         void refreshStatus(){long left=state.remaining(SystemClock.elapsedRealtime());status.setText(left==0?"No active custom timer":"Playback pauses in "+((left+59999)/60000)+" minutes");}
-        void persist(){JSONArray array=new JSONArray();for(long minutes:values){JSONObject value=new JSONObject();try{value.put("value",minutes);value.put("unit",false);array.put(value);}catch(JSONException e){throw new IllegalStateException(e);}}if(!preferences.edit().putString("custom_sleep_timers",array.toString()).commit())throw new IllegalStateException("Could not save timers");}
-        void render(){presets.removeAllViews();for(int i=0;i<values.size();i++){final int index=i;long minutes=values.get(i);LinearLayout row=new LinearLayout(activity);Button play=FeatureSheets.button(activity,label(minutes),()->{try{start(minutes);error.setText("");refreshStatus();}catch(Exception e){error.setText(e.getMessage());}});row.addView(play,new LinearLayout.LayoutParams(0,-2,1));
-            if(editing){row.addView(FeatureSheets.button(activity,"↑",()->{if(index>0){Collections.swap(values,index,index-1);persist();render();}}));row.addView(FeatureSheets.button(activity,"×",()->{values.remove(index);persist();render();}));}presets.addView(row);
+        List<Long> loadPresets(){
+            List<Long> loaded=new ArrayList<>();
+            try{JSONArray stored=new JSONArray(preferences.getString("custom_sleep_timers","[{\"value\":5,\"unit\":false},{\"value\":10,\"unit\":false},{\"value\":15,\"unit\":false},{\"value\":30,\"unit\":false},{\"value\":45,\"unit\":false},{\"value\":1,\"unit\":true}]"));for(int i=0;i<stored.length();i++){JSONObject item=stored.getJSONObject(i);try{loaded.add(SleepTimerState.minutes(item.get("value").toString(),item.optBoolean("unit")));}catch(Exception ignored){}}}catch(Exception ignored){}
+            return loaded;
+        }
+        void persist(List<Long> durations){JSONArray array=new JSONArray();for(long minutes:durations){JSONObject value=new JSONObject();try{value.put("value",minutes);value.put("unit",false);array.put(value);}catch(JSONException e){throw new IllegalStateException(e);}}if(!preferences.edit().putString("custom_sleep_timers",array.toString()).commit())throw new IllegalStateException("Could not save timers");}
+        void edit(Runnable action){try{action.run();render();error.setText("");}catch(Exception e){error.setText(e.getMessage());}}
+        void render(){presets.removeAllViews();List<Long> durations=values.list();for(int i=0;i<durations.size();i++){final int index=i;long minutes=durations.get(i);LinearLayout row=new LinearLayout(activity);Button play=FeatureSheets.button(activity,label(minutes),()->{try{start(minutes);error.setText("");refreshStatus();}catch(Exception e){error.setText(e.getMessage());}});row.addView(play,new LinearLayout.LayoutParams(0,-2,1));
+            if(editing){row.addView(FeatureSheets.button(activity,"↑",()->edit(()->values.moveUp(index))));row.addView(FeatureSheets.button(activity,"×",()->edit(()->values.remove(index))));}presets.addView(row);
         }}
     }
 }

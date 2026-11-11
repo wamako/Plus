@@ -23,8 +23,9 @@ public final class PlaybackHistory {
     public synchronized void importPrevious(List<BookmarkCollection.Item> tracks,long now){
         if(!state.previous.isEmpty()||tracks.isEmpty())return;
         State next=new State();next.current=state.current;
-        Set<String> seen=new HashSet<>();if(next.current!=null)seen.add(next.current.uri);
-        for(int i=tracks.size()-1;i>=0&&next.previous.size()<100;i--){var item=tracks.get(i);if(seen.add(item.uri))next.previous.add(new Entry(item,now));}
+        // Native history describes play occurrences, not a collection of unique
+        // songs. A repeated URI (even the current song) is still a previous play.
+        for(int i=tracks.size()-1;i>=0&&next.previous.size()<100;i--)next.previous.add(new Entry(tracks.get(i),now));
         storage.write(gson.toJson(next));state=next;
     }
 }

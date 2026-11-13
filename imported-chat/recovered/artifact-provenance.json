@@ -1,0 +1,178 @@
+{
+  "run_id": 42766717675,
+  "repository": "wamako/Plus",
+  "source_commit": "473218cb88d70f0698adda69b62ff6035d68cac1",
+  "artifacts": [
+    {
+      "id": 13740816904,
+      "name": "SpotifyPlus-Android-UI-Tests",
+      "size_in_bytes": 614585,
+      "url": "https://api.github.com/repos/wamako/Plus/actions/artifacts/13740816904",
+      "archive_download_url": "https://api.github.com/repos/wamako/Plus/actions/artifacts/13740816904/zip",
+      "expired": false,
+      "created_at": "2026-11-10T06:22:45Z",
+      "expires_at": "2027-02-08T06:10:21Z",
+      "updated_at": "2026-11-10T06:22:45Z",
+      "digest": "sha256:ebc14c0ebb5a77cf844179ab492926038da2c6ea6a670de2b01a2095b21a66c4",
+      "workflow_run": {
+        "id": 42766717675,
+        "repository_id": 1445721092,
+        "head_repository_id": 1445721092,
+        "head_branch": "codex/local-extensions",
+        "head_sha": "473218cb88d70f0698adda69b62ff6035d68cac1"
+      }
+    },
+    {
+      "id": 13740582849,
+      "name": "LSPatch-Android17-Native-x86-Sig2-Reports",
+      "size_in_bytes": 25882,
+      "url": "https://api.github.com/repos/wamako/Plus/actions/artifacts/13740582849",
+      "archive_download_url": "https://api.github.com/repos/wamako/Plus/actions/artifacts/13740582849/zip",
+      "expired": false,
+      "created_at": "2026-11-10T06:27:56Z",
+      "expires_at": "2026-11-24T06:27:55Z",
+      "updated_at": "2026-11-10T06:27:56Z",
+      "digest": "sha256:5b385a34045a77382b773b8a8197a841adba0fa3bf5c6ff32eab0a3dc4b8b4af",
+      "workflow_run": {
+        "id": 42766717675,
+        "repository_id": 1445721092,
+        "head_repository_id": 1445721092,
+        "head_branch": "codex/local-extensions",
+        "head_sha": "473218cb88d70f0698adda69b62ff6035d68cac1"
+      }
+    },
+    {
+      "id": 13740520650,
+      "name": "Environment-Android17-Native-x86-Sig2-Report",
+      "size_in_bytes": 1220,
+      "url": "https://api.github.com/repos/wamako/Plus/actions/artifacts/13740520650",
+      "archive_download_url": "https://api.github.com/repos/wamako/Plus/actions/artifacts/13740520650/zip",
+      "expired": false,
+      "created_at": "2026-11-10T06:12:18Z",
+      "expires_at": "2026-11-24T06:12:18Z",
+      "updated_at": "2026-11-10T06:12:18Z",
+      "digest": "sha256:ff2cb51dfd41a4ea649cb593d91c03bf30e62e2d53ad8c6f38cb18fd177350ca",
+      "workflow_run": {
+        "id": 42766717675,
+        "repository_id": 1445721092,
+        "head_repository_id": 1445721092,
+        "head_branch": "codex/local-extensions",
+        "head_sha": "473218cb88d70f0698adda69b62ff6035d68cac1"
+      }
+    },
+    {
+      "id": 13740352160,
+      "name": "SpotifyPlus-Tested-Extension-ZIPs",
+      "size_in_bytes": 150808,
+      "url": "https://api.github.com/repos/wamako/Plus/actions/artifacts/13740352160",
+      "archive_download_url": "https://api.github.com/repos/wamako/Plus/actions/artifacts/13740352160/zip",
+      "expired": false,
+      "created_at": "2026-11-10T06:18:19Z",
+      "expires_at": "2027-02-08T06:10:21Z",
+      "updated_at": "2026-11-10T06:18:19Z",
+      "digest": "sha256:9479800707d40d154d044128d31ca7aaa754498cb52211e672eb7494d9a09788",
+      "workflow_run": {
+        "id": 42766717675,
+        "repository_id": 1445721092,
+        "head_repository_id": 1445721092,
+        "head_branch": "codex/local-extensions",
+        "head_sha": "473218cb88d70f0698adda69b62ff6035d68cac1"
+      }
+    },
+    {
+      "id": 13740222720,
+      "name": "LSPatch-Package-Report",
+      "size_in_bytes": 1054,
+      "url": "https://api.github.com/repos/wamako/Plus/actions/artifacts/13740222720",
+      "archive_download_url": "https://api.github.com/repos/wamako/Plus/actions/artifacts/13740222720/zip",
+      "expired": false,
+      "created_at": "2026-11-10T06:19:35Z",
+      "expires_at": "2026-11-24T06:19:34Z",
+      "updated_at": "2026-11-10T06:19:35Z",
+      "digest": "sha256:b23c1ce1ea68a90f1fafdc114abbdab7f551f2d88bf18539cf78ba5d971350a6",
+      "workflow_run": {
+        "id": 42766717675,
+        "repository_id": 1445721092,
+        "head_repository_id": 1445721092,
+        "head_branch": "codex/local-extensions",
+        "head_sha": "473218cb88d70f0698adda69b62ff6035d68cac1"
+      }
+    },
+    {
+      "id": 13740213310,
+      "name": "SpotifyPlus-Emulator-x86_64-APK",
+      "size_in_bytes": 208432170,
+      "url": "https://api.github.com/repos/wamako/Plus/actions/artifacts/13740213310",
+      "archive_download_url": "https://api.github.com/repos/wamako/Plus/actions/artifacts/13740213310/zip",
+      "expired": false,
+      "created_at": "2026-11-10T06:22:44Z",
+      "expires_at": "2027-02-08T06:10:21Z",
+      "updated_at": "2026-11-10T06:22:44Z",
+      "digest": "sha256:afef13dc5721e86a8557468164d02c6a3d6a05616222a8a24503cccd3f694bc5",
+      "workflow_run": {
+        "id": 42766717675,
+        "repository_id": 1445721092,
+        "head_repository_id": 1445721092,
+        "head_branch": "codex/local-extensions",
+        "head_sha": "473218cb88d70f0698adda69b62ff6035d68cac1"
+      }
+    },
+    {
+      "id": 13739987960,
+      "name": "SpotifyPlus-ShufflePlus",
+      "size_in_bytes": 32963,
+      "url": "https://api.github.com/repos/wamako/Plus/actions/artifacts/13739987960",
+      "archive_download_url": "https://api.github.com/repos/wamako/Plus/actions/artifacts/13739987960/zip",
+      "expired": false,
+      "created_at": "2026-11-10T06:18:18Z",
+      "expires_at": "2027-02-08T06:10:21Z",
+      "updated_at": "2026-11-10T06:18:18Z",
+      "digest": "sha256:7fdd9f7daf4b84faa679249b394cee285af74e6b3679ecbeabcea1c4e7176b2b",
+      "workflow_run": {
+        "id": 42766717675,
+        "repository_id": 1445721092,
+        "head_repository_id": 1445721092,
+        "head_branch": "codex/local-extensions",
+        "head_sha": "473218cb88d70f0698adda69b62ff6035d68cac1"
+      }
+    },
+    {
+      "id": 13739804238,
+      "name": "SpotifyPlus-Debug-APK",
+      "size_in_bytes": 205403276,
+      "url": "https://api.github.com/repos/wamako/Plus/actions/artifacts/13739804238",
+      "archive_download_url": "https://api.github.com/repos/wamako/Plus/actions/artifacts/13739804238/zip",
+      "expired": false,
+      "created_at": "2026-11-10T06:18:16Z",
+      "expires_at": "2027-02-08T06:10:21Z",
+      "updated_at": "2026-11-10T06:18:16Z",
+      "digest": "sha256:74a7b6c35067616a066153ab916702461dcc14b4fe355e412c08663391ebf755",
+      "workflow_run": {
+        "id": 42766717675,
+        "repository_id": 1445721092,
+        "head_repository_id": 1445721092,
+        "head_branch": "codex/local-extensions",
+        "head_sha": "473218cb88d70f0698adda69b62ff6035d68cac1"
+      }
+    },
+    {
+      "id": 13739799469,
+      "name": "SpotifyPlus-CI-Storage-Probe",
+      "size_in_bytes": 3056,
+      "url": "https://api.github.com/repos/wamako/Plus/actions/artifacts/13739799469",
+      "archive_download_url": "https://api.github.com/repos/wamako/Plus/actions/artifacts/13739799469/zip",
+      "expired": false,
+      "created_at": "2026-11-10T06:18:20Z",
+      "expires_at": "2026-11-24T06:18:20Z",
+      "updated_at": "2026-11-10T06:18:20Z",
+      "digest": "sha256:84b9528c9f5a36e4bf2761056f7c3ddcd43d4a786453c11b932b39da30521796",
+      "workflow_run": {
+        "id": 42766717675,
+        "repository_id": 1445721092,
+        "head_repository_id": 1445721092,
+        "head_branch": "codex/local-extensions",
+        "head_sha": "473218cb88d70f0698adda69b62ff6035d68cac1"
+      }
+    }
+  ]
+}

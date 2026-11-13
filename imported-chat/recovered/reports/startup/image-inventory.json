@@ -1,0 +1,8 @@
+{
+  "test_kind": "sdk_image_inventory",
+  "package": "system-images;android-37.0;google_apis;x86_64",
+  "listed": true,
+  "api_level": "37.0",
+  "abi": "x86_64",
+  "runtime_test_executed": false
+}

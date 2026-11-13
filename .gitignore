@@ -213,3 +213,15 @@ __pycache__/
 
 # Dependencies are restored from package-lock.json.
 node_modules/
+
+# Chat recovery source files are versioned as project context. Recovered binary
+# releases, reports, and runtime inputs stay local; GitHub is not artifact storage.
+/imported-chat/recovered/artifacts/
+/imported-chat/recovered/deliverables/
+/imported-chat/recovered/reports/ui/
+/imported-chat/recovered/*.apk
+/imported-chat/recovered/*.zip
+/imported-chat/recovered/*.png
+/imported-chat/recovered/context/*.zip
+/imported-chat/recovered/**/*.png
+/imported-chat/recovered/**/*.html

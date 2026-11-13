@@ -1,0 +1,150 @@
+{
+  "test_kind": "logged_out_lspatch_startup",
+  "passed": true,
+  "emulation_mode": "kvm-native-x86_64",
+  "signature_bypass_level": 2,
+  "module_artifact_run_id": "42766717675",
+  "module_artifact_commit": "473218cb88d70f0698adda69b62ff6035d68cac1",
+  "device_profile": "linux-x86_64-native",
+  "required_api": 37,
+  "required_app_abi": "x86_64",
+  "launches": [
+    {
+      "integrated_loader_entered": true,
+      "module_entered": true,
+      "system_navigation_ready": true,
+      "native_play_binding_ready": true,
+      "node_host_ready": true,
+      "shuffle_extension_loaded": true,
+      "stable_after_ready_seconds": 15,
+      "storage_probe": {
+        "phase": "write",
+        "passed": true,
+        "extension_api2_verified": true,
+        "journal_verified": true,
+        "artist_shuffle_verified": true
+      },
+      "native_code": {
+        "mapped": {
+          "libnode.so": true,
+          "libnative-lib.so": true,
+          "spotifyplus_bridge.node": true
+        },
+        "extracted_native_code_read_only": true,
+        "arm_translation_verified": false
+      }
+    },
+    {
+      "integrated_loader_entered": true,
+      "module_entered": true,
+      "system_navigation_ready": true,
+      "native_play_binding_ready": true,
+      "node_host_ready": true,
+      "shuffle_extension_loaded": true,
+      "stable_after_ready_seconds": 15,
+      "storage_probe": {
+        "phase": "reload",
+        "passed": true,
+        "extension_api2_verified": true,
+        "journal_verified": true,
+        "artist_shuffle_verified": true
+      },
+      "native_code": {
+        "mapped": {
+          "libnode.so": true,
+          "libnative-lib.so": true,
+          "spotifyplus_bridge.node": true
+        },
+        "extracted_native_code_read_only": true,
+        "arm_translation_verified": false
+      }
+    }
+  ],
+  "startup_attempts": [
+    {
+      "material_theme_symbol": {
+        "declaring_class": "p.ksg0",
+        "name": "a",
+        "parameters": [
+          "p.s1h",
+          "p.l0m0",
+          "p.gy51",
+          "p.iyf1",
+          "p.xth",
+          "p.dqj",
+          "int"
+        ]
+      },
+      "last_observed_markers": {
+        "integrated_loader_entered": true,
+        "module_entered": true,
+        "system_navigation_ready": true,
+        "native_play_binding_ready": true,
+        "node_host_ready": true,
+        "shuffle_extension_loaded": true
+      },
+      "storage_probe_markers": {
+        "write": true,
+        "reload": false,
+        "extension_api2_verified": true,
+        "journal_verified": true,
+        "artist_shuffle_verified": true
+      }
+    },
+    {
+      "material_theme_symbol": {
+        "declaring_class": "p.ksg0",
+        "name": "a",
+        "parameters": [
+          "p.s1h",
+          "p.l0m0",
+          "p.gy51",
+          "p.iyf1",
+          "p.xth",
+          "p.dqj",
+          "int"
+        ]
+      },
+      "last_observed_markers": {
+        "integrated_loader_entered": true,
+        "module_entered": true,
+        "system_navigation_ready": true,
+        "native_play_binding_ready": true,
+        "node_host_ready": true,
+        "shuffle_extension_loaded": true
+      },
+      "storage_probe_markers": {
+        "write": false,
+        "reload": true,
+        "extension_api2_verified": true,
+        "journal_verified": true,
+        "artist_shuffle_verified": true
+      }
+    }
+  ],
+  "playback_test_executed": false,
+  "account_test_executed": false,
+  "shuffle_ui_test_executed": false,
+  "storage_persistence_test_requested": true,
+  "storage_persistence_verified": true,
+  "patched_host_test_executed": true,
+  "limitation": "Generic AVD; Samsung firmware, authenticated playback, queue ordering and extension UI interaction require separate acceptance tests.",
+  "environment": {
+    "api": 37,
+    "abi": "x86_64",
+    "app_abi": "x86_64",
+    "emulator": true,
+    "profile": "linux-x86_64-native",
+    "arm_translation": false,
+    "arm_compat_advertised": true,
+    "guest_vcpu_count": 4,
+    "guest_memory_mib": 3912
+  },
+  "stage": "inspect_native_code",
+  "installed_app_abi": "x86_64",
+  "guest_idle_checks": {
+    "package_handler_idle": true,
+    "package_background_handler_idle": true,
+    "broadcasts_idle": true
+  }
+}

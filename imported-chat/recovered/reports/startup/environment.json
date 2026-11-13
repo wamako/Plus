@@ -1,0 +1,31 @@
+{
+  "test_kind": "android37_environment_only",
+  "passed": true,
+  "emulation_mode": "kvm-native-x86_64",
+  "signature_bypass_level": 2,
+  "module_artifact_run_id": "42766717675",
+  "module_artifact_commit": "473218cb88d70f0698adda69b62ff6035d68cac1",
+  "device_profile": "linux-x86_64-native",
+  "required_api": 37,
+  "required_app_abi": "x86_64",
+  "launches": [],
+  "startup_attempts": [],
+  "playback_test_executed": false,
+  "account_test_executed": false,
+  "shuffle_ui_test_executed": false,
+  "storage_persistence_test_requested": false,
+  "storage_persistence_verified": false,
+  "patched_host_test_executed": false,
+  "limitation": "Generic AVD; Samsung firmware, authenticated playback, queue ordering and extension UI interaction require separate acceptance tests.",
+  "environment": {
+    "api": 37,
+    "abi": "x86_64",
+    "app_abi": "x86_64",
+    "emulator": true,
+    "profile": "linux-x86_64-native",
+    "arm_translation": false,
+    "arm_compat_advertised": true,
+    "guest_vcpu_count": 4,
+    "guest_memory_mib": 3912
+  }
+}

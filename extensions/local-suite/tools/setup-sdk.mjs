@@ -10,7 +10,12 @@ const temp = await fs.mkdtemp(path.join(root, ".sdk-setup-"));
 const archive = path.join(temp, "sdk.tar.gz");
 // curl honors the build machine's proxy and CA configuration.
 function run(command, args, cwd = root) {
-  const result = spawnSync(command, args, { cwd, stdio: "inherit" });
+  const isWinNpm = process.platform === "win32" && command === "npm";
+  const result = spawnSync(isWinNpm ? "npm.cmd" : command, args, {
+    cwd,
+    stdio: "inherit",
+    shell: isWinNpm,
+  });
   if (result.status !== 0)
     throw new Error(`${command} failed (${result.status}).`);
 }
@@ -45,10 +50,11 @@ await fs.rm(path.join(root, "node_modules/spotifyplus"), {
   recursive: true,
   force: true,
 });
+const linkType = process.platform === "win32" ? "junction" : "dir";
 await fs.symlink(
   destination,
   path.join(root, "node_modules/spotifyplus"),
-  "dir",
+  linkType,
 );
 await fs.rm(path.join(root, "node_modules/react"), {
   recursive: true,
@@ -57,7 +63,7 @@ await fs.rm(path.join(root, "node_modules/react"), {
 await fs.symlink(
   path.join(root, "nodejs/node_modules/react"),
   path.join(root, "node_modules/react"),
-  "dir",
+  linkType,
 );
 await fs.rm(temp, { recursive: true, force: true });
 console.log(`Pinned SDK ready: ${pin}`);

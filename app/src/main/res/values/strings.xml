@@ -418,5 +418,19 @@
     </plurals>
     <string name="sync_seek_backward">−5 s</string>
     <string name="sync_seek_forward">+5 s</string>
+    <string name="lyrics_static_palette_title">Static lyrics palette</string>
+    <string name="lyrics_static_palette_desc">Replace moving artwork blur with a calm non-AMOLED gradient palette.</string>
+    <string name="lyrics_palette_artwork">Artwork Dynamic</string>
+    <string name="lyrics_palette_midnight_slate">Midnight Slate</string>
+    <string name="lyrics_palette_warm_espresso">Warm Espresso</string>
+    <string name="lyrics_palette_forest_dusk">Forest Dusk</string>
+    <string name="lyrics_palette_twilight_plum">Twilight Plum</string>
+    <string name="lyrics_palette_charcoal">Charcoal Dark</string>
+    <string name="lyrics_calmer_motion_title">Calmer motion mode</string>
+    <string name="lyrics_calmer_motion_desc">Freeze background motion, turn off blur/glow/stagger waves, and remove bouncy text zoom.</string>
+    <string name="lyrics_keep_screen_on_title">Keep screen on in Lyrics</string>
+    <string name="lyrics_keep_screen_on_desc">Prevent display sleep while the lyrics overlay is open.</string>
+    <string name="strip_share_tracking_title">Strip share tracking (?si=)</string>
+    <string name="strip_share_tracking_desc">Clean Spotify tracking parameters (?si=, utm_*) when sharing or copying links.</string>
     <string name="module_description">Enhance Spotify with cool stuff</string>
 </resources>

@@ -45,6 +45,8 @@ public class AnimatedAlbumArtwork extends SpotifyHook {
     private volatile FrameLayout activeOverlay;
     private volatile TextureView activeTextureView;
     private static final java.util.concurrent.atomic.AtomicInteger GEN = new java.util.concurrent.atomic.AtomicInteger();
+    private static volatile int cachedSquareCoverArtLayoutId = 0;
+    private static volatile int cachedImageId = 0;
 
     @Override
     protected void hook() {
@@ -55,47 +57,49 @@ public class AnimatedAlbumArtwork extends SpotifyHook {
                 if (!(param.args[0] instanceof Integer))
                     return;
 
+                int layoutId = (Integer) param.args[0];
                 LayoutInflater inflater = (LayoutInflater) param.thisObject;
                 Context ctx = inflater.getContext();
 
-                int layoutId = (Integer) param.args[0];
-                String layoutName;
-                try {
-                    layoutName = ctx.getResources().getResourceName(layoutId);
-                } catch (Throwable t) {
-                    return;
+                int targetLayoutId = cachedSquareCoverArtLayoutId;
+                if (targetLayoutId == 0) {
+                    try {
+                        targetLayoutId = ctx.getResources().getIdentifier("square_cover_art_content", "layout", "com.spotify.music");
+                        if (targetLayoutId != 0) cachedSquareCoverArtLayoutId = targetLayoutId;
+                    } catch (Throwable ignored) {
+                        return;
+                    }
                 }
-
-                if (!layoutName.endsWith("layout/square_cover_art_content"))
+                if (layoutId != targetLayoutId || targetLayoutId == 0)
                     return;
 
-                if (layoutName.endsWith("layout/square_cover_art_content")) {
-                    View root = (View) param.getResult();
+                View root = (View) param.getResult();
+                if (root == null) return;
 
-                    root.post(() -> {
-                        View image = findByIdName(root, "com.spotify.music:id/image");
-                        if (!(image instanceof View)) {
-                            XposedBridge.log("[SpotifyPlus] cover image not found");
-                            return;
-                        }
+                root.post(() -> {
+                    int imgId = cachedImageId;
+                    if (imgId == 0) {
+                        imgId = root.getResources().getIdentifier("image", "id", "com.spotify.music");
+                        if (imgId != 0) cachedImageId = imgId;
+                    }
+                    View image = imgId != 0 ? root.findViewById(imgId) : findByIdName(root, "com.spotify.music:id/image");
+                    if (!(image instanceof View)) {
+                        XposedBridge.log("[SpotifyPlus] cover image not found");
+                        return;
+                    }
 
-                        if (!(image.getParent() instanceof ViewGroup)) {
-                            XposedBridge.log("[SpotifyPlus] cover parent not ViewGroup");
-                            return;
-                        }
+                    if (!(image.getParent() instanceof ViewGroup)) {
+                        XposedBridge.log("[SpotifyPlus] cover parent not ViewGroup");
+                        return;
+                    }
 
-                        SharedPreferences prefs = References.getPreferences();
-                        if (prefs != null && !prefs.getBoolean("experiment_animated_art", true)
-                                || (prefs != null && prefs.getBoolean(ImmersiveAnimatedArtwork.PREFERENCE, false)))
-                            return;
+                    SharedPreferences prefs = References.getPreferences();
+                    if ((prefs != null && !prefs.getBoolean("experiment_animated_art", true))
+                            || (prefs != null && prefs.getBoolean(ImmersiveAnimatedArtwork.PREFERENCE, false)))
+                        return;
 
-                        attachOverlay((ViewGroup) image.getParent(), image);
-
-                        // View overlay = (View) image.getTag(TAG_OVERLAY);
-                        // overlay.setBackgroundColor(0x55FF0000); // translucent red
-                    });
-                }
-
+                    attachOverlay((ViewGroup) image.getParent(), image);
+                });
             }
         });
     }

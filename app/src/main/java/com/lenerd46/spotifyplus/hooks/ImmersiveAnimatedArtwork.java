@@ -63,6 +63,10 @@ public final class ImmersiveAnimatedArtwork extends SpotifyHook {
     private static final OkHttpClient CLIENT = new OkHttpClient.Builder().callTimeout(java.time.Duration.ofSeconds(20)).build();
     private static final java.util.concurrent.ExecutorService LOOKUPS = Executors.newFixedThreadPool(2);
     private static final Map<String, String> CACHE = new LinkedHashMap<>();
+    private static volatile int expandedHeaderId = 0;
+    private static volatile int creativeWorkHeaderId = 0;
+    private static volatile int squareCoverArtId = 0;
+    private static final Map<String, Integer> ID_CACHE = new java.util.concurrent.ConcurrentHashMap<>();
 
     private static boolean enabled() {
         android.content.SharedPreferences prefs = References.getPreferences();
@@ -75,15 +79,21 @@ public final class ImmersiveAnimatedArtwork extends SpotifyHook {
             @Override
             protected void afterHookedMethod(MethodHookParam param) {
                 if (!enabled() || !(param.args[0] instanceof Integer) || !(param.getResult() instanceof View)) return;
+                int layoutId = (Integer) param.args[0];
                 View root = (View) param.getResult();
-                String name;
-                try {
-                    name = root.getResources().getResourceEntryName((Integer) param.args[0]);
-                } catch (Exception ignored) {
-                    return;
+                if (expandedHeaderId == 0 && squareCoverArtId == 0) {
+                    try {
+                        android.content.res.Resources res = root.getResources();
+                        expandedHeaderId = res.getIdentifier("expanded_header", "layout", "com.spotify.music");
+                        creativeWorkHeaderId = res.getIdentifier("creative_work_header_layout", "layout", "com.spotify.music");
+                        squareCoverArtId = res.getIdentifier("square_cover_art_content", "layout", "com.spotify.music");
+                    } catch (Exception ignored) {
+                        return;
+                    }
                 }
-                boolean album = name.equals("expanded_header") || name.equals("creative_work_header_layout");
-                if (!album && !name.equals("square_cover_art_content")) return;
+                boolean album = (expandedHeaderId != 0 && layoutId == expandedHeaderId)
+                        || (creativeWorkHeaderId != 0 && layoutId == creativeWorkHeaderId);
+                if (!album && (squareCoverArtId == 0 || layoutId != squareCoverArtId)) return;
                 root.post(() -> {
                     if (root.isAttachedToWindow()) attach(root, album);
                     else root.addOnAttachStateChangeListener(new View.OnAttachStateChangeListener() {
@@ -131,7 +141,9 @@ public final class ImmersiveAnimatedArtwork extends SpotifyHook {
     }
 
     private static View find(View root, String name) {
-        int id = root.getResources().getIdentifier(name, "id", "com.spotify.music");
+        Integer cached = ID_CACHE.get(name);
+        int id = cached != null ? cached : root.getResources().getIdentifier(name, "id", "com.spotify.music");
+        if (cached == null && id != 0) ID_CACHE.put(name, id);
         return id == 0 ? null : root.findViewById(id);
     }
 
@@ -220,6 +232,12 @@ public final class ImmersiveAnimatedArtwork extends SpotifyHook {
             this.album = album;
             layer = new FrameLayout(host.getContext()) {
                 final Paint mask = new Paint(Paint.ANTI_ALIAS_FLAG);
+                private LinearGradient cachedMaskShader;
+                private int cachedMaskHeight = -1;
+
+                {
+                    mask.setXfermode(new PorterDuffXfermode(PorterDuff.Mode.DST_IN));
+                }
 
                 @Override
                 public void draw(Canvas canvas) {
@@ -228,11 +246,15 @@ public final class ImmersiveAnimatedArtwork extends SpotifyHook {
                         return;
                     }
                     // Fade the entire decorative layer, including its color fill, into the live page below.
-                    int save = canvas.saveLayer(0, 0, getWidth(), getHeight(), null);
+                    int h = getHeight();
+                    if (cachedMaskShader == null || cachedMaskHeight != h) {
+                        cachedMaskHeight = h;
+                        cachedMaskShader = new LinearGradient(0, h * .60f, 0, h, 0xff000000, 0x00000000, Shader.TileMode.CLAMP);
+                        mask.setShader(cachedMaskShader);
+                    }
+                    int save = canvas.saveLayer(0, 0, getWidth(), h, null);
                     super.draw(canvas);
-                    mask.setShader(new LinearGradient(0, getHeight() * .60f, 0, getHeight(), 0xff000000, 0x00000000, Shader.TileMode.CLAMP));
-                    mask.setXfermode(new PorterDuffXfermode(PorterDuff.Mode.DST_IN));
-                    canvas.drawRect(0, 0, getWidth(), getHeight(), mask);
+                    canvas.drawRect(0, 0, getWidth(), h, mask);
                     canvas.restoreToCount(save);
                 }
             };
@@ -245,13 +267,21 @@ public final class ImmersiveAnimatedArtwork extends SpotifyHook {
             layer.addView(texture, new FrameLayout.LayoutParams(-1, -1));
             fade = new View(host.getContext()) {
                 final Paint paint = new Paint();
+                private LinearGradient cachedFadeShader;
+                private float cachedArtworkBottom = -1f;
+                private int cachedBaseColor = 0;
 
                 @Override
                 protected void onDraw(Canvas canvas) {
                     // Transparent at the top; opaque at the controls/list boundary.
                     int base = backgroundColor();
-                    float artworkBottom = Math.min(getHeight(), texture.getHeight());
-                    paint.setShader(new LinearGradient(0, 0, 0, Math.max(1, artworkBottom), new int[]{0x22000000, 0, base & 0xffffff, base | 0xff000000}, new float[]{0, .35f, .66f, 1f}, Shader.TileMode.CLAMP));
+                    float artworkBottom = Math.max(1f, Math.min(getHeight(), texture.getHeight()));
+                    if (cachedFadeShader == null || cachedArtworkBottom != artworkBottom || cachedBaseColor != base) {
+                        cachedArtworkBottom = artworkBottom;
+                        cachedBaseColor = base;
+                        cachedFadeShader = new LinearGradient(0, 0, 0, artworkBottom, new int[]{0x22000000, 0, base & 0xffffff, base | 0xff000000}, new float[]{0, .35f, .66f, 1f}, Shader.TileMode.CLAMP);
+                        paint.setShader(cachedFadeShader);
+                    }
                     canvas.drawRect(0, 0, getWidth(), getHeight(), paint);
                 }
             };
@@ -290,6 +320,9 @@ public final class ImmersiveAnimatedArtwork extends SpotifyHook {
 
         @Override
         public boolean onPreDraw() {
+            if (!ready && player == null) {
+                return true;
+            }
             int width = host.getWidth();
             int height = album ? host.getHeight() : Math.min(host.getHeight(), host.getRootView().getHeight());
             width = Math.min(width, host.getRootView().getWidth());

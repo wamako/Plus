@@ -4,6 +4,7 @@ import { SpotifyPlus as S } from "spotifyplus";
 import { DataClient } from "../../shared/data.mjs";
 import { normalizeTrack, csv } from "../../shared/model.mjs";
 import { ListeningTracker, aggregate, playsCsv } from "../../shared/stats.mjs";
+import { RatingsStore, StatsBridge } from "../../shared/suite-store.mjs";
 import {
   Page,
   Label,
@@ -16,8 +17,11 @@ import {
   Status,
   palette,
   useTextSetting,
+  TrackRatingRow,
 } from "../../shared/ui";
 const client = new DataClient(S);
+const ratingsStore = new RatingsStore(S.Platform.Storage);
+const statsBridge = new StatsBridge(S.Platform.Storage);
 const tracker = new ListeningTracker(
   S.Platform.Storage.get("listening-history-v1") || {},
 );
@@ -25,8 +29,14 @@ let enabled = S.Platform.Storage.get<boolean>("tracking-enabled") === true;
 let timer: ReturnType<typeof setInterval> | undefined,
   lastSave = 0,
   trackingError = "";
+try {
+  statsBridge.syncFromEvents(tracker.data.events);
+} catch {
+  // Initial summary sync is best-effort.
+}
 function save() {
   S.Platform.Storage.set("listening-history-v1", tracker.snapshot());
+  statsBridge.syncFromEvents(tracker.data.events);
   lastSave = Date.now();
 }
 function poll() {
@@ -85,6 +95,7 @@ function App() {
     const id = setInterval(() => setTick((n) => n + 1), 10000);
     return () => clearInterval(id);
   }, []);
+  const [ratingTick, setRatingTick] = useState(0);
   const stats = useMemo(
     () =>
       aggregate(tracker.data.events, {
@@ -95,8 +106,19 @@ function App() {
       }),
     [range, tick, active],
   );
+  const forgottenRows = useMemo(
+    () =>
+      provider === "local" && kind === "forgotten"
+        ? statsBridge.forgottenFavorites(30, Date.now(), ratingsStore).slice(0, 50)
+        : [],
+    [provider, kind, tick, active, ratingTick],
+  );
   const rows =
-    provider === "local" ? (stats as any)[kind].slice(0, 50) : remote || [];
+    provider === "local"
+      ? kind === "forgotten"
+        ? forgottenRows
+        : ((stats as any)[kind] || []).slice(0, 50)
+      : remote || [];
   function exportData(json: boolean) {
     try {
       save();
@@ -150,7 +172,12 @@ function App() {
       </Label>
       <Choices
         value={provider}
-        onChange={(v) => update(() => setProvider(v))}
+        onChange={(v) =>
+          update(() => {
+            setProvider(v);
+            if (v !== "local" && kind === "forgotten") setKind("tracks");
+          })
+        }
         items={[
           ["local", "This device"],
           ["lastfm", "Last.fm"],
@@ -173,6 +200,9 @@ function App() {
           ["tracks", "Top tracks"],
           ["artists", "Top artists"],
           ["albums", "Top albums"],
+          ...(provider === "local"
+            ? ([["forgotten", "Forgotten favorites (30d+)"]] as [string, string][])
+            : []),
         ]}
       />
       {provider === "local" ? (
@@ -263,41 +293,78 @@ function App() {
         </View>
       )}
       <Status task={task} />
-      <Label large>Top {kind}</Label>
+      <Label large>
+        {kind === "forgotten" ? "Forgotten favorites (30+ days since last play)" : `Top ${kind}`}
+      </Label>
       {rows.length ? (
-        rows.map((row: any, i: number) => (
-          <View
-            key={`${row.uri || row.title}:${i}`}
-            style={{
-              padding: 12,
-              marginBottom: 6,
-              backgroundColor: palette.card,
-              borderRadius: 10,
-            }}
-          >
-            <Label>
-              {i + 1}. {row.title}
-            </Label>
-            <Label muted>
-              {row.artist}
-              {row.artist ? " · " : ""}
-              {row.count == null
-                ? "Play count not supplied"
-                : `${row.count} plays`}
-              {row.listenedMs == null ? "" : ` · ${minutes(row.listenedMs)}`}
-            </Label>
-            {row.uri ? (
-              <Button
-                title="Open in Spotify"
-                onPress={() => S.Navigation.openSpotify(row.uri)}
-              />
-            ) : null}
-          </View>
-        ))
+        rows.map((row: any, i: number) => {
+          const rating =
+            row.rating ??
+            (row.uri && /^spotify:track:/.test(row.uri)
+              ? ratingsStore.get(row.uri)
+              : null);
+          return (
+            <View
+              key={`${row.uri || row.title}:${i}`}
+              style={{
+                padding: 12,
+                marginBottom: 6,
+                backgroundColor: palette.card,
+                borderRadius: 10,
+              }}
+            >
+              <Label>
+                {i + 1}. {row.title}
+              </Label>
+              <Label muted>
+                {row.artist}
+                {row.artist ? " · " : ""}
+                {row.count == null
+                  ? "Play count not supplied"
+                  : `${row.count} plays`}
+                {row.listenedMs == null ? "" : ` · ${minutes(row.listenedMs)}`}
+                {rating != null ? ` · ★ ${rating}/10` : ""}
+                {row.daysAgo != null ? ` · ${row.daysAgo}d ago` : ""}
+              </Label>
+              {row.uri ? (
+                <View>
+                  <Button
+                    title="Open in Spotify"
+                    onPress={() => S.Navigation.openSpotify(row.uri)}
+                  />
+                  {kind === "forgotten" ? (
+                    <Button
+                      title="Queue track"
+                      onPress={() => {
+                        try {
+                          S.Queue.add(row.uri);
+                          task.setStatus(`Queued "${row.title}".`);
+                        } catch {
+                          task.setStatus("Could not queue track right now.");
+                        }
+                      }}
+                    />
+                  ) : null}
+                  {provider === "local" && /^spotify:track:/.test(row.uri) ? (
+                    <TrackRatingRow
+                      uri={row.uri}
+                      title={row.title}
+                      artist={row.artist}
+                      currentRating={rating}
+                      onChange={() => setRatingTick((n) => n + 1)}
+                    />
+                  ) : null}
+                </View>
+              ) : null}
+            </View>
+          );
+        })
       ) : (
         <Label muted>
           {provider === "local"
-            ? "No recorded listening in this range yet. Enable tracking and play music."
+            ? kind === "forgotten"
+              ? "No forgotten favorites yet. Rate tracks 7★+ or build local play history over 30 days."
+              : "No recorded listening in this range yet. Enable tracking and play music."
             : "Fetch a ranking to display results."}
         </Label>
       )}

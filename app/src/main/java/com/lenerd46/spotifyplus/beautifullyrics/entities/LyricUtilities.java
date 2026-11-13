@@ -80,6 +80,13 @@ public class LyricUtilities {
 
             lyrics.language = getLanguage(textToProcess);
             lyrics.naturalAlignment = getNaturalAlignment(lyrics.language);
+
+            for (var line : lyrics.lyrics.staticLyrics.lines) {
+                if (line != null && (line.romanizedText == null || line.romanizedText.isEmpty())) {
+                    String romaji = JapaneseRomanizer.romanizeLineOrNull(line.text);
+                    if (romaji != null) line.romanizedText = romaji;
+                }
+            }
         } else if (lyrics.lyrics.lineLyrics instanceof LineSyncedLyrics) {
 
             try {
@@ -110,7 +117,15 @@ public class LyricUtilities {
                 lyrics.language = getLanguage(textToProcess);
                 lyrics.naturalAlignment = getNaturalAlignment(lyrics.language);
 
-                // Romanization
+                for (var item : lyrics.lyrics.lineLyrics.content) {
+                    if (item instanceof LineVocal) {
+                        LineVocal vocal = (LineVocal) item;
+                        if (vocal.romanizedText == null || vocal.romanizedText.isEmpty()) {
+                            String romaji = JapaneseRomanizer.romanizeLineOrNull(vocal.text);
+                            if (romaji != null) vocal.romanizedText = romaji;
+                        }
+                    }
+                }
 
                 // Check if first vocal group needs an interlude before it
                 boolean addedStartInterlude = false;
@@ -195,7 +210,17 @@ public class LyricUtilities {
             lyrics.naturalAlignment = getNaturalAlignment(lyrics.language);
             lyrics.lyrics.syllableLyrics.content = new ArrayList<>(vocalLines);
 
-            // Romanization
+            for (var item : lyrics.lyrics.syllableLyrics.content) {
+                if (item instanceof SyllableVocalSet) {
+                    SyllableVocalSet set = (SyllableVocalSet) item;
+                    romanizeSyllableVocalFallback(set.lead);
+                    if (set.background != null) {
+                        for (var bg : set.background) {
+                            romanizeSyllableVocalFallback(bg);
+                        }
+                    }
+                }
+            }
 
             // Check if first vocal group needs an interlude before it
             boolean addedStartInterlude = false;
@@ -236,5 +261,19 @@ public class LyricUtilities {
         }
 
         return lyrics;
+    }
+
+    private static void romanizeSyllableVocalFallback(SyllableVocal vocal) {
+        if (vocal == null || vocal.syllables == null) return;
+        for (SyllableMetadata syllable : vocal.syllables) {
+            if (syllable == null) continue;
+            if ((syllable.romanizedText == null || syllable.romanizedText.isEmpty())
+                    && JapaneseRomanizer.containsJapanese(syllable.text)) {
+                String romaji = JapaneseRomanizer.romanize(syllable.text);
+                if (!romaji.isEmpty()) {
+                    syllable.romanizedText = romaji;
+                }
+            }
+        }
     }
 }

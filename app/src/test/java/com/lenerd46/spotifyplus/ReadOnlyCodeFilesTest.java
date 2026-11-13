@@ -13,10 +13,14 @@ import static org.junit.Assert.*;
 public class ReadOnlyCodeFilesTest {
     @Rule public TemporaryFolder folder=new TemporaryFolder();
     private void assertSealed(Path file) throws IOException {
-        Set<PosixFilePermission> mode=Files.getPosixFilePermissions(file);
-        assertFalse(mode.contains(PosixFilePermission.OWNER_WRITE));
-        assertFalse(mode.contains(PosixFilePermission.GROUP_WRITE));
-        assertFalse(mode.contains(PosixFilePermission.OTHERS_WRITE));
+        if (FileSystems.getDefault().supportedFileAttributeViews().contains("posix")) {
+            Set<PosixFilePermission> mode=Files.getPosixFilePermissions(file);
+            assertFalse(mode.contains(PosixFilePermission.OWNER_WRITE));
+            assertFalse(mode.contains(PosixFilePermission.GROUP_WRITE));
+            assertFalse(mode.contains(PosixFilePermission.OTHERS_WRITE));
+        } else {
+            assertFalse(file.toFile().canWrite());
+        }
     }
     @Test public void sealedBeforeReadingContentAndPublishedAfterClosing() throws Exception {
         File destination=new File(folder.getRoot(),"libnode.so");

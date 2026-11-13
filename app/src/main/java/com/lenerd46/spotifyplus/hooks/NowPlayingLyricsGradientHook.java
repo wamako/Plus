@@ -1,7 +1,9 @@
 package com.lenerd46.spotifyplus.hooks;
 
 import android.app.Activity;
+import android.content.Context;
 import android.content.res.Configuration;
+import com.lenerd46.spotifyplus.beautifullyrics.entities.LyricsOffsetStore;
 import android.graphics.Rect;
 import android.media.MediaMetadata;
 import android.media.session.PlaybackState;
@@ -820,6 +822,13 @@ public class NowPlayingLyricsGradientHook extends SpotifyHook {
         long position = playbackPositionMs;
         if(position < 0) return -1;
         if(playbackAdvancing) position += (long) ((SystemClock.elapsedRealtime() - playbackUpdateElapsed) * playbackSpeed);
+        Activity activity = References.currentActivity;
+        if (activity != null && loadedTrackUri != null) {
+            position += LyricsOffsetStore.getOffsetMs(
+                    activity.getSharedPreferences("SpotifyPlus", Context.MODE_PRIVATE),
+                    loadedTrackUri
+            );
+        }
         return Math.max(0, position);
     }
 

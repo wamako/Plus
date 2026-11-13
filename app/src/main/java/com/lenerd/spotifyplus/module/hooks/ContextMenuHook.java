@@ -9,13 +9,17 @@ import java.util.concurrent.*;
 public final class ContextMenuHook extends SpotifyHook {
     private static final List<ScriptContextMenu> menus=new CopyOnWriteArrayList<>();
     private static final ConcurrentHashMap<String,CompletableFuture<Set<String>>> pending=new ConcurrentHashMap<>();
+    private static final Map<Object,String> headerUris=Collections.synchronizedMap(new WeakHashMap<>());
+    public static void recordHeaderUri(Object header,String uri){if(header!=null&&uri!=null)headerUris.put(header,uri);}
+    public static String uriForHeader(Object header){return header==null?null:headerUris.get(header);}
     protected void hookSetup(){SpotifyNativeBridge.registerHandler("menu",this);}
     protected void beforeHook(SpotifyCallback p){}protected void afterHook(SpotifyCallback p){}
     public Object handle(String command,Object[] args){try{
         if(command.equals("register")){
             ScriptContextMenu menu;
             if(args[0] instanceof JSONObject data){Set<String> types=null;JSONArray values=data.optJSONArray("types");if(values!=null){types=new HashSet<>();for(int i=0;i<values.length();i++)types.add(values.getString(i));}
-                menu=new ScriptContextMenu(data.getString("id"),data.getString("scriptId"),data.getString("title"),types,data.optBoolean("hasCallback"),data.optBoolean("disabled"));
+                String iconAssetId=data.optString("iconAssetId",null);if(iconAssetId!=null&&iconAssetId.isEmpty())iconAssetId=null;
+                menu=new ScriptContextMenu(data.getString("id"),data.getString("scriptId"),data.getString("title"),types,data.optBoolean("hasCallback"),data.optBoolean("disabled"),iconAssetId);
             }else menu=new ScriptContextMenu((String)args[0],(String)args[1],(String)args[2]);
             menus.removeIf(m->m.id.equals(menu.id)&&m.scriptId.equals(menu.scriptId));menus.add(menu);
         }else if(command.equals("unregisterScript"))menus.removeIf(m->m.scriptId.equals(args[0]));
@@ -32,7 +36,7 @@ public final class ContextMenuHook extends SpotifyHook {
         Set<String> visible=fallback;
         try{SpotifyNativeBridge.sendEvent("menu.visibility",new JSONObject().put("requestId",request).put("ids",ids).put("uri",uri).put("contextUri",uri).toString());visible=f.get(150,TimeUnit.MILLISECONDS);}
         catch(InterruptedException e){Thread.currentThread().interrupt();}catch(Exception ignored){}finally{pending.remove(request);}
-        Set<String> selected=visible;return candidates.stream().filter(m->selected.contains(m.id)).toList();
+        Set<String> selected=visible;return candidates.stream().filter(m->selected.contains(m.id)&&SpotifyNativeBridge.nativeMenuVisible(m.scriptId,m.id,uri)).toList();
     }
     public static void press(ScriptContextMenu menu,String uri){try{SpotifyNativeBridge.sendJsonEvent("menu.press",new JSONObject().put("id",menu.id).put("scriptId",menu.scriptId).put("uri",uri).put("contextUri",uri));}catch(Exception e){logError(e);}}
 }

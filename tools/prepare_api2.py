@@ -1,12 +1,14 @@
 #!/usr/bin/env python3
 """Build the pinned API-2 runtime; retain the legacy module and verified 9.1.94 hooks."""
-import argparse, hashlib, json, re, pathlib, shutil, subprocess, tarfile, tempfile, urllib.request, zipfile
+import argparse, hashlib, json, re, pathlib, shutil, subprocess, sys, tarfile, tempfile, urllib.request, zipfile
 ROOT = pathlib.Path(__file__).resolve().parents[1]
 UPSTREAM = '615455bf0a7a81cd2d01382a1f1e9e0a699fb082'
 RUNTIME_SHA = 'd94cabfe0f6fdeb07a81da60030bf8e63eab4c3a5339bc99fcda81028788cf48'
 R11_SHA = '176aac1fec257cf18b7f2fc002f5cad2be2f9cc774a69694094e34555abb5df2'
 NODE_SHA = 'ce00e709fe6b84c5a57b48cbcba8549cf594d752d386a93a8b2c6b76fb9d021a'
 LYRICS = '6e60d0a038149c2df72664275d35beb2916cafd1'
+LYRICS_WAVE1 = '83238365a111503e55f1be71ff376e4806af6dc3'
+PLAY_NEXT = '1f46c661117f76f5914387071fb804db16514878'
 
 def download(url, path):
     path.parent.mkdir(parents=True, exist_ok=True)
@@ -31,7 +33,7 @@ def replace(path, old, new):
     if old not in text: raise RuntimeError(f'Pinned source shape changed: {path.name}: {old[:70]}')
     path.write_text(text.replace(old, new))
 
-def run(command, directory): subprocess.run(command, cwd=directory, check=True)
+def run(command, directory): subprocess.run([shutil.which(command[0]) or command[0], *command[1:]], cwd=directory, check=True)
 
 def main():
     parser=argparse.ArgumentParser(description=__doc__)
@@ -51,11 +53,16 @@ def main():
         else: archive('LeNerd46','SpotifyPlus',UPSTREAM,source)
     updates=cache/'upstream-updates-c407383'
     archive('LeNerd46','SpotifyPlus','c407383820660d4273703f53d517ce12beced77e',updates)
-    run(['python3',str(ROOT/'tools/apply_upstream_updates.py'),'--source',str(source),'--upstream',str(updates)],ROOT)
-    from apply_compatibility_ui import apply as apply_compatibility_ui
-    apply_compatibility_ui(source)
-    from apply_runtime_improvements import projects as apply_runtime_improvements
-    apply_runtime_improvements(source, updates)
+    if 'parseAuthors' not in (source/'app/src/main/assets/nodejs-src/loader/script-manifest.ts').read_text():
+        run([sys.executable,str(ROOT/'tools/apply_upstream_updates.py'),'--source',str(source),'--upstream',str(updates)],ROOT)
+        from apply_compatibility_ui import apply as apply_compatibility_ui
+        apply_compatibility_ui(source)
+        from apply_runtime_improvements import projects as apply_runtime_improvements
+        apply_runtime_improvements(source, updates)
+    from apply_wave1_updates import apply as apply_wave1_updates
+    apply_wave1_updates(source, updates)
+    from apply_wave2_updates import apply as apply_wave2_updates
+    apply_wave2_updates(source)
     cpp=source/'app/src/main/cpp/spotifyengine.cpp'
     replace(cpp, '#include "spotifyengine.h"', '#include <unistd.h>\n#include "spotifyengine.h"')
     runtime=args.runtime_apk
@@ -83,10 +90,10 @@ def main():
     if generated.exists():shutil.rmtree(generated)
     generated.mkdir(parents=True)
     java=source/'app/src/main/java'
-    for relative in ['com/lenerd/spotifyplus/module/scripting','com/lenerd/spotifyplus/sdk']:
+    for relative in ['com/lenerd/spotifyplus/module/scripting','com/lenerd/spotifyplus/module/diagnostics','com/lenerd/spotifyplus/module/fingerprint','com/lenerd/spotifyplus/module/symbols','com/lenerd/spotifyplus/module/inspector','com/lenerd/spotifyplus/sdk']:
         origin=java/relative if 'module/' in relative else source/'spotifyplus-sdk/src/main/java'/relative
         shutil.copytree(origin,generated/relative,dirs_exist_ok=True)
-    selected=['module/Utils.java','module/hooks/ReactManager.java','module/hooks/StorageHook.java','module/hooks/LocalExtensionHook.java','module/hooks/NowPlayingUITarget.java',
+    selected=['module/Utils.java','module/hooks/AndroidBackHook.java','module/hooks/ArtworkTheme.java','module/hooks/ComposeHeaderTarget.java','module/hooks/ComposeRegionTargets.java','module/hooks/ComposeReplayGuard.java','module/hooks/EncoreAssetIcon.java','module/hooks/HomeFeedDebugHook.java','module/hooks/LocalExtensionHook.java','module/hooks/MenuUITargets.java','module/hooks/NowPlayingUITarget.java','module/hooks/PageTargetNames.java','module/hooks/PageUITargets.java','module/hooks/ReactManager.java','module/hooks/RegionUITargets.java','module/hooks/SleepTimerHook.java','module/hooks/SongChangeHook.java','module/hooks/StorageHook.java','module/hooks/ThemeHook.java','module/hooks/TokenOverrideController.java','module/hooks/TokenOverridePolicy.java','module/hooks/UiInspectorHook.java',
               'manager/bridge/BridgeMessageBus.java','manager/bridge/BridgeMessageListener.java']
     for relative in selected:
         dest=generated/'com/lenerd/spotifyplus'/relative;dest.parent.mkdir(parents=True,exist_ok=True);shutil.copy2(java/'com/lenerd/spotifyplus'/relative,dest)
@@ -95,19 +102,13 @@ def main():
         text=text.replace('com.lenerd.spotifyplus.BuildConfig','com.lenerd46.spotifyplus.BuildConfig')
         path.write_text(text)
     utils=generated/'com/lenerd/spotifyplus/module/Utils.java'
-    replace(utils,'classLoader.loadClass("p.ibl0").getMethod("c")','wrapper.getClass().getMethod("c")')
-    replace(utils,'classLoader.loadClass("p.ibl0").getMethod("b")','wrapper.getClass().getMethod("b")')
-    replace(utils,'Class<?> optional = state.getClass().getClassLoader().loadClass("p.ibl0");\n            Object position = model.getMethod("positionAsOfTimestamp").invoke(state);','Object position = model.getMethod("positionAsOfTimestamp").invoke(state);\n            if (position == null) return -1;\n            Class<?> optional = position.getClass();')
-    replace(utils, 'String imageId = metadata.get("image_large_url");', 'String imageId = metadata.get("image_large_url");\n                    if (imageId == null || imageId.isEmpty()) imageId = metadata.get("image_url");')
     replace(utils, 'imageId == null ? null : imageId.replace("spotify:image:", "https://i.scdn.co/image/")', 'com.lenerd46.spotifyplus.ArtworkSource.url(imageId)')
-    targets=generated/'com/lenerd/spotifyplus/module/scripting/UITargets.java'
-    replace(targets,'"9.1.82.2160".equals(spotifyVersion)','"9.1.94.1929".equals(spotifyVersion)')
     manager=generated/'com/lenerd/spotifyplus/module/scripting/ScriptManager.java'
     replace(manager,'                extractAndLoad(Utils.MODULE_APK_PATH, outDir, "libnative-lib.so");\n                extractAndLoad(Utils.MODULE_APK_PATH, outDir, "libnode.so");','                extractAndLoad(Utils.MODULE_APK_PATH, outDir, "libc++_shared.so");\n                extractAndLoad(Utils.MODULE_APK_PATH, outDir, "libnode.so");\n                extractAndLoad(Utils.MODULE_APK_PATH, outDir, "libnative-lib.so");')
     replace(manager,'        Log.i("SpotifyPlus", "Message from node: " + json);','        // Bridge messages can contain session data; do not log their payloads.')
     replace(manager,
-        '            ScriptViewHost.preloadNativeLibraries(activity.getApplicationContext());\n            SpotifyNativeBridge bridge = new SpotifyNativeBridge(activity.getClassLoader(), marketplaceScripts, optimizedDirectory, activity);\n            initializeNativeBridge(bridge, new String[]{"node", hostFile.getAbsolutePath(), hostConfig.toString()});',
-        '            try {\n                ScriptViewHost.preloadNativeLibraries(activity.getApplicationContext());\n                SpotifyNativeBridge bridge = new SpotifyNativeBridge(activity.getClassLoader(), marketplaceScripts, optimizedDirectory, activity);\n                if (!initializeNativeBridge(bridge, new String[]{"node", hostFile.getAbsolutePath(), hostConfig.toString()})) throw new IllegalStateException("Native extension bridge could not initialize");\n            } catch (Throwable error) { com.lenerd46.spotifyplus.api2.Api2Runtime.startFailed(error); }')
+        '            ScriptViewHost.preloadNativeLibraries(activity.getApplicationContext());\n            SpotifyNativeBridge bridge = new SpotifyNativeBridge(activity.getClassLoader(), marketplaceScripts, optimizedDirectory, activity);\n            initializeNativeBridge(bridge, new String[] { "node", hostFile.getAbsolutePath(), hostConfig.toString() });',
+        '            try {\n                ScriptViewHost.preloadNativeLibraries(activity.getApplicationContext());\n                SpotifyNativeBridge bridge = new SpotifyNativeBridge(activity.getClassLoader(), marketplaceScripts, optimizedDirectory, activity);\n                if (!initializeNativeBridge(bridge, new String[] { "node", hostFile.getAbsolutePath(), hostConfig.toString() })) throw new IllegalStateException("Native extension bridge could not initialize");\n            } catch (Throwable error) { com.lenerd46.spotifyplus.api2.Api2Runtime.startFailed(error); }')
     replace(manager, '            Log.e("SpotifyPlus", "Failed to load host JS script", e);',
         '            Log.e("SpotifyPlus", "Failed to load host JS script", e);\n            com.lenerd46.spotifyplus.api2.Api2Runtime.startFailed(e);')
     # Seal extracted code before writing; Android 17 rejects writable native libraries.
@@ -124,7 +125,7 @@ def main():
         content=content.replace('if (!isCachedLibraryUsable(outFile, entry)) extractEntry(apkPath, entry, outFile);', 'extractEntry(apkPath, entry, outFile);')
         loader.write_text(content)
     content=manager.read_text()
-    start=content.index('            if(outFile.exists()) {',content.index('private void getAssetFolder'))
+    start=content.index('            if (outFile.exists()) {',content.index('private void getAssetFolder'))
     end=content.index('            return;',start)
     content=content[:start]+'''            try (InputStream in = assetManager.open(assetPath)) {
                 com.lenerd46.spotifyplus.api2.ReadOnlyCodeFiles.write(in, outFile);
@@ -154,13 +155,20 @@ def main():
                 .addTracks(args.getString("uri"), strings(args.getJSONArray("uris")));
             return JSONObject.NULL;
         }''')
-    replace(services,'await(call(ready(PlayerHook.contextPlayer), "a", call(builder, "build")));',
+    replace(services,'await(resolve(PlayerSymbols.CONTEXT_PLAYER_PLAY).invoke(ready(PlayerHook.contextPlayer), call(builder, "build")));',
         'Object target = ready(PlayerHook.contextPlayer);\n                await(com.lenerd46.spotifyplus.api2.NativePlaybackCommand.dispatcher(loader, target.getClass()).invoke(target, call(builder, "build")));')
-    replace(services,'if (value != null && type("p.v8f").isInstance(value) && (Boolean) call(value, "c")) {\n            throw new IllegalStateException(String.valueOf(call(call(value, "a"), "g")));\n        }','if (value != null && String.valueOf(value).startsWith("Failure")) throw new IllegalStateException(String.valueOf(value));')
+    replace(services,'        if (value != null && resolve(CoreSymbols.PLAYER_RESULT_FAILURE).isInstance(value)) {\n            throw new IllegalStateException(String.valueOf(resolve(CoreSymbols.PLAYER_RESULT_FAILURE_REASON).get(value)));\n        }',
+        '        if (value != null && String.valueOf(value).startsWith("Failure")) throw new IllegalStateException(String.valueOf(value));')
     start=services.read_text().index('    private synchronized Object queue() throws Exception {')
-    end=services.read_text().index('    private JSONArray tracks(',start)
+    end=services.read_text().index('    private synchronized void observeQueue() {',start)
     content=services.read_text()
-    services.write_text(content[:start]+'''    private synchronized Object queue() throws Exception {
+    services.write_text(content[:start]+'''    private Object field(Object value, String name) throws Exception {
+        for (Class<?> type = value.getClass(); type != null; type = type.getSuperclass()) {
+            try { Field f = type.getDeclaredField(name); f.setAccessible(true); return f.get(value); } catch (NoSuchFieldException ignored) {}
+        }
+        throw new NoSuchFieldException(name);
+    }
+    private synchronized Object queue() throws Exception {
         Object repository = com.lenerd46.spotifyplus.player.NextUpQueue.currentRepository();
         if (repository == null) throw new IllegalStateException("Spotify queue is not ready");
         return repository;
@@ -175,6 +183,7 @@ def main():
     }
 '''+content[end:])
     lyrics=cache/f'lyrics-{LYRICS}'
+    lyrics_wave1=cache/f'lyrics-{LYRICS_WAVE1}'
     if runtime is not None and digest == R11_SHA:
         # Preserve the exact already-validated extension after upstream's GitHub
         # repository migration. The entire donor APK was verified above.
@@ -189,11 +198,12 @@ def main():
                     destination.write_bytes(apk.read(name))
         shutil.copy2(lyrics/'dist/LICENSE',lyrics/'LICENSE')
     elif digest != R11_SHA: archive('LeNerd46','beautiful-lyrics-spotify-plus',LYRICS,lyrics)
+    archive('LeNerd24','beautiful-lyrics-spotify-plus',LYRICS_WAVE1,lyrics_wave1)
     fixture=source/'scripts/lyrics'; fixture.mkdir(exist_ok=True)
     shutil.copy2(lyrics/'dist/lyrics.apk',fixture/'lyrics.apk')
     shutil.copy2(lyrics/'dist/manifest.json',fixture/'manifest.json')
-    replace(services,'private Object field(Object value, String name) throws Exception { return value.getClass().getField(name).get(value); }',
-        'private Object field(Object value, String name) throws Exception { for (Class<?> type=value.getClass(); type!=null; type=type.getSuperclass()) { try { Field f=type.getDeclaredField(name); f.setAccessible(true); return f.get(value); } catch (NoSuchFieldException ignored) {} } throw new NoSuchFieldException(name); }')
+    if (lyrics_wave1/'dist/lyrics.apk').is_file(): shutil.copy2(lyrics_wave1/'dist/lyrics.apk',fixture/'lyrics.apk')
+    if (lyrics_wave1/'dist/manifest.json').is_file(): shutil.copy2(lyrics_wave1/'dist/manifest.json',fixture/'manifest.json')
     runtime_source=source/'app/src/main/assets/nodejs-src'
     run(['node',str(ROOT/'extensions/local-suite/tools/patch-shuffle-sdk.mjs'),str(runtime_source)],ROOT)
     if not args.no_js_build:
@@ -208,7 +218,10 @@ def main():
             sdk_link=project/'node_modules/spotifyplus'
             if sdk_link.is_symlink():sdk_link.unlink()
             elif sdk_link.exists():shutil.rmtree(sdk_link)
-            sdk_link.symlink_to(runtime_source.resolve(),target_is_directory=True)
+            try:
+                sdk_link.symlink_to(runtime_source.resolve(),target_is_directory=True)
+            except OSError:
+                shutil.copytree(runtime_source.resolve(),sdk_link)
             run(['npm','run','build'],project)
             run(['npm','run','check'],project)
             if name == 'marketplace': run(['npm','test'],project)
@@ -231,8 +244,15 @@ def main():
         shutil.rmtree(assets/'nodejs'/relative,ignore_errors=True)
     lyrics=cache/f'lyrics-{LYRICS}'
     archive('LeNerd46','beautiful-lyrics-spotify-plus',LYRICS,lyrics)
-    shutil.copytree(lyrics/'dist',assets/'api2-extensions/beautiful-lyrics')
-    shutil.copy2(lyrics/'LICENSE',assets/'api2-extensions/beautiful-lyrics/LICENSE')
+    lyrics_wave1=cache/f'lyrics-{LYRICS_WAVE1}'
+    archive('LeNerd24','beautiful-lyrics-spotify-plus',LYRICS_WAVE1,lyrics_wave1)
+    # Copy only the Wave 1 dist: overlaying it on the older dist leaves both
+    # frida-gadget .so and .so.gz, which fails :app:mergeDebugAssets as duplicates.
+    shutil.copytree(lyrics_wave1/'dist',assets/'api2-extensions/beautiful-lyrics')
+    license_src=lyrics_wave1/'LICENSE' if (lyrics_wave1/'LICENSE').is_file() else lyrics/'LICENSE'
+    shutil.copy2(license_src,assets/'api2-extensions/beautiful-lyrics/LICENSE')
+    from apply_wave3_updates import apply as apply_wave3_updates
+    apply_wave3_updates(assets)
     manifest=json.loads((assets/'api2-extensions/beautiful-lyrics/manifest.json').read_text())
     bundle=assets/'api2-extensions/beautiful-lyrics'
     if manifest.get('main') == 'dist/index.js' and (bundle/'index.js').is_file(): manifest['main']='index.js'
@@ -240,6 +260,41 @@ def main():
     if native.get('apk') == 'dist/lyrics.apk' and (bundle/'lyrics.apk').is_file(): native['apk']='lyrics.apk'
     (bundle/'manifest.json').write_text(json.dumps(manifest,indent=2))
     if manifest.get('api')!=2 or not (bundle/manifest['main']).is_file() or not (bundle/native['apk']).is_file():raise RuntimeError('Invalid Beautiful Lyrics bundle')
-    print('Prepared pinned API-2 runtime, marketplace, extension settings and Beautiful Lyrics')
+    ext_repo=cache/f'spotifyplus-extensions-{PLAY_NEXT[:10]}'
+    archive('LeNerd24','spotifyplus-extensions',PLAY_NEXT,ext_repo)
+    playnext_src=ext_repo/'play-next/dist'
+    playnext_dst=assets/'api2-extensions/play-next'
+    shutil.copytree(playnext_src,playnext_dst)
+    playnext_pkg=json.loads((ext_repo/'play-next/package.json').read_text(encoding='utf-8'))
+    playnext_manifest={
+        'id':'com.lenerd.playnext',
+        'name':'Play Next',
+        'description':'Adds a Play next action to track context menus using Spotify Plus UpNext.',
+        'version':playnext_pkg.get('version','1.0.0'),
+        'main':'index.js',
+        'author':[{'name':'LeNerd24','url':'https://github.com/LeNerd24/spotifyplus-extensions'}],
+        'api':2,
+        'assets':['assets/list-start.svg'],
+    }
+    (playnext_dst/'manifest.json').write_text(json.dumps(playnext_manifest,indent=2)+'\n',encoding='utf-8')
+    if not (playnext_dst/'index.js').is_file() or not (playnext_dst/'assets/list-start.svg').is_file():
+        raise RuntimeError('Invalid Play Next bundle')
+    suite_root=ROOT/'extensions/local-suite'
+    if not args.no_js_build or not (suite_root/'build/SpotifyPlus-Local-Extensions/bookmarks-plus/index.js').is_file():
+        run(['npm','run','build'],suite_root)
+    suite_stage=assets/'api2-extensions/local-suite'
+    suite_stage.mkdir(parents=True,exist_ok=True)
+    suite_folders=[
+        suite_root/'build/SpotifyPlus-Local-Extensions/listening-stats',
+        suite_root/'build/SpotifyPlus-Local-Extensions/sort-play',
+        suite_root/'build/SpotifyPlus-Local-Extensions/genres',
+        suite_root/'build/SpotifyPlus-Local-Extensions/playlist-plus',
+        suite_root/'build/SpotifyPlus-Local-Extensions/bookmarks-plus',
+        suite_root/'build/SpotifyPlus-ShufflePlus/shuffle-plus',
+    ]
+    for folder in suite_folders:
+        m=json.loads((folder/'manifest.json').read_text(encoding='utf-8'))
+        shutil.copytree(folder,suite_stage/m['id'],dirs_exist_ok=True)
+    print('Prepared pinned API-2 runtime, marketplace, extension settings, Beautiful Lyrics, Play Next, and local-suite')
 
 if __name__=='__main__':main()

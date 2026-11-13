@@ -40,6 +40,34 @@ public class SyllableVocals implements SyncableVocals {
     public final ActivityChangedSource activityChanged;
     public final SharedPreferences prefs;
     public final boolean appleStyle;
+    private final boolean calmerMotion;
+
+    private static final Spline SCALE_SPLINE = new Spline(
+            List.of(0d, 0.7d, 1d),
+            List.of(1d, 1.03d, 1d)
+    );
+    private static final Spline EMPHASISED_SCALE_SPLINE = new Spline(
+            List.of(0d, 0.3d, 1d),
+            List.of(1d, 1.25d, 1d)
+    );
+    private static final Spline Y_OFFSET_APPLE_SPLINE = new Spline(
+            List.of(0d, 0.8d, 1d),
+            List.of(1d / 100d, -(1d / 30d), -(1d / 25d))
+    );
+    private static final Spline Y_OFFSET_DEFAULT_SPLINE = new Spline(
+            List.of(0d, 0.9d, 1d),
+            List.of(1d / 100d, -(1d / 60d), 0d)
+    );
+    private static final Spline GLOW_SPLINE = new Spline(
+            List.of(0d, 0.15d, 0.6d, 1d),
+            List.of(0d, 1d, 1d, 0d)
+    );
+    private final Spline yOffsetSpline;
+
+    private static final int[] ACTIVE_COLORS_PRIMARY = { 0xFFFFFFFF, 0x78FFFFFF };
+    private static final int[] ACTIVE_COLORS_SECONDARY = { 0xD9FFFFFF, 0x50FFFFFF };
+    private static final int[] IDLE_COLORS_PRIMARY = { 0xFFFFFFFF, 0x3CFFFFFF };
+    private static final int[] IDLE_COLORS_SECONDARY = { 0xBEFFFFFF, 0x30FFFFFF };
 
     public SyllableVocals(FlexboxLayout lineContainer, List<SyllableMetadata> syllables, boolean isBackground, boolean isRomanized, boolean oppositeAligned, Activity activity, int fontSize) {
         this(lineContainer, syllables, isBackground, isRomanized, oppositeAligned, activity, fontSize, false);
@@ -56,6 +84,7 @@ public class SyllableVocals implements SyncableVocals {
         prefs = activity.getSharedPreferences("SpotifyPlus", Context.MODE_PRIVATE);
         this.fontSize = fontSize;
         this.secondary = secondary;
+        this.calmerMotion = LyricsPhase3Settings.isCalmerMotion(prefs);
 
         if(prefs.getString("lyric_animation_style", "Beautiful Lyrics").equals("Apple Music")) {
             yOffsetRange = List.of(
@@ -63,7 +92,7 @@ public class SyllableVocals implements SyncableVocals {
                     Map.entry(0.8d, -(1d / 30d)), // Highest
                     Map.entry(1d, -(1d / 25d)) // Resting
             );
-
+            yOffsetSpline = Y_OFFSET_APPLE_SPLINE;
             appleStyle = true;
         } else {
             yOffsetRange = List.of(
@@ -71,7 +100,7 @@ public class SyllableVocals implements SyncableVocals {
                     Map.entry(0.9d, -(1d / 60d)),
                     Map.entry(1d, 0d)
             );
-
+            yOffsetSpline = Y_OFFSET_DEFAULT_SPLINE;
             appleStyle = false;
         }
 
@@ -282,72 +311,86 @@ public class SyllableVocals implements SyncableVocals {
 
     private void evaluateClassState() {
         try {
-            container.post(() -> {
+            Runnable applyState = () -> {
                 if(this.state == LyricState.ACTIVE) {
+                    int[] activeColors = secondary ? ACTIVE_COLORS_SECONDARY : ACTIVE_COLORS_PRIMARY;
+                    int activeTextColor = Color.argb(secondary ? 217 : 255, 255, 255, 255);
                     for(var syllable : this.syllables) {
                         if(syllable.type.equals("Letters")) {
                             for(var letter : syllable.letters) {
                                 GradientTextView text = (GradientTextView) letter.liveText.object;
-                                text.setGradientColors(new int[] { secondary ? 0xD9FFFFFF : 0xFFFFFFFF, secondary ? 0x50FFFFFF : 0x78FFFFFF});
-                                text.setTextColor(Color.argb(secondary ? 217 : 255, 255, 255, 255));
+                                text.setGradientColors(activeColors);
+                                text.setTextColor(activeTextColor);
                             }
                         } else {
                             GradientTextView text = (GradientTextView) syllable.liveText.object;
-                            text.setGradientColors(new int[] { secondary ? 0xD9FFFFFF : 0xFFFFFFFF, secondary ? 0x50FFFFFF : 0x78FFFFFF});
-                            text.setTextColor(Color.argb(secondary ? 217 : 255, 255, 255, 255));
+                            text.setGradientColors(activeColors);
+                            text.setTextColor(activeTextColor);
                         }
                     }
                 } else if(this.state == LyricState.SUNG) {
+                    int sungTextColor = Color.argb(secondary ? 72 : 100, 255, 255, 255);
                     for(var syllable : this.syllables) {
                         if(syllable.type.equals("Letters")) {
                             for(var letter : syllable.letters) {
                                 GradientTextView text = (GradientTextView) letter.liveText.object;
-                                text.setTextColor(Color.argb(secondary ? 72 : 100, 255, 255, 255));
+                                text.setTextColor(sungTextColor);
                                 text.updateShadow(0f, 0f);
                             }
                         } else {
                             GradientTextView text = (GradientTextView) syllable.liveText.object;
-                            text.setTextColor(Color.argb(secondary ? 72 : 100, 255, 255, 255));
+                            text.setTextColor(sungTextColor);
                             text.updateShadow(0f, 0f);
                         }
                     }
 
-                    if (!secondary) {
+                    if (!secondary && !calmerMotion) {
                         ViewParent parent = container.getParent();
                         ViewParent grandparent = parent == null ? null : parent.getParent();
                         if(grandparent instanceof View) ((View) grandparent).animate().scaleX(1.0f).scaleY(1.0f).setDuration(800).setInterpolator(new OvershootInterpolator()).start();
                     }
                 } else {
+                    int[] idleColors = secondary ? IDLE_COLORS_SECONDARY : IDLE_COLORS_PRIMARY;
+                    int idleTextColor = Color.argb(secondary ? 190 : 255, 255, 255, 255);
                     for(var syllable : this.syllables) {
                         if(syllable.type.equals("Letters")) {
                             for(var letter : syllable.letters) {
                                 GradientTextView text = (GradientTextView) letter.liveText.object;
-                                text.setTextColor(Color.argb(secondary ? 190 : 255, 255, 255, 255));
-                            text.setGradientColors(new int[] { secondary ? 0xBEFFFFFF : 0xFFFFFFFF, secondary ? 0x30FFFFFF : 0x3CFFFFFF});
+                                text.setTextColor(idleTextColor);
+                                text.setGradientColors(idleColors);
                                 text.updateShadow(0f, 0f);
                             }
                         } else {
                             GradientTextView text = (GradientTextView) syllable.liveText.object;
-                            text.setTextColor(Color.argb(secondary ? 190 : 255, 255, 255, 255));
-                            text.setGradientColors(new int[] { secondary ? 0xBEFFFFFF : 0xFFFFFFFF, secondary ? 0x30FFFFFF : 0x3CFFFFFF});
+                            text.setTextColor(idleTextColor);
+                            text.setGradientColors(idleColors);
                             text.updateShadow(0f, 0f);
                         }
                     }
                 }
-            });
+            };
+            if (android.os.Looper.myLooper() == android.os.Looper.getMainLooper()) {
+                applyState.run();
+            } else {
+                container.post(applyState);
+            }
         } catch(Exception e) {
             XposedBridge.log(e);
         }
     }
 
     public void updateLiveTextState(LiveText liveText, double timeScale, double glowTimeScale, boolean forceTo, boolean isEmphasized) {
-        Spline scaleSpline = getSpline((appleStyle && isEmphasized && this.state == LyricState.ACTIVE) ? emphasisedScaleRange : scaleRange);
-        Spline yOffsetSpline = getSpline(yOffsetRange);
-        Spline glowSpline = getSpline(glowRange);
+        if (calmerMotion) {
+            liveText.springs.scale.set(1.0d);
+            liveText.springs.yOffset.set(0.0d);
+            liveText.springs.glow.set(0.0d);
+            return;
+        }
+        Spline scaleSpline = (appleStyle && isEmphasized && this.state == LyricState.ACTIVE) ? EMPHASISED_SCALE_SPLINE : SCALE_SPLINE;
 
         double scale = scaleSpline.at(timeScale);
         double yOffset = yOffsetSpline.at(timeScale);
-        double glow = glowSpline.at(glowTimeScale);
+        double glow = GLOW_SPLINE.at(glowTimeScale);
 
         if(forceTo) {
             liveText.springs.scale.set(scale);
@@ -375,25 +418,25 @@ public class SyllableVocals implements SyncableVocals {
             if(Double.isNaN(scale) || Double.isInfinite(scale)) { return false; }
 
             GradientTextView textView = (GradientTextView)liveText.object;
-            textView.post(() -> {
-                if(!appleStyle) {
-                    textView.setScaleX((float)scale);
-                    textView.setScaleY((float)scale);
+            float finalScale = (float)scale;
+            float finalY = (float)yOffset * (!appleStyle && isEmphasized ? 2f : 1f);
+            float finalShadowOpacity = shadowOpacity * 100f;
 
-                    textView.setTranslationY((float)yOffset * (isEmphasized ? 2f : 1f));
+            if (android.os.Looper.myLooper() == android.os.Looper.getMainLooper()) {
+                textView.setScaleX(finalScale);
+                textView.setScaleY(finalScale);
+                textView.setTranslationY(finalY);
+                textView.setProgress(gradientProgress);
+                textView.updateShadow(finalShadowOpacity, shadowRadius);
+            } else {
+                textView.post(() -> {
+                    textView.setScaleX(finalScale);
+                    textView.setScaleY(finalScale);
+                    textView.setTranslationY(finalY);
                     textView.setProgress(gradientProgress);
-
-                    textView.updateShadow(shadowOpacity * 100f, shadowRadius);
-                } else {
-                    textView.setScaleX((float)scale);
-                    textView.setScaleY((float)scale);
-
-                    textView.setTranslationY((float)yOffset);
-                    textView.setProgress(gradientProgress);
-
-                    textView.updateShadow(shadowOpacity * 100f, shadowRadius);
-                }
-            });
+                    textView.updateShadow(finalShadowOpacity, shadowRadius);
+                });
+            }
         }
 
         return liveText.springs.scale.sleeping && liveText.springs.yOffset.sleeping && liveText.springs.glow.sleeping;

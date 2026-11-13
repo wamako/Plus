@@ -106,10 +106,58 @@ export function normalizeTrack(raw, index = 0) {
     playCount: finite(item.playCount),
     scrobbles: finite(item.scrobbles),
     lastPlayed: finite(item.lastPlayed),
+    rating: finite(item.rating),
   };
 }
+const TITLE_ARTIST_PUNCT =
+  /[\u0021-\u002f\u003a-\u0040\u005b-\u0060\u007b-\u007e\u00a1-\u00bf\u2000-\u206f\u3000-\u303f\uff00-\uffef]/g;
+export function normalizeTitleArtistKey(track) {
+  const title = clean(track?.title || "")
+    .replace(/\s*[\(\[](?:(?:\d{4}\s+)?(?:feat\.?|ft\.?|with|remaster(?:ed)?|deluxe|expanded|anniversary|bonus|radio\s*edit|single\s*version|album\s*version|explicit|clean|live|acoustic|mono|stereo)|feat\.?|ft\.?|with)[^\)\]]*[\)\]]/gi, " ")
+    .replace(/\s+-\s+(?:\d{4}\s+)?(?:remaster(?:ed)?|deluxe|live|acoustic|radio\s*edit|single\s*version).*$/i, "")
+    .replace(TITLE_ARTIST_PUNCT, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+  const primary = clean(
+    track?.artists?.[0]?.name || String(track?.artist || "").split(",")[0] || "",
+  )
+    .replace(TITLE_ARTIST_PUNCT, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+  return title && primary ? `${title}::${primary}` : "";
+}
+export function formatDuration(ms) {
+  const safe = Math.max(0, Math.floor(Number(ms) || 0));
+  const totalSec = Math.floor(safe / 1000);
+  const hours = Math.floor(totalSec / 3600);
+  const minutes = Math.floor((totalSec % 3600) / 60);
+  const seconds = totalSec % 60;
+  if (hours > 0) return `${hours}h ${String(minutes).padStart(2, "0")}m`;
+  if (minutes > 0) return `${minutes}m ${String(seconds).padStart(2, "0")}s`;
+  return `${seconds}s`;
+}
+export function formatClockMs(epochMs) {
+  const d = new Date(epochMs);
+  if (Number.isNaN(d.getTime())) return "";
+  const h24 = d.getHours();
+  const h12 = h24 % 12 || 12;
+  const m = String(d.getMinutes()).padStart(2, "0");
+  return `${h12}:${m} ${h24 >= 12 ? "PM" : "AM"}`;
+}
+export function totalDurationMs(tracks) {
+  let sum = 0;
+  let known = 0;
+  for (const t of tracks || []) {
+    const d = finite(t?.durationMs);
+    if (d != null && d > 0) {
+      sum += d;
+      known++;
+    }
+  }
+  return { totalMs: sum, known, total: (tracks || []).length };
+}
 export function trackMetric(track, metric) {
-  if (track.metadataUnavailable && metric !== "added" && metric !== "liked")
+  if (track.metadataUnavailable && !["added", "liked", "rating", "playCount", "lastPlayed"].includes(metric))
     return null;
   switch (metric) {
     case "title":
@@ -132,6 +180,7 @@ export function trackMetric(track, metric) {
     case "playCount":
     case "scrobbles":
     case "lastPlayed":
+    case "rating":
       return finite(track[metric]);
     default:
       return finite(track.features?.[metric]);
@@ -153,11 +202,41 @@ export function sortTracks(tracks, metric = "title", descending = false) {
     })
     .map((row) => row.track);
 }
+export function isForgottenFavorite(track, cutoffMs) {
+  const plays = finite(track?.playCount) || 0;
+  const rating = finite(track?.rating) || 0;
+  const last = finite(track?.lastPlayed);
+  if (rating >= 7) return last == null || last < cutoffMs;
+  if (plays >= 2) return last != null && last < cutoffMs;
+  return false;
+}
+function dedupeKeyForTrack(track, mode) {
+  if (mode === "recording" && track.isrc) return `isrc:${track.isrc.toUpperCase()}`;
+  if (mode === "title-artist") return normalizeTitleArtistKey(track) || track.uri;
+  return track.uri;
+}
+export function findDuplicates(tracks, mode = "title-artist") {
+  const first = new Map();
+  const dupes = [];
+  for (let i = 0; i < (tracks || []).length; i++) {
+    const track = tracks[i];
+    const key = dedupeKeyForTrack(track, mode);
+    if (!key) continue;
+    const kept = first.get(key);
+    if (kept) dupes.push({ duplicate: track, kept, index: i, key });
+    else first.set(key, track);
+  }
+  return dupes;
+}
 export function filterTracks(tracks, options = {}) {
   const seen = new Set(),
     artists = new Set();
   const selected = genreTags(options.genres || []);
   const exclude = new Set(options.exclude || []);
+  const minRating = finite(options.minRating);
+  const cutoffMs = finite(options.forgottenDays) != null
+    ? (finite(options.nowMs) ?? Date.now()) - options.forgottenDays * 86400000
+    : null;
   return tracks.filter((track) => {
     if (exclude.has(track.uri)) return false;
     if (
@@ -172,6 +251,12 @@ export function filterTracks(tracks, options = {}) {
     if (options.explicit === "clean" && track.explicit !== false) return false;
     if (options.explicit === "explicit" && track.explicit !== true)
       return false;
+    if (minRating != null) {
+      const r = finite(track.rating);
+      if (minRating === -1) { if (r != null) return false; }
+      else if (r == null || r < minRating) return false;
+    }
+    if (cutoffMs != null && !isForgottenFavorite(track, cutoffMs)) return false;
     if (options.availableOnly && track.available !== true) return false;
     if (
       options.releaseTypes?.length &&
@@ -187,10 +272,7 @@ export function filterTracks(tracks, options = {}) {
     )
       return false;
     if (options.dedupe) {
-      const key =
-        options.dedupe === "recording" && track.isrc
-          ? `isrc:${track.isrc.toUpperCase()}`
-          : track.uri;
+      const key = dedupeKeyForTrack(track, options.dedupe);
       if (!key || seen.has(key)) return false;
       seen.add(key);
     }
@@ -270,6 +352,24 @@ export function smartShuffle(tracks, rng = Math.random) {
     if (bucket.offset < bucket.rows.length) heap.push(bucket);
   }
   return result;
+}
+export function weightedForgottenShuffle(tracks, rng = Math.random, nowMs = Date.now()) {
+  const cutoff = nowMs - 30 * 86400000;
+  return (tracks || [])
+    .map((track) => {
+      const rating = finite(track?.rating) || 0;
+      const plays = finite(track?.playCount) || 0;
+      const last = finite(track?.lastPlayed);
+      let weight = 1;
+      if (isForgottenFavorite(track, cutoff)) weight = 4;
+      else if (rating >= 7) weight = 2.5;
+      else if (last != null && last > nowMs - 3 * 86400000) weight = 0.5;
+      else if (plays === 0 && rating === 0) weight = 1.25;
+      const u = Math.max(1e-9, Math.min(1 - 1e-9, rng()));
+      return { track, score: -Math.log(u) / weight };
+    })
+    .sort((a, b) => a.score - b.score)
+    .map((row) => row.track);
 }
 export function energyWave(tracks) {
   const known = tracks.filter(

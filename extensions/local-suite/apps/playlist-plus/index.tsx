@@ -8,12 +8,14 @@ import {
   genreCounts,
   smartShuffle,
 } from "../../shared/model.mjs";
+import { RatingsStore, StatsBridge } from "../../shared/suite-store.mjs";
 import {
   Page,
   Label,
   Field,
   Button,
   Choices,
+  Toggle,
   Results,
   Actions,
   useTask,
@@ -27,6 +29,8 @@ import {
   GenreSettings,
 } from "../../shared/ui";
 const client = new DataClient(S);
+const ratingsStore = new RatingsStore(S.Platform.Storage);
+const statsBridge = new StatsBridge(S.Platform.Storage);
 function App() {
   const liked = useLikedSource();
   const [uri, setUri] = useState(initialUri),
@@ -35,6 +39,9 @@ function App() {
     [data, setData] = useState<any>(null),
     [selected, setSelected] = useState<string[]>([]),
     [match, setMatch] = useState("any"),
+    [minRating, setMinRating] = useState(""),
+    [forgotten, setForgotten] = useState(false),
+    [ratingTick, setRatingTick] = useState(0),
     [preset, setPreset] = useState(""),
     [presets, setPresets] = useState<any>(
       () => S.Platform.Storage.get("genre-presets") || {},
@@ -42,13 +49,20 @@ function App() {
     [shuffle, setShuffle] = useState<any[] | null>(null),
     task = useTask(),
     settings = useGenreSettings();
-  const counts = useMemo(() => genreCounts(data?.tracks || []), [data]);
-  const preview = useMemo(
-    () =>
-      !data ? [] : selected.length
-        ? filterTracks(data.tracks, { genres: selected, match }) : data.tracks,
-    [data, selected, match],
+  const hydratedTracks = useMemo(
+    () => (data ? statsBridge.hydrateTracks(data.tracks, ratingsStore) : []),
+    [data, ratingTick],
   );
+  const counts = useMemo(() => genreCounts(hydratedTracks), [hydratedTracks]);
+  const preview = useMemo(() => {
+    if (!data) return [];
+    return filterTracks(hydratedTracks, {
+      genres: selected.length ? selected : undefined,
+      match,
+      minRating: minRating ? Number(minRating) : null,
+      forgottenDays: forgotten ? 30 : null,
+    });
+  }, [data, hydratedTracks, selected, match, minRating, forgotten]);
   const tracks = shuffle || preview;
   function pick(name: string) {
     setSelected((old) =>
@@ -176,6 +190,31 @@ function App() {
             title="Clear selection"
             onPress={() => {
               setSelected([]);
+              setMinRating("");
+              setForgotten(false);
+              setShuffle(null);
+            }}
+          />
+          <Label>Rating & Forgotten filters</Label>
+          <Choices
+            value={minRating}
+            onChange={(v) => {
+              setMinRating(v);
+              setShuffle(null);
+            }}
+            items={[
+              ["", "Any personal rating"],
+              ["7", "Rated 7★+"],
+              ["8", "Rated 8★+"],
+              ["9", "Rated 9–10★"],
+              ["-1", "Unrated only"],
+            ]}
+          />
+          <Toggle
+            label="Forgotten favorites only (30d+ unplayed)"
+            value={forgotten}
+            onChange={(v) => {
+              setForgotten(v);
               setShuffle(null);
             }}
           />
@@ -233,7 +272,7 @@ function App() {
             name={`${data.name} · genres`}
             blocked={task.busy}
           />
-          <Results tracks={tracks} />
+          <Results tracks={tracks} onRate={() => setRatingTick((n) => n + 1)} />
         </View>
       ) : null}
     </Page>

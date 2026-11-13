@@ -10,11 +10,17 @@ if (!source.includes("    ShufflePlus: {")) {
   source = source.replace(declaration, `${declaration}
     /** R13 native Shuffle+ adapter. These use requestApi, not legacy request messages. */
     ShufflePlus: {
+        /** Returns native Shuffle+ capability flags for this Spotify build. */
         capabilities(): Promise<unknown>;
+        /** Collects native Shuffle+ diagnostic state from the active host. */
         diagnostics(): Promise<unknown>;
+        /** Copies Shuffle+ diagnostics to the system clipboard. */
         copyDiagnostics(): Promise<boolean>;
+        /** Reads a preview snapshot of the current Up next queue. */
         previewQueue(): Promise<unknown>;
+        /** Validates and prepares a reorder ticket for the given context and track URIs. */
         prepare(context: string, uris: string[]): Promise<unknown>;
+        /** Applies a previously prepared reorder ticket with the specified index permutation. */
         apply(ticket: string, order: number[]): Promise<unknown>;
     };`);
   source = source.replace(factory, `            ShufflePlus: {
@@ -54,10 +60,14 @@ if (!source.includes("    LikedSongs: {")) {
   const declaration = "    Queue: QueueApi;", factory = "            Queue: {";
   if (!source.includes(declaration) || !source.includes(factory)) throw new Error("Pinned SDK Liked Songs API shape changed");
   source = source.replace(declaration, `${declaration}
+    /** Native Liked Songs reader backed by Spotify's internal client session. */
     LikedSongs: {
+        /** Returns the active Spotify account username for collection queries. */
         getAccount(): Promise<{ username: string }>;
+        /** Returns native Liked Songs capability flags for this Spotify build. */
         capabilities(): Promise<unknown>;
-        read(args: { kind: 'context'; url: string } | { kind: 'collection'; username: string; cursor: string; limit: number }): Promise<unknown>;
+        /** Reads tracks from a Spotify context or Liked Songs collection cursor. */
+        read(args: { /** Context query type. */ kind: 'context'; /** Context Spotify URL. */ url: string } | { /** Collection query type. */ kind: 'collection'; /** Target account username. */ username: string; /** Pagination cursor token. */ cursor: string; /** Maximum tracks to read. */ limit: number }): Promise<unknown>;
     };`);
   source = source.replace(factory, `            LikedSongs: {
                 getAccount: () => runtime.requestApi('liked.account'),

@@ -126,9 +126,14 @@ def atomic_write(path, payload):
             output.write(payload)
             output.flush()
             os.fsync(output.fileno())
-            os.replace(temporary, path)
-        finally:
+        except BaseException:
+            output.close()
             temporary.unlink(missing_ok=True)
+            raise
+    try:
+        os.replace(temporary, path)
+    finally:
+        temporary.unlink(missing_ok=True)
 
 
 def install_bundle(path, source, lyrics_cache, spec):

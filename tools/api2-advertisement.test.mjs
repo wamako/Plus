@@ -10,8 +10,8 @@ import { CURRENT_SCRIPT_API, parseManifest } from '../../../nodejs/loader/script
 const logger = { child() { return this; }, info() {}, warn() {}, error() {} };
 const runtime = { registry: new ScriptRegistry(logger), ui: { forExtension() { return {}; } },
     platformData: { clientVersion: '9.1.94.1929' }, session: {} };
-const fixture = fileURLToPath(new URL('./fixtures/api2/', import.meta.url));
-const api = new ScriptApiFactory(runtime, logger).create('api-fixture', 1, fixture, fixture, []).SpotifyPlus;
+const fixture = fileURLToPath(new URL('../../../../../../../scripts/settings/', import.meta.url));
+const api = new ScriptApiFactory(runtime, logger).create('api-fixture', 1, fixture, fixture, ['assets/*']).SpotifyPlus;
 const bundle = await build({
     entryPoints: [fileURLToPath(new URL('../../../../../../../scripts/marketplace/src/compatibility.ts', import.meta.url))],
     bundle: true, platform: 'node', format: 'cjs', write: false, external: ['spotifyplus'],

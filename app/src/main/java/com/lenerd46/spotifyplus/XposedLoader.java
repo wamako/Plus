@@ -95,41 +95,41 @@ public class XposedLoader implements IXposedHookLoadPackage, IXposedHookZygoteIn
                     }
                 });
 
+        final boolean[] startupInitialized = {false};
         XposedHelpers.findAndHookMethod(Activity.class, "onCreate", Bundle.class, new XC_MethodHook() {
             @Override
             protected void afterHookedMethod(MethodHookParam param) throws Throwable {
                 Activity activity = (Activity) param.thisObject;
                 Typeface beautifulFont = References.beautifulFont.get();
 
-                File outDir = new File(activity.getCodeCacheDir(), "spotifyplus-libs");
-
-                try {
-                    Context libraryContext = new LibraryContext(activity, outDir);
-//                    YoutubeDL.getInstance().init(libraryContext);
-                } catch(Exception e) {
-                    XposedBridge.log(e);
+                if (beautifulFont == null) {
+                    try {
+                        Resources resources = References.modResources != null
+                                ? References.modResources
+                                : XModuleResources.createInstance(modulePath, null);
+                        SharedPreferences prefs = activity.getSharedPreferences("SpotifyPlus", Context.MODE_PRIVATE);
+                        String fontPref = prefs.getString("lyrics_font", "default");
+                        String assetPath;
+                        if ("spotify".equals(fontPref)) {
+                            assetPath = "fonts/spotifymix-medium.ttf";
+                        } else if ("apple".equals(fontPref)) {
+                            assetPath = "fonts/sf-pro-display-bold.ttf";
+                        } else {
+                            assetPath = "fonts/lyrics_medium.ttf";
+                        }
+                        beautifulFont = Typeface.createFromAsset(resources.getAssets(), assetPath);
+                        References.setBeautifulFont(beautifulFont);
+                        XposedBridge.log("[SpotifyPlus] Successfully loaded font (" + fontPref + ")!");
+                    } catch (Throwable t) {
+                        XposedBridge.log("[SpotifyPlus] Failed to load font (error)");
+                        XposedBridge.log(t);
+                    }
                 }
 
-                if (beautifulFont != null)
+                if (startupInitialized[0]) {
                     return;
-
-                try {
-                    Resources resources = XModuleResources.createInstance(modulePath, null);
-                    // beautifulFont = Typeface.createFromAsset(resources.getAssets(),
-                    // "fonts/lyrics_medium.ttf");
-                    beautifulFont = Typeface.createFromAsset(resources.getAssets(), "fonts/sf-pro-display-bold.ttf");
-
-                    XposedBridge.log("[SpotifyPlus] Successfully loaded font!");
-                } catch (Throwable t) {
-                    XposedBridge.log("[SpotifyPlus] Failed to load font (error)");
-                    XposedBridge.log(t);
                 }
-
-                if (beautifulFont != null) {
-                    References.beautifulFont = new WeakReference<>(beautifulFont);
-                }
-
-                // MlKit.initialize(activity);
+                startupInitialized[0] = true;
 
                 navigateToStartupPage(activity);
 
@@ -162,7 +162,7 @@ public class XposedLoader implements IXposedHookLoadPackage, IXposedHookZygoteIn
                 new ContextMenu_AddButton().init(lpparam, bridge);
 //                new HomePageHook().init(lpparam, bridge);
                 new AnimatedAlbumArtwork().init(lpparam, bridge);
-                new TestingHook().init(lpparam, bridge);
+//                new TestingHook().init(lpparam, bridge);
                 new NewContextMenuHook().init(lpparam, bridge);
                 new SleepTimerHook(context).init(lpparam, bridge);
                 new PrivateSessionHook(context).init(lpparam, bridge);
@@ -170,6 +170,7 @@ public class XposedLoader implements IXposedHookLoadPackage, IXposedHookZygoteIn
                 new GlassStyleHook(context).init(lpparam, bridge);
                 com.lenerd46.spotifyplus.api2.Api2Runtime.initialize(context, lpparam.classLoader, bridge, modulePath);
                 new com.lenerd46.spotifyplus.hooks.PlaybackHistoryHook(context).init(lpparam, bridge);
+                com.lenerd46.spotifyplus.hooks.ShareLinkSanitizerHook.install(lpparam);
                 // new ThemeTest().init(lpparam, bridge);
                 // new LikedSongHook().init(lpparam, bridge);
                 // new KaraokeHook().init(lpparam, bridge);

@@ -10,7 +10,8 @@ import {
   TextInput,
   Pressable,
 } from "spotifyplus/react";
-import { csv, spotifyUri, MAX_ITEMS } from "./model.mjs";
+import { csv, spotifyUri, MAX_ITEMS, formatDuration, totalDurationMs } from "./model.mjs";
+import { RatingsStore } from "./suite-store.mjs";
 export const palette = {
   bg: "#101820",
   card: "#1b2732",
@@ -230,14 +231,70 @@ export function Status({ task }: { task: ReturnType<typeof useTask> }) {
     </View>
   );
 }
-export function Results({ tracks }: { tracks: any[] }) {
+export function TrackRatingRow({
+  uri,
+  title = "",
+  artist = "",
+  currentRating = null,
+  onChange,
+}: {
+  uri: string;
+  title?: string;
+  artist?: string;
+  currentRating?: number | null;
+  onChange?: (rating: number | null) => void;
+}) {
+  const [open, setOpen] = useState(false);
+  const [rating, setRating] = useState<number | null>(currentRating);
+  useEffect(() => setRating(currentRating), [currentRating, uri]);
+  if (!uri || !/^spotify:track:/.test(uri)) return null;
+  const store = new RatingsStore(S.Platform.Storage);
+  function pick(score: number | null) {
+    if (score == null) store.clear(uri);
+    else store.set(uri, score, { title, artist });
+    setRating(score);
+    setOpen(false);
+    onChange?.(score);
+  }
+  return (
+    <View style={{ marginTop: 4 }}>
+      <Button
+        title={rating != null ? `★ ${rating}/10 · Change rating` : "Rate 1–10★"}
+        active={open || rating != null}
+        onPress={() => setOpen(!open)}
+      />
+      {open ? (
+        <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 6, marginBottom: 6 }}>
+          {[1, 2, 3, 4, 5, 6, 7, 8, 9, 10].map((n) => (
+            <Button key={n} title={`${n}★`} active={rating === n} onPress={() => pick(n)} />
+          ))}
+          {rating != null ? <Button title="Clear" onPress={() => pick(null)} /> : null}
+        </View>
+      ) : null}
+    </View>
+  );
+}
+export function Results({
+  tracks,
+  onRate,
+}: {
+  tracks: any[];
+  onRate?: () => void;
+}) {
   const [page, setPage] = useState(0);
   useEffect(() => setPage(0), [tracks]);
   const last = Math.max(0, Math.ceil(tracks.length / 40) - 1),
-    index = Math.min(page, last);
+    index = Math.min(page, last),
+    dur = totalDurationMs(tracks);
   return (
     <View>
       <Label>{tracks.length} tracks in preview</Label>
+      {dur.totalMs > 0 ? (
+        <Label muted>
+          Total duration: {formatDuration(dur.totalMs)}
+          {dur.known < dur.total ? ` (${dur.known}/${dur.total} known)` : ""}
+        </Label>
+      ) : null}
       {tracks.slice(index * 40, (index + 1) * 40).map((t, i) => (
         <View
           key={`${t.uri}:${i}`}
@@ -254,6 +311,8 @@ export function Results({ tracks }: { tracks: any[] }) {
           <Label muted>
             {t.artist}
             {t.album ? ` · ${t.album}` : ""}
+            {t.rating != null ? ` · ★ ${t.rating}/10` : ""}
+            {t.playCount != null ? ` · ${t.playCount} plays` : ""}
           </Label>
           {t.metadataUnavailable ? (
             <Label muted>{t.metadataStatus || "Metadata unavailable"}. Saved URI retained: {t.uri}</Label>
@@ -269,6 +328,15 @@ export function Results({ tracks }: { tracks: any[] }) {
             title="Open track in Spotify"
             onPress={() => S.Navigation.openSpotify(t.uri)}
           />
+          {onRate ? (
+            <TrackRatingRow
+              uri={t.uri}
+              title={t.title}
+              artist={t.artist}
+              currentRating={t.rating ?? null}
+              onChange={() => onRate()}
+            />
+          ) : null}
         </View>
       ))}
       {last > 0 ? (

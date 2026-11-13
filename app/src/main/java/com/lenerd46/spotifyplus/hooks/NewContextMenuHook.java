@@ -66,10 +66,19 @@ public class NewContextMenuHook extends SpotifyHook {
 
     private static Class<?> interfaceClass;
     private static Constructor<?> directTextTitleConstructor;
+    private static volatile Field cachedUweBranchField;
+    private static final OkHttpClient LAST_FM_HTTP_CLIENT = new OkHttpClient.Builder()
+            .connectTimeout(3, java.util.concurrent.TimeUnit.SECONDS)
+            .readTimeout(3, java.util.concurrent.TimeUnit.SECONDS)
+            .build();
+    private static final android.util.LruCache<String, String> SCROBBLE_CACHE = new android.util.LruCache<>(128);
+    private static final Set<String> IN_FLIGHT_SCROBBLES = Collections.synchronizedSet(new HashSet<>());
+    private static volatile String lastPrefetchedTrackUri = null;
 
     @Override
     protected void hook() {
         try {
+            References.registerPlayerStateListener(state -> prefetchCurrentTrackScrobbles());
             if (!bridge.findClass(FindClass.create().matcher(ModernContextMenuHook.itemMatcher())).isEmpty()) {
                 new ModernContextMenuHook().init(lpparm, bridge);
                 return;
@@ -295,11 +304,13 @@ public class NewContextMenuHook extends SpotifyHook {
                 XposedBridge.log("[SpotifyPlus] Context-menu row-render marker fingerprint is unavailable; the custom view-model icons remain installed directly.");
             } else {
                 Class<?> uweClass = uweClasses.get(0).getInstance(lpparm.classLoader);
+                cachedUweBranchField = bridge.findField(FindField.create().searchInClass(uweClasses).matcher(FieldMatcher.create().type(int.class))).get(0).getFieldInstance(lpparm.classLoader);
+                cachedUweBranchField.setAccessible(true);
                 XposedBridge.hookAllMethods(uweClass, "invoke", new XC_MethodHook() {
                     @Override
                     protected void beforeHookedMethod(MethodHookParam param) throws Throwable {
                         try {
-                            int branch = bridge.findField(FindField.create().searchInClass(uweClasses).matcher(FieldMatcher.create().type(int.class))).get(0).getFieldInstance(lpparm.classLoader).getInt(param.thisObject);
+                            int branch = cachedUweBranchField.getInt(param.thisObject);
                             if (branch != 10) return;
                             if (param.args.length < 2) return;
                             Object obj2 = param.args[1]; // psf in case 10
@@ -326,6 +337,66 @@ public class NewContextMenuHook extends SpotifyHook {
         }
     }
 
+    private void prefetchCurrentTrackScrobbles() {
+        try {
+            SharedPreferences ref = References.getPreferences();
+            if (ref == null) return;
+            String username = ref.getString("last_fm_username", "null");
+            if (username == null || username.equals("null") || username.isBlank()) return;
+            com.lenerd46.spotifyplus.SpotifyTrack track = References.getTrackTitle(lpparm, bridge);
+            if (track == null || track.uri == null || track.uri.equals(lastPrefetchedTrackUri)) return;
+            lastPrefetchedTrackUri = track.uri;
+            fetchScrobblesAsync(username, track.artist, track.title, false);
+        } catch (Throwable ignored) {
+        }
+    }
+
+    private static String buildScrobbleCacheKey(String username, String artist, String title) {
+        return username + "|" + artist + "|" + title;
+    }
+
+    private static Request buildLastFmTrackInfoRequest(String username, String artist, String title) {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            return new Request.Builder().url("https://ws.audioscrobbler.com/2.0/?method=track.getInfo&api_key=3713c2e0b7493e945555b7f52dc4232e&artist=" + URLEncoder.encode(artist, StandardCharsets.UTF_8) + "&track=" + URLEncoder.encode(title, StandardCharsets.UTF_8) + "&format=json&user=" + URLEncoder.encode(username, StandardCharsets.UTF_8)).build();
+        } else {
+            return new Request.Builder().url("https://ws.audioscrobbler.com/2.0/?method=track.getInfo&api_key=3713c2e0b7493e945555b7f52dc4232e&artist=" + URLEncoder.encode(artist) + "&track=" + URLEncoder.encode(title) + "&format=json&user=" + URLEncoder.encode(username)).build();
+        }
+    }
+
+    private static void fetchScrobblesAsync(String username, String artist, String title, boolean notifyOnError) {
+        if (artist == null || artist.isEmpty() || title == null || title.isEmpty()) return;
+        String cacheKey = buildScrobbleCacheKey(username, artist, title);
+        if (SCROBBLE_CACHE.get(cacheKey) != null || !IN_FLIGHT_SCROBBLES.add(cacheKey)) return;
+
+        Request request = buildLastFmTrackInfoRequest(username, artist, title);
+        LAST_FM_HTTP_CLIENT.newCall(request).enqueue(new Callback() {
+            @Override
+            public void onFailure(Call call, java.io.IOException e) {
+                IN_FLIGHT_SCROBBLES.remove(cacheKey);
+                if (notifyOnError) {
+                    Activity activity = References.currentActivity;
+                    if (activity != null) new Handler(Looper.getMainLooper()).post(() -> Toast.makeText(activity, References.getString(R.string.ui_failed_to_fetch_scrobbles), Toast.LENGTH_SHORT).show());
+                }
+            }
+
+            @Override
+            public void onResponse(Call call, Response response) {
+                try (Response closeable = response) {
+                    ResponseBody body = closeable.body();
+                    if (!closeable.isSuccessful() || body == null) return;
+                    JsonObject root = JsonParser.parseString(body.string()).getAsJsonObject();
+                    String scrobbles = root.getAsJsonObject("track").get("userplaycount").getAsString();
+                    if (scrobbles != null) {
+                        SCROBBLE_CACHE.put(cacheKey, scrobbles);
+                    }
+                } catch (Exception ignored) {
+                } finally {
+                    IN_FLIGHT_SCROBBLES.remove(cacheKey);
+                }
+            }
+        });
+    }
+
     static void updateLastFmHeader(Object header, Field titleField, Field subtitleField, String trackUri) {
         if (header == null || trackUri == null || !trackUri.startsWith("spotify:track:")) return;
 
@@ -340,47 +411,58 @@ public class NewContextMenuHook extends SpotifyHook {
             if (subtitleTextFull.contains("scrobbles")) return;
 
             SharedPreferences ref = References.getPreferences();
+            if (ref == null) return;
             String username = ref.getString("last_fm_username", "null");
             if (username.equals("null")) return;
 
-            Activity activity = References.currentActivity;
-            OkHttpClient client = new OkHttpClient();
-            Request request;
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-                request = new Request.Builder().url("https://ws.audioscrobbler.com/2.0/?method=track.getInfo&api_key=3713c2e0b7493e945555b7f52dc4232e&artist=" + URLEncoder.encode(artist, StandardCharsets.UTF_8) + "&track=" + URLEncoder.encode(title, StandardCharsets.UTF_8) + "&format=json&user=" + URLEncoder.encode(username, StandardCharsets.UTF_8)).build();
-            } else {
-                request = new Request.Builder().url("https://ws.audioscrobbler.com/2.0/?method=track.getInfo&api_key=3713c2e0b7493e945555b7f52dc4232e&artist=" + URLEncoder.encode(artist) + "&track=" + URLEncoder.encode(title) + "&format=json&user=" + URLEncoder.encode(username)).build();
+            String cacheKey = buildScrobbleCacheKey(username, artist, title);
+            String cachedScrobbles = SCROBBLE_CACHE.get(cacheKey);
+            if (cachedScrobbles != null) {
+                subtitleField.set(header, subtitleTextFull + " • " + cachedScrobbles + " scrobbles");
+                return;
             }
 
+            // If we are not on the main thread, we can wait briefly; on the UI thread, wait at most 180ms so the menu never freezes, and cache in the background.
+            boolean onMainThread = Looper.myLooper() == Looper.getMainLooper();
             CountDownLatch latch = new CountDownLatch(1);
-            AtomicReference<String> resultRef = new AtomicReference<>();
-            AtomicReference<Exception> exceptionRef = new AtomicReference<>();
-            new Thread(() -> {
-                try (Response response = client.newCall(request).execute()) {
-                    ResponseBody body = response.body();
-                    resultRef.set(body != null ? body.string() : null);
-                } catch (Exception e) {
-                    exceptionRef.set(e);
-                } finally {
+            Request request = buildLastFmTrackInfoRequest(username, artist, title);
+            LAST_FM_HTTP_CLIENT.newCall(request).enqueue(new Callback() {
+                @Override
+                public void onFailure(Call call, java.io.IOException e) {
                     latch.countDown();
                 }
-            }).start();
+
+                @Override
+                public void onResponse(Call call, Response response) {
+                    try (Response closeable = response) {
+                        ResponseBody body = closeable.body();
+                        if (closeable.isSuccessful() && body != null) {
+                            JsonObject root = JsonParser.parseString(body.string()).getAsJsonObject();
+                            String scrobbles = root.getAsJsonObject("track").get("userplaycount").getAsString();
+                            if (scrobbles != null) {
+                                SCROBBLE_CACHE.put(cacheKey, scrobbles);
+                            }
+                        }
+                    } catch (Exception ignored) {
+                    } finally {
+                        latch.countDown();
+                    }
+                }
+            });
+
             try {
-                latch.await();
-                if (exceptionRef.get() != null) throw new RuntimeException(exceptionRef.get());
+                latch.await(onMainThread ? 180L : 2500L, java.util.concurrent.TimeUnit.MILLISECONDS);
             } catch (InterruptedException e) {
                 Thread.currentThread().interrupt();
             }
 
-            if (resultRef.get() == null) throw new IllegalStateException("Last.fm returned no response body");
-            JsonObject root = JsonParser.parseString(resultRef.get()).getAsJsonObject();
-            String scrobbles = root.getAsJsonObject("track").get("userplaycount").getAsString();
-            subtitleField.set(header, subtitleTextFull + " • " + scrobbles + " scrobbles");
+            String resolvedScrobbles = SCROBBLE_CACHE.get(cacheKey);
+            if (resolvedScrobbles != null) {
+                subtitleField.set(header, subtitleTextFull + " • " + resolvedScrobbles + " scrobbles");
+            }
         } catch (Exception e) {
             XposedBridge.log("[SpotifyPlus] Failed to fetch scrobbles for " + trackUri);
             XposedBridge.log("[SpotifyPlus] " + e);
-            Activity activity = References.currentActivity;
-            if (activity != null) new Handler(Looper.getMainLooper()).post(() -> Toast.makeText(activity, References.getString(R.string.ui_failed_to_fetch_scrobbles), Toast.LENGTH_SHORT).show());
         }
     }
 

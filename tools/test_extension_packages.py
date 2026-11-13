@@ -5,12 +5,13 @@ import os
 from pathlib import Path
 import shutil
 import subprocess
+import sys
 import tempfile
 import unittest
 import zipfile
 
 SCRIPT = Path(__file__).resolve().parents[1] / "extensions/local-suite/tools/package.py"
-FOLDERS = ("listening-stats", "sort-play", "genres", "playlist-plus")
+FOLDERS = ("listening-stats", "sort-play", "genres", "playlist-plus", "bookmarks-plus")
 
 
 class ExtensionPackageTests(unittest.TestCase):
@@ -38,7 +39,7 @@ class ExtensionPackageTests(unittest.TestCase):
         (folder / "index.js").write_text("// Tested fixture bytes: café 🎵\n")
 
     def run_packager(self):
-        return subprocess.run(["python3", str(self.root / "tools/package.py")], capture_output=True, text=True)
+        return subprocess.run([sys.executable, str(self.root / "tools/package.py")], capture_output=True, text=True)
 
     def test_packages_use_manifest_versions_and_preserve_the_tested_payloads(self):
         result = self.run_packager()

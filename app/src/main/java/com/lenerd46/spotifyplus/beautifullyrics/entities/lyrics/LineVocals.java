@@ -30,6 +30,7 @@ public class LineVocals implements SyncableVocals {
     private final Spring glowSpring;
     private final SharedPreferences prefs;
     private final boolean lineGradient;
+    private final boolean calmerMotion;
     private final float baseFontSize;
     private boolean secondary;
 
@@ -76,6 +77,7 @@ public class LineVocals implements SyncableVocals {
         }
 
         lineGradient = prefs.getBoolean("lyric_enable_line_gradient", true);
+        calmerMotion = LyricsPhase3Settings.isCalmerMotion(prefs);
 
         container.addView(lyricText);
         setToGeneralState(false);
@@ -111,15 +113,19 @@ public class LineVocals implements SyncableVocals {
     }
 
     private boolean updateLiveTextVisuals(double timeScale, double deltaTime) {
-        float glowAlpha = (float) glowSpring.update(deltaTime);
+        float glowAlpha = calmerMotion ? 0f : (float) glowSpring.update(deltaTime);
 
         if (lineGradient) {
-            lyricText.updateShadow(glowAlpha * (secondary ? 0.25f : 0.5f),
-                    (secondary ? 2 : 4) + ((secondary ? 4 : 8) * glowAlpha));
+            if (!calmerMotion) {
+                lyricText.updateShadow(glowAlpha * (secondary ? 0.25f : 0.5f),
+                        (secondary ? 2 : 4) + ((secondary ? 4 : 8) * glowAlpha));
+            } else {
+                lyricText.updateShadow(0f, 0f);
+            }
             lyricText.setProgress((float) (120 * timeScale));
         }
 
-        return glowSpring.sleeping;
+        return calmerMotion || glowSpring.sleeping;
     }
 
     private void evaluateClassState() {

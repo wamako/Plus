@@ -8,7 +8,7 @@ import zipfile
 
 ROOT = Path(__file__).resolve().parents[1]
 VERSIONS = json.loads((ROOT.parents[1] / "build-versions.json").read_text())
-FOLDERS = ("listening-stats", "sort-play", "genres", "playlist-plus")
+FOLDERS = ("listening-stats", "sort-play", "genres", "playlist-plus", "bookmarks-plus")
 
 
 def payloads(parent, folders, expected=None, documents=()):

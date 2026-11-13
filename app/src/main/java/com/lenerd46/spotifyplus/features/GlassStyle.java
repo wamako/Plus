@@ -14,6 +14,7 @@ import java.util.*;
 public final class GlassStyle {
     private static SharedPreferences prefs;
     private static final Map<View,Saved> changed=new WeakHashMap<>();
+    private static final Map<Integer,String> resourceNameCache=new java.util.concurrent.ConcurrentHashMap<>();
     private static final class Saved {
         final ViewGroup.LayoutParams layout; final int marginLeft,marginRight,marginBottom;final android.content.res.ColorStateList tint;
         final Drawable.ConstantState state;final Drawable original;final boolean empty; final int left,top,right,bottom;
@@ -24,10 +25,24 @@ public final class GlassStyle {
     public static void initialize(Context context){prefs=context.getSharedPreferences("SpotifyPlusGlass",Context.MODE_PRIVATE);}
     public static void apply(View view){
         if(prefs==null)return;
-        String resource="";try{if(view.getId()!=View.NO_ID)resource=view.getResources().getResourceEntryName(view.getId());}catch(Exception ignored){}
-        String category=GlassTargets.category(view.getClass().getName(),resource,view.isClickable());
-        boolean enabled=category!=null&&prefs.getBoolean("enabled",false)&&prefs.getBoolean(category,true);
-        if(view.getClass().getName().toLowerCase(java.util.Locale.ROOT).endsWith("appbarlayout"))HeaderLayers.apply(view,enabled||com.lenerd46.spotifyplus.hooks.ThemeHook.usesAnimatedBackground());
+        boolean globalEnabled=prefs.getBoolean("enabled",false);
+        boolean animatedBg=com.lenerd46.spotifyplus.hooks.ThemeHook.usesAnimatedBackground();
+        if(!globalEnabled&&!animatedBg&&changed.isEmpty())return;
+        String resource="";
+        int id=view.getId();
+        if(id!=View.NO_ID){
+            String cached=resourceNameCache.get(id);
+            if(cached!=null){
+                resource=cached;
+            }else{
+                try{resource=view.getResources().getResourceEntryName(id);}catch(Exception ignored){resource="";}
+                resourceNameCache.put(id,resource);
+            }
+        }
+        String className=view.getClass().getName();
+        String category=GlassTargets.category(className,resource,view.isClickable());
+        boolean enabled=category!=null&&globalEnabled&&prefs.getBoolean(category,true);
+        if(className.toLowerCase(java.util.Locale.ROOT).endsWith("appbarlayout"))HeaderLayers.apply(view,enabled||animatedBg);
         Saved old=changed.get(view);
         if(!enabled){if(old!=null){view.setBackground(old.empty?null:old.restore(view));view.setPadding(old.left,old.top,old.right,old.bottom);view.setBackgroundTintList(old.tint);if(view.getLayoutParams() instanceof ViewGroup.MarginLayoutParams m){m.leftMargin=old.marginLeft;m.rightMargin=old.marginRight;m.bottomMargin=old.marginBottom;view.setLayoutParams(m);}changed.remove(view);}return;}
         if(old==null){old=new Saved(view);changed.put(view,old);}
@@ -106,6 +121,10 @@ public final class GlassStyle {
     private static final class Surface extends Drawable {
         final WeakReference<View> owner; Bitmap backdrop;long captured;boolean capturing,pending;
         final Paint paint=new Paint(Paint.ANTI_ALIAS_FLAG);final float radius;final int intensity;int alpha=255;
+        final RectF drawRect=new RectF();
+        final Path clipPath=new Path();
+        int cachedLeft=Integer.MIN_VALUE,cachedTop=Integer.MIN_VALUE,cachedRight=Integer.MIN_VALUE,cachedBottom=Integer.MIN_VALUE;
+        LinearGradient fillShader,strokeShader;
         Surface(View view,float radius,int intensity){owner=new WeakReference<>(view);this.radius=radius;this.intensity=Math.max(0,Math.min(100,intensity));}
         public void draw(Canvas c){
             View v=owner.get();
@@ -113,14 +132,22 @@ public final class GlassStyle {
                 captured=android.os.SystemClock.uptimeMillis();pending=true;
                 if(!v.post(()->{pending=false;capture(v);}))pending=false;
             }
-            Rect b=getBounds();RectF r=new RectF(b.left+.7f,b.top+.7f,b.right-.7f,b.bottom-.7f);
+            Rect b=getBounds();
+            if(b.left!=cachedLeft||b.top!=cachedTop||b.right!=cachedRight||b.bottom!=cachedBottom||fillShader==null||strokeShader==null){
+                cachedLeft=b.left;cachedTop=b.top;cachedRight=b.right;cachedBottom=b.bottom;
+                drawRect.set(b.left+.7f,b.top+.7f,b.right-.7f,b.bottom-.7f);
+                clipPath.reset();
+                clipPath.addRoundRect(drawRect,radius,radius,Path.Direction.CW);
+                int tint=28+intensity/2;
+                fillShader=new LinearGradient(drawRect.left,drawRect.top,drawRect.right,drawRect.bottom,new int[]{Color.argb(tint,196,181,253),Color.argb(tint/2,228,246,250),Color.argb(tint,124,230,171)},null,Shader.TileMode.CLAMP);
+                strokeShader=new LinearGradient(drawRect.left,drawRect.top,drawRect.right,drawRect.bottom,new int[]{0x8fffffff,0x15ffffff,0x55ffffff},null,Shader.TileMode.CLAMP);
+            }
             paint.setStyle(Paint.Style.FILL);paint.setShader(null);
-            int save=c.save();Path clip=new Path();clip.addRoundRect(r,radius,radius,Path.Direction.CW);c.clipPath(clip);
-            if(backdrop!=null){paint.setAlpha(alpha);paint.setFilterBitmap(true);c.drawBitmap(backdrop,null,r,paint);}
-            paint.setColor(0xffa8adb5);paint.setAlpha(alpha*(65+intensity/2)/255);c.drawRoundRect(r,radius,radius,paint);c.restoreToCount(save);
-            int tint=28+intensity/2;
-            paint.setAlpha(alpha);paint.setShader(new LinearGradient(r.left,r.top,r.right,r.bottom,new int[]{Color.argb(tint,196,181,253),Color.argb(tint/2,228,246,250),Color.argb(tint,124,230,171)},null,Shader.TileMode.CLAMP));c.drawRoundRect(r,radius,radius,paint);
-            paint.setStyle(Paint.Style.STROKE);paint.setStrokeWidth(3f);paint.setShader(new LinearGradient(r.left,r.top,r.right,r.bottom,new int[]{0x8fffffff,0x15ffffff,0x55ffffff},null,Shader.TileMode.CLAMP));c.drawRoundRect(r,radius,radius,paint);paint.setShader(null);
+            int save=c.save();c.clipPath(clipPath);
+            if(backdrop!=null){paint.setAlpha(alpha);paint.setFilterBitmap(true);c.drawBitmap(backdrop,null,drawRect,paint);}
+            paint.setColor(0xffa8adb5);paint.setAlpha(alpha*(65+intensity/2)/255);c.drawRoundRect(drawRect,radius,radius,paint);c.restoreToCount(save);
+            paint.setAlpha(alpha);paint.setShader(fillShader);c.drawRoundRect(drawRect,radius,radius,paint);
+            paint.setStyle(Paint.Style.STROKE);paint.setStrokeWidth(3f);paint.setShader(strokeShader);c.drawRoundRect(drawRect,radius,radius,paint);paint.setShader(null);
         }
         private void capture(View view){
             if(capturing||!view.isAttachedToWindow()||!view.hasWindowFocus()||!view.isShown()||view.getBackground()!=this||view.getWidth()==0||view.getHeight()==0)return;

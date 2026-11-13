@@ -38,7 +38,9 @@ import com.google.android.material.slider.Slider;
 import com.google.android.material.textfield.TextInputEditText;
 import com.google.android.material.textfield.TextInputLayout;
 import com.lenerd46.spotifyplus.*;
+import com.lenerd46.spotifyplus.beautifullyrics.entities.LyricsPhase3Settings;
 import com.lenerd46.spotifyplus.beautifullyrics.translation.LyricsTranslationService;
+import com.lenerd46.spotifyplus.features.ShareTrackingSanitizer;
 import de.robv.android.xposed.XC_MethodHook;
 import de.robv.android.xposed.XposedBridge;
 import de.robv.android.xposed.XposedHelpers;
@@ -322,22 +324,22 @@ public class RemoveCreateButtonHook extends SpotifyHook {
 
                                             ViewParent parent = settingsPage.getParent();
                                             if (parent instanceof ViewGroup) {
-                                                ((ViewGroup) parent).removeView(settingsPage);
-                                            }
-                                            overlayShown.set(false);
-
-                                            // try {
-                                            // activity.getWindow().getDecorView().post(() -> {
-                                            // dispatcher.registerOnBackInvokedCallback(1000001, this);
-                                            // });
-                                            // } catch(Throwable t) { }
-                                        } else {
-                                            ViewParent parent = settingsPage.getParent();
-                                            if (parent instanceof ViewGroup) {
-                                                animatePageOut((ViewGroup) parent, () -> {
-                                                    ((ViewGroup) parent).removeView(detailedPage);
-                                                    currentDetailedSettingsPage.set(null);
+                                                animatePageOut(settingsPage, () -> {
+                                                    ((ViewGroup) parent).removeView(settingsPage);
+                                                    overlayShown.set(false);
                                                 });
+                                            } else {
+                                                overlayShown.set(false);
+                                            }
+                                        } else {
+                                            ViewParent parent = detailedPage.getParent();
+                                            if (parent instanceof ViewGroup) {
+                                                currentDetailedSettingsPage.set(null);
+                                                animatePageOut(detailedPage, () -> {
+                                                    ((ViewGroup) parent).removeView(detailedPage);
+                                                });
+                                            } else {
+                                                currentDetailedSettingsPage.set(null);
                                             }
                                         }
                                     }
@@ -355,10 +357,12 @@ public class RemoveCreateButtonHook extends SpotifyHook {
                             toolbar.setNavigationOnClickListener(v -> {
                                 ViewParent parent = settingsPage.getParent();
                                 if (parent instanceof ViewGroup) {
-                                    animatePageOut((ViewGroup) parent, () -> {
+                                    animatePageOut(settingsPage, () -> {
                                         ((ViewGroup) parent).removeView(settingsPage);
                                         overlayShown.set(false);
                                     });
+                                } else {
+                                    overlayShown.set(false);
                                 }
                             });
 
@@ -377,9 +381,10 @@ public class RemoveCreateButtonHook extends SpotifyHook {
 
                                 MaterialToolbar detailedToolbar = view.findViewById(R.id.general_toolbar);
                                 detailedToolbar.setNavigationOnClickListener(w -> {
-                                    ViewParent parent = settingsPage.getParent();
+                                    currentDetailedSettingsPage.compareAndSet(view, null);
+                                    ViewParent parent = view.getParent();
                                     if (parent instanceof ViewGroup) {
-                                        animatePageOut((ViewGroup) parent, () -> {
+                                        animatePageOut(view, () -> {
                                             ((ViewGroup) parent).removeView(view);
                                         });
                                     }
@@ -394,6 +399,11 @@ public class RemoveCreateButtonHook extends SpotifyHook {
                                 swipePlayNext.setChecked(prefs.getBoolean(SwipePlayNextHook.PREFERENCE, false));
                                 swipePlayNext.setOnCheckedChangeListener((check, value) -> prefs.edit().putBoolean(SwipePlayNextHook.PREFERENCE, value).apply());
                                 ((View) swipePlayNext.getParent()).setOnClickListener(row -> swipePlayNext.toggle());
+
+                                MaterialSwitch stripShareTracking = view.findViewById(R.id.switch_strip_share_tracking);
+                                stripShareTracking.setChecked(prefs.getBoolean(ShareTrackingSanitizer.PREF_KEY, true));
+                                stripShareTracking.setOnCheckedChangeListener((check, value) -> prefs.edit().putBoolean(ShareTrackingSanitizer.PREF_KEY, value).apply());
+                                ((View) stripShareTracking.getParent()).setOnClickListener(row -> stripShareTracking.toggle());
 
                                 update.setVisibility(View.GONE);
                                 ((View)update.getParent()).setOnClickListener(row -> {
@@ -526,9 +536,10 @@ public class RemoveCreateButtonHook extends SpotifyHook {
 
                                 MaterialToolbar detailedToolbar = view.findViewById(R.id.lyrics_toolbar);
                                 detailedToolbar.setNavigationOnClickListener(w -> {
-                                    ViewParent parent = settingsPage.getParent();
+                                    currentDetailedSettingsPage.compareAndSet(view, null);
+                                    ViewParent parent = view.getParent();
                                     if (parent instanceof ViewGroup) {
-                                        animatePageOut((ViewGroup) parent, () -> ((ViewGroup) parent).removeView(view));
+                                        animatePageOut(view, () -> ((ViewGroup) parent).removeView(view));
                                     }
                                 });
 
@@ -555,7 +566,7 @@ public class RemoveCreateButtonHook extends SpotifyHook {
 
                                 fontSpotify.setOnClickListener(c -> {
                                     try {
-                                        References.beautifulFont = new WeakReference<>(Typeface.createFromAsset(modResources.getAssets(), "fonts/spotifymix-medium.ttf"));
+                                        References.setBeautifulFont(Typeface.createFromAsset(modResources.getAssets(), "fonts/spotifymix-medium.ttf"));
                                         prefs.edit().putString("lyrics_font", "spotify").apply();
 
                                         fontSpotify.setChecked(true);
@@ -568,7 +579,7 @@ public class RemoveCreateButtonHook extends SpotifyHook {
 
                                 fontBeautifulLyrics.setOnClickListener(c -> {
                                     try {
-                                        References.beautifulFont = new WeakReference<>(Typeface.createFromAsset(modResources.getAssets(), "fonts/lyrics_medium.ttf"));
+                                        References.setBeautifulFont(Typeface.createFromAsset(modResources.getAssets(), "fonts/lyrics_medium.ttf"));
                                         prefs.edit().putString("lyrics_font", "default").apply();
 
                                         fontSpotify.setChecked(false);
@@ -581,7 +592,7 @@ public class RemoveCreateButtonHook extends SpotifyHook {
 
                                 fontApple.setOnClickListener(c -> {
                                     try {
-                                        References.beautifulFont = new WeakReference<>(Typeface.createFromAsset(modResources.getAssets(), "fonts/sf-pro-display-bold.ttf"));
+                                        References.setBeautifulFont(Typeface.createFromAsset(modResources.getAssets(), "fonts/sf-pro-display-bold.ttf"));
                                         prefs.edit().putString("lyrics_font", "apple").apply();
 
                                         fontSpotify.setChecked(false);
@@ -706,16 +717,22 @@ public class RemoveCreateButtonHook extends SpotifyHook {
                                 switch (sliderValueThing) {
                                     case "compact":
                                         slider.setValue(0);
+                                        break;
                                     case "default":
                                         slider.setValue(1);
+                                        break;
                                     case "spacious":
                                         slider.setValue(2);
+                                        break;
                                     case "more":
                                         slider.setValue(3);
+                                        break;
                                     case "max":
                                         slider.setValue(4);
+                                        break;
                                     default:
                                         slider.setValue(1);
+                                        break;
                                 }
 
                                 MaterialSwitch background = view.findViewById(R.id.switch_enable_background);
@@ -815,6 +832,47 @@ public class RemoveCreateButtonHook extends SpotifyHook {
                                         if (!language.isEmpty()) prefs.edit().putString("lyrics_translation_language", language).apply();
                                     }
                                 });
+
+                                MaterialSwitch calmerMotionSwitch = view.findViewById(R.id.switch_lyrics_calmer_motion);
+                                calmerMotionSwitch.setChecked(LyricsPhase3Settings.isCalmerMotion(prefs));
+                                calmerMotionSwitch.setOnCheckedChangeListener((check, value) -> prefs.edit().putBoolean(LyricsPhase3Settings.PREF_CALMER_MOTION, value).apply());
+                                ((View) calmerMotionSwitch.getParent()).setOnClickListener(row -> calmerMotionSwitch.toggle());
+
+                                MaterialSwitch keepScreenOnSwitch = view.findViewById(R.id.switch_lyrics_keep_screen_on);
+                                keepScreenOnSwitch.setChecked(LyricsPhase3Settings.isKeepScreenOn(prefs));
+                                keepScreenOnSwitch.setOnCheckedChangeListener((check, value) -> prefs.edit().putBoolean(LyricsPhase3Settings.PREF_KEEP_SCREEN_ON, value).apply());
+                                ((View) keepScreenOnSwitch.getParent()).setOnClickListener(row -> keepScreenOnSwitch.toggle());
+
+                                int[] paletteButtonIds = new int[]{
+                                        R.id.rb_palette_artwork,
+                                        R.id.rb_palette_midnight_slate,
+                                        R.id.rb_palette_warm_espresso,
+                                        R.id.rb_palette_forest_dusk,
+                                        R.id.rb_palette_twilight_plum,
+                                        R.id.rb_palette_charcoal
+                                };
+                                String[] paletteKeys = new String[]{
+                                        LyricsPhase3Settings.PALETTE_ARTWORK,
+                                        LyricsPhase3Settings.PALETTE_MIDNIGHT_SLATE,
+                                        LyricsPhase3Settings.PALETTE_WARM_ESPRESSO,
+                                        LyricsPhase3Settings.PALETTE_FOREST_DUSK,
+                                        LyricsPhase3Settings.PALETTE_TWILIGHT_PLUM,
+                                        LyricsPhase3Settings.PALETTE_SPOTIFY_CHARCOAL
+                                };
+                                String currentPalette = LyricsPhase3Settings.getStaticPalette(prefs);
+                                MaterialRadioButton[] paletteButtons = new MaterialRadioButton[paletteButtonIds.length];
+                                for (int idx = 0; idx < paletteButtonIds.length; idx++) {
+                                    MaterialRadioButton rb = view.findViewById(paletteButtonIds[idx]);
+                                    paletteButtons[idx] = rb;
+                                    rb.setChecked(paletteKeys[idx].equals(currentPalette));
+                                    final int selectedIdx = idx;
+                                    rb.setOnClickListener(clicked -> {
+                                        prefs.edit().putString(LyricsPhase3Settings.PREF_STATIC_PALETTE, paletteKeys[selectedIdx]).apply();
+                                        for (int j = 0; j < paletteButtons.length; j++) {
+                                            paletteButtons[j].setChecked(j == selectedIdx);
+                                        }
+                                    });
+                                }
                             });
 
                             experimentalSettings.setOnClickListener(v -> {
@@ -825,9 +883,10 @@ public class RemoveCreateButtonHook extends SpotifyHook {
 
                                 MaterialToolbar detailedToolbar = view.findViewById(R.id.experimental_toolbar);
                                 detailedToolbar.setNavigationOnClickListener(w -> {
-                                    ViewParent parent = settingsPage.getParent();
+                                    currentDetailedSettingsPage.compareAndSet(view, null);
+                                    ViewParent parent = view.getParent();
                                     if (parent instanceof ViewGroup) {
-                                        animatePageOut((ViewGroup) parent, () -> ((ViewGroup) parent).removeView(view));
+                                        animatePageOut(view, () -> ((ViewGroup) parent).removeView(view));
                                     }
                                 });
 
@@ -874,9 +933,10 @@ public class RemoveCreateButtonHook extends SpotifyHook {
 
                                 MaterialToolbar detailedToolbar = view.findViewById(R.id.theme_toolbar);
                                 detailedToolbar.setNavigationOnClickListener(w -> {
-                                    ViewParent parent = settingsPage.getParent();
+                                    currentDetailedSettingsPage.compareAndSet(view, null);
+                                    ViewParent parent = view.getParent();
                                     if (parent instanceof ViewGroup) {
-                                        animatePageOut((ViewGroup) parent, () -> ((ViewGroup) parent).removeView(view));
+                                        animatePageOut(view, () -> ((ViewGroup) parent).removeView(view));
                                     }
                                 });
 
@@ -942,9 +1002,10 @@ public class RemoveCreateButtonHook extends SpotifyHook {
 
                                 MaterialToolbar detailedToolbar = view.findViewById(R.id.about_toolbar);
                                 detailedToolbar.setNavigationOnClickListener(w -> {
-                                    ViewParent parent = settingsPage.getParent();
+                                    currentDetailedSettingsPage.compareAndSet(view, null);
+                                    ViewParent parent = view.getParent();
                                     if (parent instanceof ViewGroup) {
-                                        animatePageOut((ViewGroup) parent, () -> ((ViewGroup) parent).removeView(view));
+                                        animatePageOut(view, () -> ((ViewGroup) parent).removeView(view));
                                     }
                                 });
 
@@ -1274,9 +1335,11 @@ public class RemoveCreateButtonHook extends SpotifyHook {
 
     private void animatePageIn(View page) {
         page.setAlpha(0.0f);
+        page.setTranslationX(dpToPx(24));
 
         page.animate()
                 .alpha(1.0f)
+                .translationX(0.0f)
                 .setDuration(180)
                 .setInterpolator(new android.view.animation.DecelerateInterpolator())
                 .start();
@@ -1284,7 +1347,8 @@ public class RemoveCreateButtonHook extends SpotifyHook {
 
     private void animatePageOut(View page, Runnable onComplete) {
         page.animate()
-                .alpha(1.0f)
+                .alpha(0.0f)
+                .translationX(dpToPx(24))
                 .setDuration(150)
                 .setInterpolator(new android.view.animation.AccelerateInterpolator())
                 .withEndAction(onComplete)

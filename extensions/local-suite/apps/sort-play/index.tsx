@@ -5,10 +5,12 @@ import { SpotifyPlus as S } from "spotifyplus";
 import { DataClient } from "../../shared/data.mjs";
 import {
   filterTracks,
+  findDuplicates,
   sortTracks,
   smartShuffle,
   trackMetric,
 } from "../../shared/model.mjs";
+import { RatingsStore, StatsBridge } from "../../shared/suite-store.mjs";
 import {
   Page,
   Label,
@@ -27,6 +29,8 @@ import {
   LikedSongsSource,
 } from "../../shared/ui";
 const client = new DataClient(S);
+const ratingsStore = new RatingsStore(S.Platform.Storage);
+const statsBridge = new StatsBridge(S.Platform.Storage);
 function App() {
   const liked = useLikedSource();
   const [uri, setUri] = useState(initialUri),
@@ -35,20 +39,34 @@ function App() {
     [metric, setMetric] = useState("title"),
     [desc, setDesc] = useState(false),
     [dedupe, setDedupe] = useState(""),
+    [showDupes, setShowDupes] = useState(false),
     [one, setOne] = useState(false),
     [explicit, setExplicit] = useState(""),
+    [minRating, setMinRating] = useState(""),
+    [forgotten, setForgotten] = useState(false),
+    [ratingTick, setRatingTick] = useState(0),
     [shuffled, setShuffled] = useState<any[] | null>(null),
     task = useTask();
+  const hydratedTracks = useMemo(
+    () => (data ? statsBridge.hydrateTracks(data.tracks, ratingsStore) : []),
+    [data, ratingTick],
+  );
   const preview = useMemo(() => {
     if (!data) return [];
-    const filtered = filterTracks(data.tracks, {
+    const filtered = filterTracks(hydratedTracks, {
       query,
       dedupe,
       onePerArtist: one,
       explicit,
+      minRating: minRating ? Number(minRating) : null,
+      forgottenDays: forgotten ? 30 : null,
     });
     return sortTracks(filtered, metric, desc);
-  }, [data, query, dedupe, one, explicit, metric, desc]);
+  }, [data, hydratedTracks, query, dedupe, one, explicit, minRating, forgotten, metric, desc]);
+  const dupes = useMemo(
+    () => (showDupes && dedupe ? findDuplicates(hydratedTracks, dedupe) : []),
+    [hydratedTracks, showDupes, dedupe],
+  );
   const tracks = shuffled || preview;
   function change(fn: () => void) {
     setShuffled(null);
@@ -130,6 +148,9 @@ function App() {
               ["added", "Date added"],
               ["duration", "Duration"],
               ["popularity", "Popularity (if available)"],
+              ["rating", "Rating (1–10★)"],
+              ["playCount", "Local play count"],
+              ["lastPlayed", "Last played date"],
             ]}
           />
           <Toggle
@@ -139,7 +160,7 @@ function App() {
           />
           <Label muted>
             {
-              data.tracks.filter((t: any) => trackMetric(t, metric) == null)
+              hydratedTracks.filter((t: any) => trackMetric(t, metric) == null)
                 .length
             }{" "}
             tracks have no value for this sort. Unknown values stay at the end.
@@ -151,12 +172,35 @@ function App() {
               ["", "Keep duplicates"],
               ["uri", "Unique track URIs"],
               ["recording", "Unique ISRC recordings"],
+              ["title-artist", "Unique title + artist (remasters/deluxe)"],
             ]}
           />
           <Label muted>
-            Recording deduplication uses ISRC when provided, otherwise the track
-            URI.
+            Recording uses ISRC when provided; Title + Artist catches remasters
+            and deluxe re-releases.
           </Label>
+          {dedupe ? (
+            <Toggle
+              label="Preview detected duplicates"
+              value={showDupes}
+              onChange={setShowDupes}
+            />
+          ) : null}
+          {showDupes && dedupe ? (
+            <View>
+              <Label muted>
+                {dupes.length
+                  ? `${dupes.length} duplicate(s) removed by "${dedupe}" mode (showing up to 30):`
+                  : "No duplicates detected for the selected mode."}
+              </Label>
+              {dupes.slice(0, 30).map((d: any, i: number) => (
+                <Label key={`${d.duplicate.uri}:${i}`} muted>
+                  • {d.duplicate.title} — {d.duplicate.artist} (matches{" "}
+                  {d.kept.title})
+                </Label>
+              ))}
+            </View>
+          ) : null}
           <Toggle
             label="One track per primary artist"
             value={one}
@@ -170,6 +214,23 @@ function App() {
               ["clean", "Known clean only"],
               ["explicit", "Known explicit only"],
             ]}
+          />
+          <Label>Rating & Forgotten filters</Label>
+          <Choices
+            value={minRating}
+            onChange={(v) => change(() => setMinRating(v))}
+            items={[
+              ["", "Any personal rating"],
+              ["7", "Rated 7★+"],
+              ["8", "Rated 8★+"],
+              ["9", "Rated 9–10★"],
+              ["-1", "Unrated only"],
+            ]}
+          />
+          <Toggle
+            label="Forgotten favorites only (30d+ unplayed)"
+            value={forgotten}
+            onChange={(v) => change(() => setForgotten(v))}
           />
           <Button
             title="Shuffle preview, separating artists where possible"
@@ -186,7 +247,7 @@ function App() {
             name={data.name}
             blocked={task.busy}
           />
-          <Results tracks={tracks} />
+          <Results tracks={tracks} onRate={() => setRatingTick((n) => n + 1)} />
         </View>
       ) : null}
     </Page>

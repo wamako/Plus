@@ -4,12 +4,21 @@ import { View } from "spotifyplus/react";
 import { SpotifyPlus as S } from "spotifyplus";
 import { DataClient } from "../../shared/data.mjs";
 import { ShuffleClient, shuffleTracks, playbackRange, SHUFFLE_LIMIT } from "../../shared/shuffle.mjs";
+import { smartShuffle, weightedForgottenShuffle } from "../../shared/model.mjs";
+import { RatingsStore, StatsBridge } from "../../shared/suite-store.mjs";
 import { LIKED_URI } from "../../shared/liked-songs.mjs";
-import { Page, Label, Field, Button, Results, useTask, Status, initialUri, currentContext, register, useLikedSource, LikedSongsSource } from "../../shared/ui";
+import { Page, Label, Field, Button, Choices, Results, useTask, Status, initialUri, currentContext, register, useLikedSource, LikedSongsSource } from "../../shared/ui";
 const dataClient = new DataClient(S), shuffleClient = new ShuffleClient(S);
+const ratingsStore = new RatingsStore(S.Platform.Storage), statsBridge = new StatsBridge(S.Platform.Storage);
+function orderTracks(list: any[], mode: string) {
+  if (mode === "artist") return smartShuffle(list);
+  if (mode === "forgotten") return weightedForgottenShuffle(statsBridge.hydrateTracks(list, ratingsStore));
+  return shuffleTracks(list);
+}
 function App() {
   const [uri, setUri] = useState(initialUri), input = useRef(uri),
     [data, setData] = useState<any>(null), [tracks, setTracks] = useState<any[]>([]),
+    [shuffleMode, setShuffleMode] = useState("fisher"),
     [part, setPart] = useState(0), [rangeSize, setRangeSize] = useState(SHUFFLE_LIMIT), [plan, setPlan] = useState<any>(null),
     [confirmation, setConfirmation] = useState<string | null>(null),
     [reviewed, setReviewed] = useState(0), [outcome, setOutcome] = useState(""), [runtime, setRuntime] = useState(""), task = useTask(), liked = useLikedSource();
@@ -19,13 +28,13 @@ function App() {
     collectionReady = plan?.mode === "collection" && confirmation;
   function clear() { setPlan(null); setConfirmation(null); setOutcome(""); }
   function change(value: string) { input.current = value; setUri(value); clear(); setData(null); setTracks([]); setPart(0); }
-  function load(value = input.current) {
+  function load(value = input.current, mode = shuffleMode) {
     clear(); setData(null); setTracks([]); setPart(0);
     task.run(async (job, progress) => {
       await shuffleClient.capabilities(job);
       const source = await dataClient.collection(value, job, progress, { username: liked.savedUsername });
       return { ...source, mode: "collection" };
-    }, value => { setData(value); setTracks(shuffleTracks(value.tracks)); });
+    }, value => { setData(value); setTracks(orderTracks(value.tracks, mode)); });
   }
   function prepare() {
     clear();
@@ -60,11 +69,12 @@ function App() {
     <LikedSongsSource settings={liked} busy={task.busy} onLoad={() => { change(LIKED_URI); load(LIKED_URI); }} />
     <Field label="Playlist or album link / URI" value={uri} onChange={change} />
     <Button title="Use current playing context" disabled={task.busy} onPress={() => change(currentContext())} />
+    <Choices value={shuffleMode} onChange={(mode) => { setShuffleMode(mode); if (data?.mode === "collection" && tracks.length) { clear(); setTracks(orderTracks(tracks, mode)); setPart(0); } }} items={[["fisher", "Pure Fisher-Yates (Default)"], ["artist", "Artist-Separated"], ["forgotten", "Forgotten Favorites Weighted"]]} />
     <Button title="Load and shuffle collection" disabled={task.busy} onPress={() => load()} />
     {tracks.length ? <View>
       <Label>{tracks.length} songs loaded. Duplicate occurrences are preserved.</Label>
       {data?.mode === "collection" ? <View>
-        <Button title="Reshuffle preview" disabled={task.busy} onPress={() => { clear(); setTracks(shuffleTracks(tracks)); setPart(0); }} />
+        <Button title="Reshuffle preview" disabled={task.busy} onPress={() => { clear(); setTracks(orderTracks(tracks, shuffleMode)); setPart(0); }} />
         <Label muted>{`Selected playback range ${range.from + 1}–${range.to} of ${tracks.length}. Only these ${selected.length} previewed songs will be requested.`}</Label>
         <Button title="Use 20-song test ranges" active={rangeSize === 20} disabled={task.busy} onPress={() => { setRangeSize(20); setPart(0); clear(); }} />
         <Button title="Use up to 10,000-song ranges" active={rangeSize === SHUFFLE_LIMIT} disabled={task.busy} onPress={() => { setRangeSize(SHUFFLE_LIMIT); setPart(0); clear(); }} />

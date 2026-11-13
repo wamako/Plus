@@ -15,6 +15,7 @@ const apps = [
   ["sort-play", "com.wamako.sortplay", "Sort Play"],
   ["genres", "com.wamako.genres", "What’s That Genre?"],
   ["playlist-plus", "com.wamako.playlistplus", "Playlist Plus"],
+  ["bookmarks-plus", "com.wamako.bookmarksplus", "Queue & Bookmarks+"],
 ];
 for (const [folder, id, name] of apps) {
   const source = path.join(root, "apps", folder),

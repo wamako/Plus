@@ -2,8 +2,8 @@
   "moduleVersion": "0.10.0-api2.9.1.94.25",
   "moduleVersionCode": 42,
   "host": 25,
-  "suiteVersion": "0.1.12",
-  "shuffleVersion": "0.1.14",
+  "suiteVersion": "0.2.0",
+  "shuffleVersion": "0.2.0",
   "spotifyVersion": "9.1.94.1929",
   "spotifyVersionCode": 147600575
 }

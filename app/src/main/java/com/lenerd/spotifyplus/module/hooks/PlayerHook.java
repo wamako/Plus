@@ -15,9 +15,22 @@ public final class PlayerHook extends SpotifyHook {
     public static volatile String username;
     public static volatile String playBinding="initializing";
     private static volatile MediaController controller;
+    private volatile Class<?> dispatcherType,contextPlayerType;
+    public static void adoptFallbackCore(Object fallback){if(fallback!=null&&core==null)core=fallback;}
     protected void hookSetup(){
         SpotifyNativeBridge.registerHandler("player",this);
         try{captureNativePlay();}catch(Throwable error){playBinding="unavailable-"+error.getClass().getSimpleName();logError("Native PlayCommand binding unavailable: "+error.getClass().getSimpleName());}
+        try{
+            java.lang.reflect.Constructor<?> dispatcherCtor=com.lenerd.spotifyplus.module.fingerprint.HookFingerprints.resolve(com.lenerd.spotifyplus.module.symbols.PlayerSymbols.DISPATCHER_CONSTRUCTOR);
+            dispatcherType=dispatcherCtor.getDeclaringClass();
+            hook(dispatcherCtor);
+            hook(com.lenerd.spotifyplus.module.fingerprint.HookFingerprints.resolve(com.lenerd.spotifyplus.module.symbols.PlayerSymbols.DISPATCH));
+        }catch(Throwable error){logError("Native PlayerDispatcher binding unavailable: "+error.getClass().getSimpleName());}
+        try{
+            java.lang.reflect.Constructor<?> cpCtor=com.lenerd.spotifyplus.module.fingerprint.HookFingerprints.resolve(com.lenerd.spotifyplus.module.symbols.PlayerSymbols.CONTEXT_PLAYER_CONSTRUCTOR);
+            contextPlayerType=cpCtor.getDeclaringClass();
+            hook(cpCtor);
+        }catch(Throwable ignored){}
         XposedHelpers.findAndHookMethod(android.media.session.MediaSession.class,"setPlaybackState",android.media.session.PlaybackState.class,new XC_MethodHook(){protected void afterHookedMethod(MethodHookParam p){controller=((android.media.session.MediaSession)p.thisObject).getController();}});
     }
     private void captureNativePlay() throws Exception {
@@ -43,6 +56,20 @@ public final class PlayerHook extends SpotifyHook {
         switch(command){case "play":controls.play();break;case "pause":controls.pause();break;case "togglePlay":if(c.getPlaybackState()!=null&&c.getPlaybackState().getState()==android.media.session.PlaybackState.STATE_PLAYING)controls.pause();else controls.play();break;case "seek":controls.seekTo(((Number)args[0]).longValue());break;case "skipNext":controls.skipToNext();break;case "skipPrevious":controls.skipToPrevious();break;default:throw new IllegalArgumentException("Unsupported player command: "+command);}
         return XposedHelpers.callStaticMethod(XposedHelpers.findClass("io.reactivex.rxjava3/core/Single".replace('/','.'),classLoader),"just",Boolean.TRUE);
     }
-    protected void beforeHook(SpotifyCallback p){}protected void afterHook(SpotifyCallback p){}
+    protected void beforeHook(SpotifyCallback p){}
+    protected void afterHook(SpotifyCallback p){
+        if(p.getThrowable()!=null)return;
+        Object self=p.getThisObject();
+        if(self==null)return;
+        Class<?> dt=dispatcherType;
+        if(dt!=null&&dt.isInstance(self)){
+            boolean hadDispatcher=dt.isInstance(core);
+            core=self;
+            if(!hadDispatcher)com.lenerd.spotifyplus.module.scripting.SpotifyServices.onCoreReady();
+            return;
+        }
+        Class<?> ct=contextPlayerType;
+        if(ct!=null&&ct.isInstance(self))contextPlayer=self;
+    }
     public Object handle(String command,Object[] args){return dispatchCommand(command,args);}
 }

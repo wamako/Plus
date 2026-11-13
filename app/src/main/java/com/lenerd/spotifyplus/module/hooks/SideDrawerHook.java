@@ -12,8 +12,6 @@ import java.util.concurrent.*;
 public final class SideDrawerHook extends SpotifyHook {
     private static final class Entry{final String id,script,title;Entry(String id,String script,String title){this.id=id;this.script=script;this.title=title;}}
     private static final ConcurrentHashMap<String,Entry> entries=new ConcurrentHashMap<>();
-    private static android.window.OnBackInvokedDispatcher dispatcher;
-    private static android.window.OnBackInvokedCallback back;
     protected void hookSetup(){SpotifyNativeBridge.registerHandler("side",this);}
     protected void beforeHook(SpotifyCallback p){}protected void afterHook(SpotifyCallback p){}
     public Object handle(String command,Object[] args){
@@ -24,7 +22,7 @@ public final class SideDrawerHook extends SpotifyHook {
         }else if(command.equals("unregisterScript")){
             String prefix=args[0]+"/";
             entries.keySet().removeIf(key->key.startsWith(prefix));
-        }else if(command.equals("surfaceClosed")&&args.length>0&&"sideDrawer".equals(args[0]))new android.os.Handler(android.os.Looper.getMainLooper()).post(SideDrawerHook::clearBack);
+        }
         return null;
     }
     public static void openRegistered(String script){
@@ -42,12 +40,10 @@ public final class SideDrawerHook extends SpotifyHook {
             root.addView(com.lenerd46.spotifyplus.features.FeatureSheets.button(a,"Extension settings",()->{com.lenerd46.spotifyplus.features.FeatureSheets.close();openRegistered("com.lenerd.settings");}));
         }));
     }
-    private static void clearBack(){if(Build.VERSION.SDK_INT>=33&&dispatcher!=null&&back!=null)dispatcher.unregisterOnBackInvokedCallback(back);dispatcher=null;back=null;}
     private static void open(String script,String id){
         Activity a=currentActivity;if(a==null)return;
         a.runOnUiThread(()->{try{
-            clearBack();SpotifyNativeBridge.attachSurfaceHost("sideDrawer",(ViewGroup)a.getWindow().getDecorView());
-            if(Build.VERSION.SDK_INT>=33){dispatcher=a.getOnBackInvokedDispatcher();back=()->{try{SpotifyNativeBridge.sendJsonEvent("android.backPressed",new JSONObject().put("scriptId",script).put("surfaceId","sideDrawer"));}catch(Exception e){logError(e);}};dispatcher.registerOnBackInvokedCallback(android.window.OnBackInvokedDispatcher.PRIORITY_OVERLAY,back);}
+            SpotifyNativeBridge.attachSurfaceHost("sideDrawer",(ViewGroup)a.getWindow().getDecorView());
             SpotifyNativeBridge.sendJsonEvent("side.press",new JSONObject().put("id",id).put("scriptId",script));
         }catch(Throwable e){logError(e);}});
     }

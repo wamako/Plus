@@ -26,6 +26,7 @@ public class AnimatedBackgroundView extends View {
 
     private final float downsampleFactor;
     private final int blobCount;
+    private final boolean calmerMotion;
     private int paletteMode = PALETTE_COLORFUL;
 
     private final HandlerThread renderThread;
@@ -96,6 +97,7 @@ public class AnimatedBackgroundView extends View {
         }
         downsampleFactor = selectedDownsampleFactor;
         blobCount = selectedBlobCount;
+        calmerMotion = LyricsPhase3Settings.isCalmerMotion(prefs);
 
         renderThread = new HandlerThread("FluidBG");
         renderThread.start();
@@ -136,6 +138,10 @@ public class AnimatedBackgroundView extends View {
             if (sourceImage != null) sourceImage.recycle();
             sourceImage = smallCopy;
             internalRebuildResources();
+            if (calmerMotion) {
+                renderScheduled.set(true);
+                renderFrame();
+            }
         })) {
             smallCopy.recycle();
         }
@@ -157,8 +163,14 @@ public class AnimatedBackgroundView extends View {
         renderHandler.post(() -> {
             allocateBuffersIfNeeded(width, height);
             internalRebuildResources();
+            if (calmerMotion) {
+                renderScheduled.set(true);
+                renderFrame();
+            }
         });
-        Choreographer.getInstance().postFrameCallback(frameCallback);
+        if (!calmerMotion) {
+            Choreographer.getInstance().postFrameCallback(frameCallback);
+        }
     }
 
     @Override

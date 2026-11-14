@@ -265,7 +265,7 @@ public class InterludeVisual implements SyncableVocals {
 
         if(Double.isNaN(scale) || Double.isInfinite(scale)) return false;
 
-        liveText.object.post(() -> {
+        Runnable applyDot = () -> {
             liveText.object.setScaleX((float)scale);
             liveText.object.setScaleY((float)scale);
 
@@ -273,7 +273,12 @@ public class InterludeVisual implements SyncableVocals {
 
             liveText.object.setShadowColor(Color.argb(255 * Math.max(0f, Math.min(1f, (float)glowAlpha)), 255, 255, 255));
             liveText.object.setAlpha((float)opacity);
-        });
+        };
+        if (Looper.myLooper() == Looper.getMainLooper()) {
+            applyDot.run();
+        } else {
+            liveText.object.post(applyDot);
+        }
 
         return liveText.springs.scale.sleeping && liveText.springs.yOffset.sleeping && liveText.springs.glow.sleeping && liveText.springs.opacity.sleeping;
     }
@@ -303,14 +308,19 @@ public class InterludeVisual implements SyncableVocals {
         double yOffset = liveText.springs.yOffset.update(deltaTime) * 25;
         double opacity = liveText.springs.opacity.update(deltaTime);
 
-        liveText.object.post(() -> {
+        Runnable applyMain = () -> {
             // Scaling a full-width row around its center makes left-aligned dots drift sideways.
             liveText.object.setScaleX(verticalOnly ? 1f : (float)scale);
             liveText.object.setScaleY((float)scale);
 
             liveText.object.setTranslationY((float)yOffset);
             liveText.object.setAlpha((float)opacity);
-        });
+        };
+        if (Looper.myLooper() == Looper.getMainLooper()) {
+            applyMain.run();
+        } else {
+            liveText.object.post(applyMain);
+        }
 
         return liveText.springs.scale.sleeping && liveText.springs.yOffset.sleeping && liveText.springs.opacity.sleeping;
     }

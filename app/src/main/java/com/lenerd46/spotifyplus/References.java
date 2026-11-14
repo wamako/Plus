@@ -42,10 +42,16 @@ public class References {
     public static String clientToken = "";
     public static String spotifyUsername = "";
     public static ClassLoader spotifyClassLoader;
+    private static volatile Typeface retainedBeautifulFont = null;
     public static WeakReference<Typeface> beautifulFont = new WeakReference<>(null);
     public static WeakReference<Pair<String, String>> contextMenuTrack = new WeakReference<>(null);
     public static XModuleResources modResources = null;
     public static XResources xresources = null;
+
+    public static void setBeautifulFont(Typeface typeface) {
+        retainedBeautifulFont = typeface;
+        beautifulFont = new WeakReference<>(typeface);
+    }
 
     private static final Pattern DIGITS = Pattern.compile("\\d+");
     private static Method hasTrackMethod;
@@ -63,18 +69,58 @@ public class References {
 
         try {
             Object wrapper = XposedHelpers.callMethod(state, "track");
+            if (wrapper == null) {
+                return null;
+            }
 
-            var className = wrapper.getClass().getName();
-            if(hasTrackMethod == null) {
-                var clazz = bridge.findClass(FindClass.create().matcher(ClassMatcher.create().className(className)));
-                hasTrackMethod = bridge.findMethod(FindMethod.create().searchInClass(clazz).matcher(MethodMatcher.create().modifiers(Modifier.PUBLIC | Modifier.FINAL).returnType(boolean.class).paramCount(0))).get(0).getMethodInstance(lpparam.classLoader);
+            if (hasTrackMethod == null) {
+                Method resolvedHasTrack = null;
+                var clazz = bridge.findClass(FindClass.create().matcher(ClassMatcher.create().className(wrapper.getClass().getName())));
+                var found = bridge.findMethod(FindMethod.create().searchInClass(clazz).matcher(MethodMatcher.create().modifiers(Modifier.PUBLIC | Modifier.FINAL).returnType(boolean.class).paramCount(0)));
+                if (!found.isEmpty()) {
+                    resolvedHasTrack = found.get(0).getMethodInstance(lpparam.classLoader);
+                } else {
+                    for (Class<?> c = wrapper.getClass(); c != null && c != Object.class; c = c.getSuperclass()) {
+                        for (Method m : c.getDeclaredMethods()) {
+                            if (Modifier.isPublic(m.getModifiers()) && m.getParameterCount() == 0 && m.getReturnType() == boolean.class
+                                    && !m.getName().equals("equals")) {
+                                resolvedHasTrack = m;
+                                break;
+                            }
+                        }
+                        if (resolvedHasTrack != null) break;
+                    }
+                }
+                if (resolvedHasTrack == null) {
+                    return null;
+                }
+                hasTrackMethod = resolvedHasTrack;
             }
 
             boolean hasTrack = (Boolean) XposedHelpers.callMethod(wrapper, hasTrackMethod.getName());
             if(hasTrack) {
                 if(getContextTrack == null) {
-                    var clazz = bridge.findClass(FindClass.create().matcher(ClassMatcher.create().className(className)));
-                    getContextTrack = bridge.findMethod(FindMethod.create().searchInClass(clazz).matcher(MethodMatcher.create().modifiers(Modifier.PUBLIC | Modifier.FINAL).paramCount(0).returnType(Object.class))).get(0).getMethodInstance(lpparam.classLoader);
+                    Method resolvedGetTrack = null;
+                    var clazz = bridge.findClass(FindClass.create().matcher(ClassMatcher.create().className(wrapper.getClass().getName())));
+                    var found = bridge.findMethod(FindMethod.create().searchInClass(clazz).matcher(MethodMatcher.create().modifiers(Modifier.PUBLIC | Modifier.FINAL).paramCount(0).returnType(Object.class)));
+                    if (!found.isEmpty()) {
+                        resolvedGetTrack = found.get(0).getMethodInstance(lpparam.classLoader);
+                    } else {
+                        for (Class<?> c = wrapper.getClass(); c != null && c != Object.class; c = c.getSuperclass()) {
+                            for (Method m : c.getDeclaredMethods()) {
+                                if (Modifier.isPublic(m.getModifiers()) && m.getParameterCount() == 0 && m.getReturnType() == Object.class
+                                        && !m.getName().equals("clone")) {
+                                    resolvedGetTrack = m;
+                                    break;
+                                }
+                            }
+                            if (resolvedGetTrack != null) break;
+                        }
+                    }
+                    if (resolvedGetTrack == null) {
+                        return null;
+                    }
+                    getContextTrack = resolvedGetTrack;
                 }
 
                 Object ct = XposedHelpers.callMethod(wrapper, getContextTrack.getName());

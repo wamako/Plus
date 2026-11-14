@@ -1,0 +1,20 @@
+{
+  "test_kind": "production_glass_and_spotify_intent_resolution",
+  "passed": true,
+  "authenticated_playback_tested": false,
+  "samsung_rendering_tested": false,
+  "instrumentation_passed": true,
+  "tests_passed": 12,
+  "spotify_async_queue_observer_verified": true,
+  "spotify_explicit_selection_queue_verified": true,
+  "spotify_model_queue_command_verified": true,
+  "spotify_model_playback_serialization_verified": true,
+  "spotify_autoplay_provider_readback_verified": true,
+  "animated_images_verified": true,
+  "foreground_exclusion": true,
+  "repeated_capture": true,
+  "actual_blur": true,
+  "failed_capture_restores_state": true,
+  "spotify_track_intent_resolved": true,
+  "unsafe_links_rejected": true
+}

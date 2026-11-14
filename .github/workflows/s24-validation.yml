@@ -1,0 +1,207 @@
+name: LSPatch Linux Android validation
+
+# Linux/KVM guest: native x86 test build or explicitly translated ARM build.
+# Each native/translated profile is scoped separately from Samsung/native ARM.
+on:
+  workflow_call:
+    inputs:
+      emulator_cores:
+        type: number
+        default: 4
+      emulator_ram_mb:
+        type: number
+        default: 4096
+      report_tag:
+        type: string
+        default: ''
+      module_run_id:
+        type: string
+        default: ''
+      module_source_commit:
+        type: string
+        default: ''
+      signature_bypass_level:
+        type: string
+        default: '2'
+      native_x86:
+        type: boolean
+        default: true
+      api_level:
+        type: string
+        default: '37.0'
+      run_patched_host:
+        type: boolean
+        default: false
+    secrets:
+      SPOTIFY_APK_URL:
+        required: false
+    outputs:
+      environment_result:
+        description: 'booted or setup_failed; separate from patched-app startup'
+        value: ${{ jobs.android17-validation.outputs.environment_result }}
+
+permissions:
+  contents: read
+  actions: read
+
+jobs:
+  android17-validation:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    env:
+      SPOTIFYPLUS_EMULATION_MODE: ${{ inputs.native_x86 && 'kvm-native-x86_64' || 'kvm-arm64-translation' }}
+      DEVICE_PROFILE: ${{ inputs.native_x86 && 'linux-x86_64-native' || (inputs.api_level == '35' && 'linux-x86_64-arm64-translation-api35' || 'linux-x86_64-arm64-translation') }}
+      SELECTED_API_LEVEL: ${{ inputs.api_level }}
+      SELECTED_EMULATOR_CORES: ${{ inputs.emulator_cores }}
+      SELECTED_EMULATOR_RAM_MB: ${{ inputs.emulator_ram_mb }}
+      REPORT_SAMPLE_TAG: ${{ inputs.report_tag }}
+      MODULE_ARTIFACT_RUN: ${{ inputs.module_run_id || github.run_id }}
+      MODULE_ARTIFACT_COMMIT: ${{ inputs.module_source_commit || github.event.pull_request.head.sha || github.sha }}
+      REUSED_MODULE_FIXTURE: ${{ inputs.module_run_id != '' }}
+      SPOTIFYPLUS_SIGNATURE_BYPASS_LEVEL: ${{ inputs.signature_bypass_level }}
+      SELECTED_NATIVE_X86: ${{ inputs.native_x86 }}
+      SPOTIFYPLUS_RUN_PATCHED_HOST: ${{ inputs.run_patched_host }}
+    outputs:
+      environment_result: ${{ steps.scope.outputs.environment_result }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Validate explicit profile inputs
+        run: |
+          case "$SELECTED_API_LEVEL" in 35|37.0) ;; *) echo 'Unsupported explicit API' >&2; exit 2 ;; esac
+          case "$SELECTED_EMULATOR_CORES" in 2|4) ;; *) echo 'Unsupported CPU profile' >&2; exit 2 ;; esac
+          case "$SELECTED_EMULATOR_RAM_MB" in 3072|4096) ;; *) echo 'Unsupported memory profile' >&2; exit 2 ;; esac
+          [[ "$REPORT_SAMPLE_TAG" =~ ^[-A-Za-z0-9_]{0,32}$ ]] || exit 2
+          case "$SPOTIFYPLUS_SIGNATURE_BYPASS_LEVEL" in 0|2) ;; *) echo 'Unsupported explicit signature mode' >&2; exit 2 ;; esac
+          if [ "$SELECTED_NATIVE_X86" = true ] && [ "$SELECTED_API_LEVEL" != 37.0 ]; then
+            echo 'The native x86 profile requires API 37.0' >&2
+            exit 2
+          fi
+      - name: Require Linux x86_64 and enable this job's KVM access
+        run: |
+          test "$(uname -s)" = Linux
+          test "$(uname -m)" = x86_64
+          test "$(getconf _NPROCESSORS_ONLN)" -ge "$SELECTED_EMULATOR_CORES"
+          test -c /dev/kvm
+          sudo chown "$(id -u):$(id -g)" /dev/kvm
+          test -r /dev/kvm && test -w /dev/kvm
+      - uses: actions/setup-java@v4
+        with:
+          java-version: '21'
+          distribution: temurin
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Set up official Linux Android SDK
+        run: python3 tools/setup_android37_sdk.py
+      - name: Require usable KVM and the exact selected stable x86_64 image
+        run: |
+          emulator -accel-check
+          python3 tools/check_android37_image.py --abi x86_64 --api-level "$SELECTED_API_LEVEL"
+      - name: Verify explicitly reused immutable module fixture
+        if: inputs.module_run_id != ''
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          python3 - <<'PY'
+          import json, os, re, urllib.request
+          run, commit = os.environ["MODULE_ARTIFACT_RUN"], os.environ["MODULE_ARTIFACT_COMMIT"]
+          if not re.fullmatch(r"[1-9]\d{3,19}", run) or not re.fullmatch(r"[0-9a-f]{40}", commit):
+              raise SystemExit("Invalid explicit fixture identity")
+          repo = os.environ["GITHUB_REPOSITORY"]
+          request = urllib.request.Request("https://api.github.com/repos/" + repo + "/actions/runs/" + run,
+              headers={"Authorization": "Bearer " + os.environ["GH_TOKEN"], "Accept": "application/vnd.github+json"})
+          try:
+              with urllib.request.urlopen(request, timeout=30) as response:
+                  info = json.load(response)
+          except Exception:
+              raise SystemExit("Could not verify fixture run") from None
+          if info.get("head_sha") != commit or info.get("status") != "completed" or info.get("head_repository", {}).get("full_name") != repo:
+              raise SystemExit("Fixture run does not match its declared immutable source")
+          print("Using explicit prebuilt fixture run " + run + " at " + commit + "; not a build of the current harness revision")
+          PY
+      - name: Download same-run Plus module
+        if: inputs.run_patched_host
+        uses: actions/download-artifact@v4
+        with:
+          name: ${{ inputs.native_x86 && 'SpotifyPlus-Emulator-x86_64-APK' || 'SpotifyPlus-Debug-APK' }}
+          run-id: ${{ inputs.module_run_id || github.run_id }}
+          github-token: ${{ github.token }}
+          path: ${{ runner.temp }}/plus-module
+      - name: Download same-run Shuffle+ extension
+        if: inputs.run_patched_host
+        uses: actions/download-artifact@v4
+        with:
+          name: SpotifyPlus-ShufflePlus
+          run-id: ${{ inputs.module_run_id || github.run_id }}
+          github-token: ${{ github.token }}
+          path: ${{ runner.temp }}/shuffle-extension
+      - name: Download same-run production rendering and navigation tests
+        if: inputs.run_patched_host && inputs.native_x86
+        uses: actions/download-artifact@v4
+        with:
+          name: SpotifyPlus-Android-UI-Tests
+          path: ${{ runner.temp }}/ui-tests
+      - name: Install APK inspection dependency
+        if: inputs.run_patched_host
+        run: python3 -m pip install androguard==4.1.4
+      - name: Download current-run CI-only storage probe
+        if: inputs.run_patched_host
+        uses: actions/download-artifact@v4
+        with:
+          name: SpotifyPlus-CI-Storage-Probe
+          run-id: ${{ github.run_id }}
+          github-token: ${{ github.token }}
+          path: ${{ runner.temp }}/storage-probe
+      - name: Verify original source, integrated patch and APK signature
+        if: inputs.run_patched_host
+        env:
+          SPOTIFY_APK_URL: ${{ secrets.SPOTIFY_APK_URL }}
+        run: >-
+          python3 tools/prepare_lspatch_smoke.py
+          --module "$RUNNER_TEMP/plus-module/app-debug.apk"
+          --module-abi ${{ inputs.native_x86 && 'x86_64' || 'arm64-v8a' }}
+          --signature-bypass-level "$SPOTIFYPLUS_SIGNATURE_BYPASS_LEVEL"
+          --work "$RUNNER_TEMP/lspatch-smoke"
+          --report "$RUNNER_TEMP/smoke-reports/package.json"
+      - name: Boot the selected API with KVM and verify the explicit ABI profile
+        id: boot
+        uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: ${{ inputs.api_level }}
+          target: google_apis
+          arch: x86_64
+          avd-name: spotifyplus-api${{ inputs.api_level }}-linux
+          force-avd-creation: true
+          disable-animations: true
+          emulator-boot-timeout: 600
+          ram-size: ${{ format('{0}M', inputs.emulator_ram_mb) }}
+          disk-size: 4096M
+          emulator-options: -no-window -gpu swiftshader_indirect -no-snapshot -noaudio -no-boot-anim -wipe-data -accel on -cores ${{ inputs.emulator_cores }}
+          # This action executes script lines individually. Run one shell file
+          # so the optional startup conditional stays in the same shell.
+          script: bash tools/run_android37_validation.sh
+      - name: Record actual guest and translation evidence
+        id: scope
+        if: always()
+        env:
+          BOOT_MODE: ${{ inputs.native_x86 && 'kvm-native-x86_64' || 'kvm-arm64-translation' }}
+          BOOT_RESULT: ${{ steps.boot.outcome }}
+        run: python3 tools/report_android37_scope.py
+      - name: Upload structured reports only
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ format('{0}-Android{1}-{2}-Sig{3}-{4}{5}', inputs.run_patched_host && 'LSPatch' || 'Environment', inputs.api_level == '35' && '15' || '17', inputs.native_x86 && 'Native-x86' || 'ARM-Translation', inputs.signature_bypass_level, inputs.run_patched_host && 'Reports' || 'Report', inputs.report_tag) }}
+          path: |
+            ${{ runner.temp }}/smoke-reports/*.json
+            ${{ runner.temp }}/smoke-reports/glass-fixture.png
+          if-no-files-found: ignore
+          retention-days: 14
+      - name: Explain coverage
+        if: always()
+        run: |
+          echo "Linux/KVM API $SELECTED_API_LEVEL; profile $DEVICE_PROFILE; signature mode $SPOTIFYPLUS_SIGNATURE_BYPASS_LEVEL. Native x86 installs x86_64; translated profiles install ARM64. These are separate from native ARM/Samsung firmware coverage." >> "$GITHUB_STEP_SUMMARY"
+          echo 'Guest environment, original APK/package verification and actual Spotify startup are separate checks. No account/playback/UI result is inferred from a guest boot.' >> "$GITHUB_STEP_SUMMARY"
+      - name: Remove private test inputs
+        if: always()
+        run: rm -rf "$RUNNER_TEMP/lspatch-smoke" "$RUNNER_TEMP/plus-module" "$RUNNER_TEMP/shuffle-extension" "$RUNNER_TEMP/storage-probe" "$RUNNER_TEMP/ui-tests"

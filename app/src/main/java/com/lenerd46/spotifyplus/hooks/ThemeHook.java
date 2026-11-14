@@ -1591,12 +1591,23 @@ public class ThemeHook extends SpotifyHook {
         }
     }
 
+    private static volatile PaletteColors cachedNativePalette;
+    private static volatile int cachedNativePaletteGen = -1;
+
     private static PaletteColors currentNativePalette() {
-        return new PaletteColors(new int[]{baseBackground(), surfaceColor(), tintedColor(), backgroundHighlight(),
+        int gen = paletteGeneration;
+        PaletteColors existing = cachedNativePalette;
+        if (existing != null && cachedNativePaletteGen == gen) {
+            return existing;
+        }
+        PaletteColors created = new PaletteColors(new int[]{baseBackground(), surfaceColor(), tintedColor(), backgroundHighlight(),
                 backgroundPress(), surfaceHighlight(), surfacePress(), tintedHighlight(),
                 tintedPress(), accentColor(), ACCENT_HIGHLIGHT, ACCENT_PRESS, DECORATIVE_SUBDUED},
                 new int[]{textColor(), subduedColor(), accentColor(), onAccentColor(), DECORATIVE, ANNOUNCEMENT,
                         NEGATIVE, WARNING, POSITIVE});
+        cachedNativePalette = created;
+        cachedNativePaletteGen = gen;
+        return created;
     }
 
     private void hookNativeViews() {
@@ -1604,6 +1615,7 @@ public class ThemeHook extends SpotifyHook {
             XposedBridge.hookMethod(View.class.getDeclaredConstructor(Context.class, AttributeSet.class, int.class, int.class), new XC_MethodHook() {
                 @Override
                 protected void afterHookedMethod(MethodHookParam param) {
+                    if (!themeEnabled) return;
                     nativeViews.put((View) param.thisObject, currentNativePalette());
                 }
             });

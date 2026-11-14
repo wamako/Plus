@@ -40,7 +40,7 @@ public final class NativeSleepTimerMenuHook extends SpotifyHook {
             try{
                 List<Object> nativeRows=new ArrayList<>((List<?>)param.args[index]);List<Object> extra=new ArrayList<>();
                 JSONArray stored=new JSONArray(context.getSharedPreferences("SpotifyPlus",Context.MODE_PRIVATE).getString("custom_sleep_timers","[]"));
-                for(int i=0;i<stored.length();i++){JSONObject row=stored.getJSONObject(i);try{long amount=SleepTimerState.minutes(row.get("value").toString(),row.optBoolean("unit"));extra.add(durationConstructor.newInstance(factory.invoke(null,(int)amount,minutes)));}catch(Exception invalid){XposedBridge.log("[SpotifyPlus][NativeTimer] Invalid saved duration ignored");}}
+                for(int i=0;i<stored.length();i++){JSONObject row=stored.getJSONObject(i);try{long amount=SleepTimerState.minutes(row.get("value").toString(),row.optBoolean("unit"));Object option=durationConstructor.newInstance(factory.invoke(null,(int)amount,minutes));com.lenerd.spotifyplus.module.hooks.SleepTimerHook.trackNativeDuration(option,amount);extra.add(option);}catch(Exception invalid){XposedBridge.log("[SpotifyPlus][NativeTimer] Invalid saved duration ignored");}}
                 List<Object> merged=NativeTimerPresets.merge(nativeRows,extra,row->{if(!durationType.isInstance(row))return null;try{return durationField.getLong(row);}catch(IllegalAccessException e){throw new IllegalStateException(e);}});
                 if(merged.size()==nativeRows.size())return;
                 Object list=create.invoke(null);Method add=list.getClass().getMethod("add",Object.class);add.setAccessible(true);

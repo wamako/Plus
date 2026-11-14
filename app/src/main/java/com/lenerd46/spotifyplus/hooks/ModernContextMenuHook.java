@@ -111,6 +111,7 @@ final class ModernContextMenuHook extends SpotifyHook {
             }
             if (menuUris.size() == 1) bookmarkUri = menuUris.iterator().next();
         }
+        if (uri != null) com.lenerd.spotifyplus.module.hooks.ContextMenuHook.recordHeaderUri(header, uri);
         if (uri != null && headerText.size() == 2) NewContextMenuHook.updateLastFmHeader(header, headerText.get(0), headerText.get(1), uri);
         ArrayList<Object> result = new ArrayList<>(original);
         if (bookmarkUri != null && !ids.contains(BOOKMARK)) {

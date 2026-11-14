@@ -1,0 +1,63 @@
+{
+  "test_kind": "offline_lspatch_packaging",
+  "passed": true,
+  "patcher_sha256": "d238fdc414d121b7fa454d8b4ccf420df3a8c97d563761861ff92bd9c5da2165",
+  "original_sha256": "a0a6fbe6b87249bd3de88f16b342cce233f94513d41a0f6f2a06558ba51a9304",
+  "module_sha256": "9f5b5efd507b4e48ff49af3479e5bc52a350f01f6fb2b0c9351e09d28d136cef",
+  "patched_sha256": "6e40e554cf9f06c4344e46d23b21bcb67f6f398aa68be7f63e7bdfbbe7243b75",
+  "original_manifest": {
+    "package": "com.spotify.music",
+    "version": "9.1.94.1929",
+    "version_code": "147600575",
+    "min_sdk": "24",
+    "target_sdk": "37",
+    "component_factory": "com.spotify.android.base.SpotifyAppComponentFactory"
+  },
+  "patched_manifest": {
+    "package": "com.spotify.music",
+    "version": "9.1.94.1929",
+    "version_code": "147600575",
+    "min_sdk": "28",
+    "target_sdk": "37",
+    "component_factory": "org.lsposed.lspatch.metaloader.LSPAppComponentFactoryStub"
+  },
+  "module_manifest": {
+    "package": "com.lenerd46.spotifyplus",
+    "version": "0.10.0-api2.9.1.94.25-emulator-x86_64",
+    "version_code": "42",
+    "min_sdk": "27",
+    "target_sdk": "35",
+    "component_factory": "androidx.core.app.CoreComponentFactory"
+  },
+  "framework": {
+    "API_CODE": 102,
+    "VERSION_CODE": 487,
+    "VERSION_NAME": "1.2",
+    "CORE_VERSION_CODE": 7306,
+    "CORE_VERSION_NAME": "canary-3106",
+    "CORE_VERSION_HASH": "e00c5c5038bbcc14e0b382ab893301d6993e6989"
+  },
+  "patch_mode": "integrated",
+  "signature_bypass_level": 2,
+  "embedded_original_unchanged": true,
+  "embedded_module_unchanged": true,
+  "loader_and_arm64_framework_match_patcher": true,
+  "framework_abis_verified": [
+    "arm64-v8a",
+    "x86_64"
+  ],
+  "module_abi": "x86_64",
+  "runtime_test_executed": false,
+  "runtime_test_limitation": "No Android emulator or device was used; launch, login, native library loading and Shuffle+ playback were not exercised.",
+  "native_play_binding": {
+    "passed": true,
+    "handler": "Lp/cgz;",
+    "method": "a",
+    "model_checks": 7
+  },
+  "signature": {
+    "verified": true,
+    "v2": true,
+    "error_count": 0
+  }
+}

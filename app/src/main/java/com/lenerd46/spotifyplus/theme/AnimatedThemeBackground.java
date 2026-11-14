@@ -42,7 +42,14 @@ public final class AnimatedThemeBackground {
     private final Map<View, SurfaceBackground> surfaces = new IdentityHashMap<>();
     private final Map<View, Boolean> trackRows = new java.util.WeakHashMap<>();
     private final Map<Integer, String> resourceNames = new java.util.HashMap<>();
+    private final Map<String, Integer> idCache = new java.util.HashMap<>();
     private long surfacesInvalidatedAt;
+    private long lastChromeUpdateAt;
+    private boolean chromeUpdateScheduled;
+    private final Runnable scheduledChromeUpdate = () -> {
+        chromeUpdateScheduled = false;
+        updateChrome();
+    };
     private final class SurfaceBackground {
         Drawable original;
         ColorStateList tint;
@@ -106,7 +113,16 @@ public final class AnimatedThemeBackground {
             {-android.R.attr.state_enabled}, {android.R.attr.state_selected},
             {android.R.attr.state_activated}, {}},
             new int[]{0x80EBEDF2, AnimatedThemePalette.TEXT, AnimatedThemePalette.TEXT, 0xFFCCD3DF});
-    private final ViewTreeObserver.OnGlobalLayoutListener layoutListener = this::updateChrome;
+    private final ViewTreeObserver.OnGlobalLayoutListener layoutListener = () -> {
+        if (contentRoot == null) return;
+        long now = android.os.SystemClock.uptimeMillis();
+        if (now - lastChromeUpdateAt >= 80) {
+            updateChrome();
+        } else if (!chromeUpdateScheduled) {
+            chromeUpdateScheduled = true;
+            contentRoot.postDelayed(scheduledChromeUpdate, 80 - (now - lastChromeUpdateAt));
+        }
+    };
     private final ViewTreeObserver.OnPreDrawListener drawListener = () -> {
         updateDimming();
         for (Map.Entry<View, HeaderBackground> entry : headers.entrySet()) {
@@ -188,12 +204,15 @@ public final class AnimatedThemeBackground {
     }
 
     private View find(String name) {
-        int id = activity.getResources().getIdentifier(name, "id", activity.getPackageName());
+        Integer cached = idCache.get(name);
+        int id = cached != null ? cached : activity.getResources().getIdentifier(name, "id", activity.getPackageName());
+        if (cached == null && id != 0) idCache.put(name, id);
         return id == 0 ? null : contentRoot.findViewById(id);
     }
 
     private void updateChrome() {
         if (contentRoot == null) return;
+        lastChromeUpdateAt = android.os.SystemClock.uptimeMillis();
         View nextPlayer = find("now_playing_bar_layout");
         if (nextPlayer != player) {
             restorePlayer();
@@ -406,10 +425,15 @@ public final class AnimatedThemeBackground {
     }
 
     public void hide() {
-        if (contentRoot != null && contentRoot.getViewTreeObserver().isAlive()) {
-            contentRoot.getViewTreeObserver().removeOnGlobalLayoutListener(layoutListener);
-            contentRoot.getViewTreeObserver().removeOnPreDrawListener(drawListener);
+        if (contentRoot != null) {
+            contentRoot.removeCallbacks(scheduledChromeUpdate);
+            if (contentRoot.getViewTreeObserver().isAlive()) {
+                contentRoot.getViewTreeObserver().removeOnGlobalLayoutListener(layoutListener);
+                contentRoot.getViewTreeObserver().removeOnPreDrawListener(drawListener);
+            }
         }
+        chromeUpdateScheduled = false;
+        lastChromeUpdateAt = 0;
         restorePlayer();
         restoreNavigation();
         for (Map.Entry<View, HeaderBackground> entry : headers.entrySet()) restoreHeader(entry.getKey(), entry.getValue());

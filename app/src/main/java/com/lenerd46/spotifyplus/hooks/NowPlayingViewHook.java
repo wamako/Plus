@@ -251,17 +251,28 @@ final class NowPlayingSwipeHook extends SpotifyHook {
         }
     }
 
+    private static volatile int nowPlayingBarLayoutId = 0;
+    private static volatile int nowPlayingSheetLayoutId = 0;
+
     private void hookLayoutInflation() {
         XposedBridge.hookAllMethods(LayoutInflater.class, "inflate", new XC_MethodHook() {
             @Override
             protected void afterHookedMethod(MethodHookParam param) {
                 if(!NowPlayingViewHook.isEnabled() || param.args.length == 0 || !(param.args[0] instanceof Integer) || !(param.getResult() instanceof View)) return;
+                int layoutId = (Integer) param.args[0];
                 View view = (View) param.getResult();
-                String layoutName;
-                try {layoutName = view.getResources().getResourceName((Integer) param.args[0]);} catch (Throwable ignored) {return;}
-                if(layoutName.endsWith(":layout/now_playing_bar")) roundMiniPlayer(view);
+                if (nowPlayingBarLayoutId == 0 && nowPlayingSheetLayoutId == 0) {
+                    try {
+                        android.content.res.Resources res = view.getResources();
+                        nowPlayingBarLayoutId = res.getIdentifier("now_playing_bar", "layout", "com.spotify.music");
+                        nowPlayingSheetLayoutId = res.getIdentifier("now_playing_container_bottom_sheet", "layout", "com.spotify.music");
+                    } catch (Throwable ignored) {
+                        return;
+                    }
+                }
+                if(nowPlayingBarLayoutId != 0 && layoutId == nowPlayingBarLayoutId) roundMiniPlayer(view);
                 if(!openingByGesture) return;
-                if(!layoutName.endsWith(":layout/now_playing_container_bottom_sheet")) return;
+                if(nowPlayingSheetLayoutId == 0 || layoutId != nowPlayingSheetLayoutId) return;
                 attachGestureSheet(view);
             }
         });
@@ -633,7 +644,10 @@ final class NowPlayingControlsHook extends SpotifyHook {
     private static final int WATCH_TAG = 0x53504C57;
     private static final int TRANSPORT_TAG = 0x53504C54;
     private static final int ACTIONS_TAG = 0x53504C41;
+    private static final Map<String, Integer> ID_CACHE = new java.util.concurrent.ConcurrentHashMap<>();
+    private static final Map<String, String> STRING_CACHE = new java.util.concurrent.ConcurrentHashMap<>();
     private final Map<View, LyricsState> states = new WeakHashMap<>();
+    private final Map<View, Runnable> pendingLayouts = new WeakHashMap<>();
     private final ExecutorService artworkLoader = Executors.newSingleThreadExecutor();
     private volatile Bitmap cachedArtwork;
     private volatile String cachedArtworkUri;
@@ -660,31 +674,32 @@ final class NowPlayingControlsHook extends SpotifyHook {
     private void watchNowPlayingLayout(View root) {
         if(root.getTag(WATCH_TAG) != null) return;
         root.setTag(WATCH_TAG, Boolean.TRUE);
-        Handler handler = new Handler(Looper.getMainLooper());
-        View.OnLayoutChangeListener listener = (view, left, top, right, bottom, oldLeft, oldTop, oldRight, oldBottom) -> applyLayout(root);
-        root.addOnLayoutChangeListener(listener);
-        for(int attempt = 0; attempt < 20; attempt++) handler.postDelayed(() -> applyLayout(root), attempt * 100L);
-        Runnable refresh = new Runnable() {
-            @Override
-            public void run() {
-                if(!root.isAttachedToWindow()) return;
-                applyLayout(root);
-                root.postDelayed(this, 1000L);
+        Runnable debouncedApply = () -> {
+            pendingLayouts.remove(root);
+            if(root.isAttachedToWindow()) applyLayout(root);
+        };
+        View.OnLayoutChangeListener listener = (view, left, top, right, bottom, oldLeft, oldTop, oldRight, oldBottom) -> {
+            if(pendingLayouts.putIfAbsent(root, debouncedApply) == null) {
+                root.postOnAnimation(debouncedApply);
             }
         };
+        root.addOnLayoutChangeListener(listener);
+        root.post(debouncedApply);
+        root.postDelayed(debouncedApply, 180L);
+        root.postDelayed(debouncedApply, 500L);
         root.addOnAttachStateChangeListener(new View.OnAttachStateChangeListener() {
             @Override
             public void onViewAttachedToWindow(View view) {
-                view.removeCallbacks(refresh);
-                view.post(refresh);
+                view.removeCallbacks(debouncedApply);
+                view.post(debouncedApply);
             }
 
             @Override
             public void onViewDetachedFromWindow(View view) {
-                view.removeCallbacks(refresh);
+                view.removeCallbacks(debouncedApply);
+                pendingLayouts.remove(view);
             }
         });
-        root.postDelayed(refresh, 1000L);
     }
 
     private void applyLayout(View root) {
@@ -1328,7 +1343,9 @@ final class NowPlayingControlsHook extends SpotifyHook {
     }
 
     private View find(View root, String name) {
-        int id = root.getResources().getIdentifier(name, "id", "com.spotify.music");
+        Integer cached = ID_CACHE.get(name);
+        int id = cached != null ? cached : root.getResources().getIdentifier(name, "id", "com.spotify.music");
+        if (cached == null && id != 0) ID_CACHE.put(name, id);
         return id == 0 ? null : root.findViewById(id);
     }
 
@@ -1338,8 +1355,13 @@ final class NowPlayingControlsHook extends SpotifyHook {
     }
 
     private String string(View root, String name) {
+        String cached = STRING_CACHE.get(name);
+        if (cached != null) return cached;
         int id = root.getResources().getIdentifier(name, "string", "com.spotify.music");
-        return id == 0 ? null : root.getResources().getString(id);
+        if (id == 0) return null;
+        String value = root.getResources().getString(id);
+        if (value != null) STRING_CACHE.put(name, value);
+        return value;
     }
 
     private View findByDescription(View view, String description) {

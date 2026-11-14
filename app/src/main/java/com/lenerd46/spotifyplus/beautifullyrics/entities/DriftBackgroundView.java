@@ -36,6 +36,7 @@ public final class DriftBackgroundView extends View {
     private float phase;
     private volatile int generation;
     private boolean visible;
+    private final boolean calmerMotion;
     private final Runnable tick = () -> {
         if (visible) invalidate();
     };
@@ -44,6 +45,7 @@ public final class DriftBackgroundView extends View {
         super(context);
         String quality = context.getSharedPreferences("SpotifyPlus", Context.MODE_PRIVATE)
                 .getString("lyric_background_quality", "high");
+        calmerMotion = LyricsPhase3Settings.isCalmerMotion(context.getSharedPreferences("SpotifyPlus", Context.MODE_PRIVATE));
         frameDelay = "superLow".equalsIgnoreCase(quality) ? 66 : "low".equals(quality) ? 50 : 33;
         setImportantForAccessibility(IMPORTANT_FOR_ACCESSIBILITY_NO);
         updateImage(artwork);
@@ -170,7 +172,7 @@ public final class DriftBackgroundView extends View {
         // Neutral albums retain the original shading; colorful ones lose the gloomy veil.
         shade.setAlpha(Math.round(255f * (1f - 0.55f * shadingStrength)));
         canvas.drawRect(0, 0, getWidth(), getHeight(), shade);
-        if (visible) {
+        if (visible && !calmerMotion) {
             removeCallbacks(tick);
             postDelayed(tick, frameDelay);
         }

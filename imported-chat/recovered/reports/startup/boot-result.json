@@ -1,0 +1,13 @@
+{
+  "test_kind": "android_boot_result",
+  "emulation_mode": "kvm-native-x86_64",
+  "result": "booted",
+  "device_profile": "linux-x86_64-native",
+  "guest_api": 37,
+  "native_arm64_test": false,
+  "native_x86_test": true,
+  "arm64_translation_test": false,
+  "passed": true,
+  "emulator_boot_attempted": true,
+  "guest_api_abi_verified": true
+}

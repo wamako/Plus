@@ -19,8 +19,14 @@ public final class ReadOnlyCodeFiles {
                 output.getFD().sync();
             }
             // Replace old writable or read-only caches without ever reopening the loaded file.
-            Files.move(temporary.toPath(),destination.toPath(),StandardCopyOption.ATOMIC_MOVE,StandardCopyOption.REPLACE_EXISTING);
+            try {
+                Files.move(temporary.toPath(),destination.toPath(),StandardCopyOption.ATOMIC_MOVE,StandardCopyOption.REPLACE_EXISTING);
+            } catch (AccessDeniedException e) {
+                destination.setWritable(true);
+                Files.move(temporary.toPath(),destination.toPath(),StandardCopyOption.ATOMIC_MOVE,StandardCopyOption.REPLACE_EXISTING);
+            }
         } finally {
+            temporary.setWritable(true);
             Files.deleteIfExists(temporary.toPath());
         }
     }
